@@ -1,0 +1,18 @@
+[package]
+name = "diffable"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "diffable"
+
+[features]
+nalgebra = ["dep:nalgebra"]
+testing = ["dep:proptest"]
+all = ["testing", "nalgebra"]
+
+[dependencies]
+num-traits = "0.2.19"
+proptest = { version = "1.11.0", optional = true }
+nalgebra = { version = "0.35", optional = true }
