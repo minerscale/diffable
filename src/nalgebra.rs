@@ -1,4 +1,4 @@
-use crate::traits::{Chart, Euclidean, ExpMap, InnerProduct, Metric, TangentBundle};
+use crate::traits::{Euclidean, InnerProduct, Metric};
 use nalgebra::{RealField, SVector};
 use num_traits::real::Real;
 
@@ -14,22 +14,7 @@ impl<R: Real + RealField, const N: usize> InnerProduct<R> for SVector<R, N> {
     }
 }
 
-impl<R: Real + RealField, const N: usize> Chart<Self, N, Self> for SVector<R, N> {
-    fn to_local(&self, point: &Self) -> Option<Self> {
-        Some((point - self).into())
-    }
-    fn to_global(&self, coord: Self) -> Self {
-        self + SVector::from(coord)
-    }
-    fn chart_at(p: &Self) -> Self {
-        p.clone()
-    }
-}
-
-impl<R: Real + RealField, const N: usize> ExpMap<Self, N, Self> for SVector<R, N> {}
-impl<R: Real + RealField, const N: usize> TangentBundle<Self, N, Self> for SVector<R, N> {}
-
-impl<R: Real + RealField, const N: usize> Euclidean<N> for SVector<R, N> {
+impl<R: Real + RealField, const N: usize> Euclidean for SVector<R, N> {
     type Scalar = R;
 
     type Iter<'a>
@@ -41,10 +26,14 @@ impl<R: Real + RealField, const N: usize> Euclidean<N> for SVector<R, N> {
         nalgebra::ArrayStorage<R, N, 1>,
     >
     where
-        Self: 'a,
-        R: 'a;
+        Self: 'a;
 
     fn iter(&self) -> Self::Iter<'_> {
         nalgebra::Matrix::iter(self)
+    }
+
+    fn from_array<const M: usize>(s: [R; M]) -> Self {
+        const { assert!(M == N) };
+        std::array::from_fn(|i| s[i]).into()
     }
 }

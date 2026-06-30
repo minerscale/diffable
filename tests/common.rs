@@ -62,3 +62,7 @@ prop_compose! {
         [x, y, z].into()
     }
 }
+
+pub fn arb_scalar() -> impl Strategy<Value = f64> {
+    -10.0f64..10.0f64
+}

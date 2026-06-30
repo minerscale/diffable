@@ -1,18 +1,18 @@
 use std::marker::PhantomData;
 
-use crate::traits::{Chart, Euclidean, ExpMap, LieGroup, Metric};
+use crate::traits::{Chart, Euclidean, LieGroup, Metric};
 use num_traits::{NumCast, One, Zero, real::Real};
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Sphere<const N: usize, Rn: Euclidean<N>> {
+pub struct Sphere<const N: usize, Rn: Euclidean> {
     real: Rn::Scalar,
     imag: Rn,
 }
 
 #[derive(Clone, Debug)]
-pub struct Stereographic<const N: usize, Rn: Euclidean<N>>(StereographicPole, PhantomData<Rn>);
+pub struct Stereographic<Rn: Euclidean>(StereographicPole, PhantomData<Rn>);
 
-impl<const N: usize, Rn: Euclidean<N>> Stereographic<N, Rn> {
+impl<Rn: Euclidean> Stereographic<Rn> {
     pub const fn south_pole() -> Self {
         Self(StereographicPole::SouthPole, PhantomData)
     }
@@ -29,7 +29,7 @@ enum StereographicPole {
 
 pub const EPSILON: f64 = 1e-10;
 
-impl<const N: usize, Rn: Euclidean<N>> Chart<Sphere<N, Rn>, N, Rn> for Stereographic<N, Rn> {
+impl<const N: usize, Rn: Euclidean> Chart<Sphere<N, Rn>, Rn> for Stereographic<Rn> {
     fn to_local(&self, point: &Sphere<N, Rn>) -> Option<Rn> {
         let first = match self.0 {
             StereographicPole::NorthPole => point.real,
@@ -69,7 +69,7 @@ impl<const N: usize, Rn: Euclidean<N>> Chart<Sphere<N, Rn>, N, Rn> for Stereogra
     }
 }
 
-impl<const N: usize, Rn: Euclidean<N>> Sphere<N, Rn> {
+impl<const N: usize, Rn: Euclidean> Sphere<N, Rn> {
     pub fn real(&self) -> Rn::Scalar {
         self.real
     }
@@ -98,7 +98,7 @@ impl<const N: usize, Rn: Euclidean<N>> Sphere<N, Rn> {
     }
 }
 
-impl<Rn: Euclidean<0>> LieGroup<0> for Sphere<0, Rn> {
+impl<Rn: Euclidean> LieGroup<Rn> for Sphere<0, Rn> {
     fn identity() -> Self {
         Self::new(Rn::Scalar::one(), Rn::zero())
     }
@@ -111,169 +111,105 @@ impl<Rn: Euclidean<0>> LieGroup<0> for Sphere<0, Rn> {
     fn inverse(&self) -> Self {
         Self::new(self.real, Rn::zero())
     }
+
+    fn identity_exp(_: Rn) -> Self {
+        Sphere::new(Rn::Scalar::one(), Rn::zero())
+    }
+
+    fn identity_log(p: &Self) -> Option<Rn> {
+        if p.real > Rn::Scalar::zero() {
+            Some(Rn::zero())
+        } else {
+            None
+        }
+    }
 }
 
-impl<Rn: Euclidean<1>> LieGroup<1> for Sphere<1, Rn> {
+impl<Rn: Euclidean> LieGroup<Rn> for Sphere<1, Rn> {
     fn identity() -> Self {
         Sphere::new(Rn::Scalar::one(), Rn::zero())
     }
 
     fn compose(&self, other: &Self) -> Self {
-        let (a1, [b1]) = (self.real, self.imag.into());
-        let (a2, [b2]) = (other.real, other.imag.into());
+        let (a1, [b1]) = (self.real, self.imag.to_array());
+        let (a2, [b2]) = (other.real, other.imag.to_array());
 
-        Sphere::new(a1 * a2 - b1 * b2, [a1 * b2 + a2 * b1].into())
+        Sphere::new(a1 * a2 - b1 * b2, Rn::from_array([a1 * b2 + a2 * b1]))
     }
 
     fn inverse(&self) -> Self {
         Sphere::new(self.real, -self.imag)
     }
+
+    fn identity_exp(v: Rn) -> Self {
+        let alpha = v[0];
+
+        Sphere::new(alpha.cos(), Rn::from_array([alpha.sin()]))
+    }
+
+    fn identity_log(p: &Self) -> Option<Rn> {
+        Some(Rn::from_array([Rn::Scalar::atan2(p.imag[0], p.real)]))
+    }
 }
 
-impl<Rn: Euclidean<3>> LieGroup<3> for Sphere<3, Rn> {
+impl<Rn: Euclidean> LieGroup<Rn> for Sphere<3, Rn> {
     fn identity() -> Self {
         Sphere::new(Rn::Scalar::one(), Rn::zero())
     }
 
     fn compose(&self, other: &Self) -> Self {
-        let (a1, [b1, c1, d1]) = (self.real, self.imag.into());
-        let (a2, [b2, c2, d2]) = (other.real, other.imag.into());
+        let (a1, [b1, c1, d1]) = (self.real, self.imag.to_array());
+        let (a2, [b2, c2, d2]) = (other.real, other.imag.to_array());
         Sphere::new(
             a1 * a2 - b1 * b2 - c1 * c2 - d1 * d2,
-            [
+            Rn::from_array([
                 a1 * b2 + b1 * a2 + c1 * d2 - d1 * c2,
                 a1 * c2 - b1 * d2 + c1 * a2 + d1 * b2,
                 a1 * d2 + b1 * c2 - c1 * b2 + d1 * a2,
-            ]
-            .into(),
+            ]),
         )
     }
 
     fn inverse(&self) -> Self {
-        let (a, [b, c, d]) = (self.real, self.imag.into());
+        let (a, [b, c, d]) = (self.real, self.imag.to_array());
 
-        Sphere::new(a, [-b, -c, -d].into())
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct SphereExpMap<const N: usize, Rn: Euclidean<N>>(Stereographic<N, Rn>);
-
-impl<const N: usize, Rn: Euclidean<N>> SphereExpMap<N, Rn> {
-    pub fn new(p: Stereographic<N, Rn>) -> Self {
-        Self(p)
-    }
-}
-
-impl<Rn: Euclidean<0>> Chart<Sphere<0, Rn>, 0, Rn> for SphereExpMap<0, Rn> {
-    fn to_global(&self, _: Rn) -> Sphere<0, Rn> {
-        Sphere::new(
-            match self.0.0 {
-                StereographicPole::SouthPole => Rn::Scalar::one(),
-                StereographicPole::NorthPole => -Rn::Scalar::one(),
-            },
-            Rn::zero(),
-        )
+        Sphere::new(a, Rn::from_array([-b, -c, -d]))
     }
 
-    fn to_local(&self, point: &Sphere<0, Rn>) -> Option<Rn> {
-        match (&self.0.0, point.real > Rn::Scalar::zero()) {
-            (StereographicPole::SouthPole, true) => Some([].into()),
-            (StereographicPole::SouthPole, false) => None,
-            (StereographicPole::NorthPole, true) => None,
-            (StereographicPole::NorthPole, false) => Some([].into()),
-        }
-    }
-
-    fn chart_at(p: &Sphere<0, Rn>) -> Self {
-        Self(Stereographic::chart_at(p))
-    }
-}
-
-impl<Rn: Euclidean<1>> Chart<Sphere<1, Rn>, 1, Rn> for SphereExpMap<1, Rn> {
-    fn to_global(&self, coord: Rn) -> Sphere<1, Rn> {
-        let alpha = coord[0];
-
-        let real = alpha.cos();
-        Sphere::new(
-            match self.0.0 {
-                StereographicPole::SouthPole => real,
-                StereographicPole::NorthPole => -real,
-            },
-            [alpha.sin()].into(),
-        )
-    }
-
-    fn to_local(&self, point: &Sphere<1, Rn>) -> Option<Rn> {
-        let real = match self.0.0 {
-            StereographicPole::NorthPole => -point.real,
-            StereographicPole::SouthPole => point.real,
-        };
-
-        Some([Rn::Scalar::atan2(point.imag[0], real)].into())
-    }
-
-    fn chart_at(p: &Sphere<1, Rn>) -> Self {
-        Self(Stereographic::chart_at(p))
-    }
-}
-
-impl<Rn: Euclidean<3>> Chart<Sphere<3, Rn>, 3, Rn> for SphereExpMap<3, Rn> {
-    fn to_local(&self, point: &Sphere<3, Rn>) -> Option<Rn> {
+    fn identity_exp(v: Rn) -> Self {
         let two = Rn::Scalar::one() + Rn::Scalar::one();
         let three = two + Rn::Scalar::one();
         let six = two * three;
-
-        let real = match self.0.0 {
-            StereographicPole::SouthPole => point.real,
-            StereographicPole::NorthPole => -point.real,
+        let alpha = Rn::Scalar::sqrt(v.iter().fold(Rn::Scalar::zero(), |acc, &x| acc + x * x));
+        let (sin, cos) = alpha.sin_cos();
+        let sinc = if alpha < <Rn::Scalar as NumCast>::from(EPSILON).unwrap() {
+            Rn::Scalar::one() - alpha * alpha / six
+        } else {
+            sin / alpha
         };
+        Sphere::new(cos, v * sinc)
+    }
+
+    fn identity_log(p: &Self) -> Option<Rn> {
+        let two = Rn::Scalar::one() + Rn::Scalar::one();
+        let three = two + Rn::Scalar::one();
+        let six = two * three;
         let epsilon = <Rn::Scalar as NumCast>::from(EPSILON).unwrap();
-        if (real + Rn::Scalar::one()).abs() < epsilon {
-            return None; // at the singularity
+        if (p.real + Rn::Scalar::one()).abs() < epsilon {
+            return None; // antipode singularity
         }
-        let alpha = Rn::Scalar::acos(real);
+        let alpha = Rn::Scalar::acos(p.real);
         let sin = alpha.sin();
         let sinc_recip = if sin.abs() < epsilon {
             Rn::Scalar::one() + alpha * alpha / six
         } else {
             alpha / sin
         };
-        Some(point.imag * sinc_recip)
-    }
-
-    fn to_global(&self, coord: Rn) -> Sphere<3, Rn> {
-        let two = Rn::Scalar::one() + Rn::Scalar::one();
-        let three = two + Rn::Scalar::one();
-        let six = two * three;
-
-        let alpha = Rn::Scalar::sqrt(coord.iter().fold(Rn::Scalar::zero(), |acc, &x| acc + x * x));
-        let (sin, cos) = alpha.sin_cos();
-        let real = match self.0.0 {
-            StereographicPole::SouthPole => cos,
-            StereographicPole::NorthPole => -cos,
-        };
-
-        let sinc = if alpha < <Rn::Scalar as NumCast>::from(EPSILON).unwrap() {
-            Rn::Scalar::one() - alpha * alpha / six // sinc(0) = 1
-        } else {
-            sin / alpha
-        };
-
-        Sphere::new(real, coord * sinc)
-    }
-
-    fn chart_at(p: &Sphere<3, Rn>) -> Self {
-        Self(Stereographic::chart_at(p))
+        Some(p.imag * sinc_recip)
     }
 }
 
-impl<const N: usize, Rn: Euclidean<N>> ExpMap<Sphere<N, Rn>, N, Rn> for SphereExpMap<N, Rn> where
-    SphereExpMap<N, Rn>: Chart<Sphere<N, Rn>, N, Rn>
-{
-}
-
-impl<const N: usize, Rn: Euclidean<N>> Metric<Rn::Scalar> for Sphere<N, Rn> {
+impl<const N: usize, Rn: Euclidean> Metric<Rn::Scalar> for Sphere<N, Rn> {
     fn distance(&self, other: &Self) -> Rn::Scalar {
         let dot = self.real * other.real + self.imag.dot(&other.imag);
 

@@ -7,10 +7,9 @@ use common::*;
 
 use diffable::{
     coords::Coords,
-    hypersphere::{Sphere, SphereExpMap, Stereographic},
-    test_chart, test_exp_map, test_exp_map_lie_group, test_lie_group, test_metric,
-    test_tangent_bundle,
-    traits::{Chart, ExpMap, LeftTranslationChart, LieGroup, Metric, TangentBundle},
+    hypersphere::{Sphere, Stereographic},
+    test_chart, test_exp_map, test_lie_group, test_metric, test_tangent_bundle,
+    traits::{Chart, ExpMap, LieGroup, Metric, TangentBundle},
 };
 
 use proptest::prelude::*;
@@ -20,19 +19,14 @@ use proptest::prelude::*;
 // ---------------------------------------------------------------------------
 
 // Stereographic chart roundtrips
-test_chart!(stereo_s0, Stereographic<_, _>, Sphere<_, _>, arb_sphere0());
-test_chart!(stereo_s1, Stereographic<_, _>, Sphere<_, _>, arb_sphere1());
-test_chart!(stereo_s3, Stereographic<_, _>, Sphere<_, _>, arb_sphere3());
+test_chart!(stereo_s0, Stereographic<_>, arb_sphere0());
+test_chart!(stereo_s1, Stereographic<_>, arb_sphere1());
+test_chart!(stereo_s3, Stereographic<_>, arb_sphere3());
 
-// SphereExpMap
-test_exp_map_lie_group!(sphere_exp_map_s0, SphereExpMap<_, Coords<f64, _>>, Sphere<_, _>, 0, arb_sphere0(), arb_vec0());
-test_exp_map_lie_group!(sphere_exp_map_s1, SphereExpMap<_, Coords<f64, _>>, Sphere<_, _>, 1, arb_sphere1(), arb_vec1());
-test_exp_map_lie_group!(sphere_exp_map_s3, SphereExpMap<_, Coords<f64, _>>, Sphere<_, _>, 3, arb_sphere3(), arb_vec3());
-
-// GeodesicChart as TangentBundle (includes all ExpMap tests)
-test_tangent_bundle!(geodesic_chart_s0, LeftTranslationChart<_,_,_,SphereExpMap<_, Coords<_, _>>>, Sphere<_, _>, arb_sphere0(), arb_vec0());
-test_tangent_bundle!(geodesic_chart_s1, LeftTranslationChart<_,_,_,SphereExpMap<_, Coords<_, _>>>, Sphere<_, _>, arb_sphere1(), arb_vec1());
-test_tangent_bundle!(geodesic_chart_s3, LeftTranslationChart<_,_,_,SphereExpMap<_, Coords<_, _>>>, Sphere<_, _>, arb_sphere3(), arb_vec3());
+// Sphere as TangentBundle (via blanket LieGroup impl; includes all ExpMap tests)
+test_tangent_bundle!(tangent_bundle_s0, Sphere<_, _>, Sphere<_, _>, arb_sphere0(), arb_vec0());
+test_tangent_bundle!(tangent_bundle_s1, Sphere<_, _>, Sphere<_, _>, arb_sphere1(), arb_vec1());
+test_tangent_bundle!(tangent_bundle_s3, Sphere<_, _>, Sphere<_, _>, arb_sphere3(), arb_vec3());
 
 // Lie group axioms
 test_lie_group!(lie_group_s0, Sphere<_, _>, arb_sphere0());
@@ -47,12 +41,11 @@ test_metric!(metric_s3, Sphere<_, _>, arb_sphere3());
 // ---------------------------------------------------------------------------
 // Bespoke tests: properties specific to these manifolds, not general laws
 // ---------------------------------------------------------------------------
-
 proptest! {
     // S^1 is abelian, so exp is a group homomorphism: exp(v+w) = exp(v) * exp(w)
     #[test]
     fn s1_exp_homomorphism(v in -1.5f64..1.5f64, w in -1.5f64..1.5f64) {
-        let chart = SphereExpMap::new(Stereographic::south_pole());
+        let chart = Sphere::<1, _>::identity();
         let ev: Coords<f64, 1> = [v].into();
         let ew: Coords<f64, 1> = [w].into();
         let evw: Coords<f64, 1> = [v + w].into();

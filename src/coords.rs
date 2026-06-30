@@ -2,7 +2,7 @@ use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, Neg, Sub};
 
 use num_traits::{ConstZero, Zero, real::Real};
 
-use crate::traits::{Chart, Euclidean, ExpMap, InnerProduct, Metric, Scalar, TangentBundle};
+use crate::traits::{Euclidean, InnerProduct, Metric, Scalar};
 
 /// The canonical model of real coordinate space R^N.
 ///
@@ -125,33 +125,20 @@ impl<R: Real, const N: usize> InnerProduct<R> for Coords<R, N> {
     }
 }
 
-impl<R: Scalar, const N: usize> Chart<Self, N, Self> for Coords<R, N> {
-    fn to_local(&self, point: &Self) -> Option<Self> {
-        Some(*point - *self)
-    }
-
-    fn to_global(&self, coord: Coords<R, N>) -> Self {
-        *self + coord
-    }
-
-    fn chart_at(p: &Self) -> Self {
-        *p
-    }
-}
-
-impl<R: Scalar, const N: usize> ExpMap<Self, N, Self> for Coords<R, N> {}
-impl<R: Scalar, const N: usize> TangentBundle<Self, N, Self> for Coords<R, N> {}
-
-impl<R: Scalar, const N: usize> Euclidean<N> for Coords<R, N> {
+impl<R: Scalar, const N: usize> Euclidean for Coords<R, N> {
     type Scalar = R;
 
     type Iter<'a>
         = std::slice::Iter<'a, R>
     where
-        Self: 'a,
-        R: 'a;
+        Self: 'a;
 
     fn iter(&self) -> Self::Iter<'_> {
         self.0.iter()
+    }
+
+    fn from_array<const M: usize>(s: [R; M]) -> Self {
+        const { assert!(M == N) };
+        std::array::from_fn(|i| s[i]).into()
     }
 }
