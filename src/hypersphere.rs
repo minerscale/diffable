@@ -1,6 +1,9 @@
 use std::marker::PhantomData;
 
-use crate::traits::{Chart, Euclidean, LieGroup, Metric};
+use crate::{
+    impl_lie_group_via_quotient,
+    traits::{Chart, Euclidean, LieGroup, Metric, Quotient},
+};
 use num_traits::{NumCast, One, Zero, real::Real};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -216,3 +219,27 @@ impl<const N: usize, Rn: Euclidean> Metric<Rn::Scalar> for Sphere<N, Rn> {
         Rn::Scalar::acos(dot.min(Rn::Scalar::one()).max(-Rn::Scalar::one()))
     }
 }
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct So3<Rn: Euclidean> (Sphere<3, Rn>);
+
+impl<Rn: Euclidean> Quotient<Sphere<3, Rn>, Sphere<0, Rn>, Rn> for So3<Rn> {
+    fn new(g: Sphere<3, Rn>) -> Self {
+        // pick the representative with non-negative real component
+        if g.real() >= Rn::Scalar::zero() {
+            So3(g)
+        } else {
+            So3(Sphere::new(-g.real(), -g.imag()))
+        }
+    }
+
+    fn lift(&self) -> Sphere<3, Rn> {
+        self.0.clone()
+    }
+
+    fn embed(h: Sphere<0, Rn>) -> Sphere<3, Rn> {
+        Sphere::new(h.real(), Rn::zero())
+    }
+}
+
+impl_lie_group_via_quotient!(So3<Rn>, Sphere<3, _>, Sphere<0, _>);

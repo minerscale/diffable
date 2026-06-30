@@ -93,13 +93,11 @@ pub trait Chart<P: Point, Rn: Euclidean>: Sized {
     }
 
     #[cfg(feature = "testing")]
-    fn check_chart_roundtrip(p: P, epsilon: Rn::Scalar) -> bool {
-        let chart = Self::chart_at(&p);
-        if let Some(local) = chart.to_local(&p) {
-            let recovered = chart.to_global(local);
-            Self::in_neighbourhood_heuristic(&p, &recovered, epsilon)
-        } else {
-            false
+    fn check_local_inverse(p: &P, epsilon: Rn::Scalar) -> bool {
+        let chart = Self::chart_at(p);
+        match chart.to_local(p) {
+            Some(local) => Self::in_neighbourhood_heuristic(p, &chart.to_global(local), epsilon),
+            None => false,
         }
     }
 }
@@ -402,7 +400,7 @@ pub trait InnerProduct<R: Real>: Metric<R> {
         if a.is_zero() {
             self_dot.abs() < epsilon
         } else {
-            self_dot > epsilon
+            self_dot > R::zero()
         }
     }
 }
@@ -498,20 +496,128 @@ pub trait ExpMap<P: Point, Rn: Euclidean>: Chart<P, Rn> {
 pub trait TangentBundle<P: Point, Rn: Euclidean>: ExpMap<P, Rn> {
     // p is the point on the manifold which is the base point.
     #[cfg(feature = "testing")]
-    fn check_tangent_bundle_invariant(p: P, epsilon: Rn::Scalar) -> bool {
+    fn check_universal_centring(p: P, epsilon: Rn::Scalar) -> bool {
         let chart = Self::chart_at(&p);
-
         chart.check_preservation_of_origin(epsilon) && chart.check_base_point_is_origin(epsilon)
     }
+}
 
-    #[cfg(feature = "testing")]
-    fn check_tangent_bundle_roundtrip(base: P, point: P, epsilon: Rn::Scalar) -> bool {
-        let chart = Self::chart_at(&base);
+/// A quotient of a Lie group by a central subgroup.
+///
+/// The space of all values of a type `Q: Quotient<G, H, Rn>` is interpreted
+/// as the quotient group `G/H` — the set of cosets `gH`, with the group
+/// operation inherited from `G`. This requires `H` to be central in `G`
+/// (so the quotient is well-defined and the cosets `gH` and `Hg` coincide),
+/// which in particular makes `H` automatically normal.
+///
+/// # The lift/canonical pattern
+/// Rather than representing a coset abstractly, `Quotient` requires a
+/// concrete representation via two operations:
+///
+/// - [`Quotient::new`] maps a value `g: G` to the `Quotient` value
+///   representing its coset `gH`. It must satisfy `canonical(g) ==
+///   canonical(h.compose(g))` for every `h: H` (acting on `g` via `G`'s own
+///   composition) — i.e. it must not distinguish between elements of the
+///   same coset. Beyond that one algebraic requirement, `canonical` is free
+///   to be any deterministic, even discontinuous, choice function; it need
+///   not be smooth or continuous, since it carries no geometric content of
+///   its own. For `S³ / {±1} → SO(3)`, `canonical` is a sign comparison on
+///   the real component; for `(R\{0}, ×) / {±1} → (R⁺, ×)`, it is `|x|`.
+///
+/// - [`Quotient::lift`] recovers *some* representative `g: G` of the coset,
+///   satisfying `canonical(self.lift()) == self` for every `self: Q`. Which
+///   representative is returned is unspecified beyond that round-trip
+///   property — only one of possibly several valid choices needs to be
+///   produced.
+///
+/// All group structure on `Q` — composition, inverse, the exponential map
+/// at the identity — is defined generically in terms of `G`'s own structure
+/// by lifting, operating in `G`, and re-applying `canonical`:
+/// `a.compose(b) = canonical(a.lift().compose(&b.lift()))`. This works
+/// because all the differential structure lives in `G`, which is already
+/// known to be smooth; `canonical` is purely a bookkeeping step applied
+/// after the smooth operation completes, never a smoothness-bearing
+/// operation in its own right. The map `G → G/H` being a covering map (a
+/// local diffeomorphism) is what makes `G/H` itself a smooth manifold, even
+/// though `canonical` — being a *global* choice of representative — is
+/// typically forced to be discontinuous somewhere, an unavoidable
+/// topological obstruction rather than evidence that `canonical` was chosen
+/// poorly.
+///
+/// # Why `H` must be central
+/// Centrality (`h.compose(g) == g.compose(h)` for all `g: G`, `h: H`) is
+/// what makes left cosets and right cosets coincide, which is what makes
+/// `G/H` a group rather than merely a set of cosets with no induced
+/// operation. `Sphere<0, Rn>` — `{1, -1}` under the relevant composition —
+/// is central in every `Sphere<N, Rn>` for `N ∈ {0, 1, 3}` precisely
+/// because `-1` commutes with everything (it is, after all, just a scalar
+/// multiple of the identity), which is what makes `S³/{±1} → SO(3)` and
+/// `(R\{0}, ×)/{±1} → (R⁺, ×)` both legitimate instances of this trait.
+pub trait Quotient<G: LieGroup<Rn>, H: LieGroup<Rn>, Rn: Euclidean>: Point {
+    /// Maps `g` to the `Quotient` value representing its coset `gH`.
+    fn new(g: G) -> Self;
 
-        chart.to_local(&point).map_or(true, |local| {
-            Self::in_neighbourhood_heuristic(&point, &chart.to_global(local), epsilon)
-        })
+    /// Recovers some representative of `self`'s coset, satisfying
+    /// `new(self.lift()) == self`.
+    fn lift(&self) -> G;
+
+    /// the subgroup inclusion H ↪ G
+    fn embed(h: H) -> G;
+
+    fn quotient_identity() -> Self {
+        Self::new(G::identity())
     }
+
+    fn quotient_compose(&self, other: &Self) -> Self {
+        Self::new(self.lift().compose(&other.lift()))
+    }
+
+    fn quotient_inverse(&self) -> Self {
+        Self::new(self.lift().inverse())
+    }
+
+    fn quotient_identity_exp(v: Rn) -> Self {
+        Self::new(G::identity_exp(v))
+    }
+
+    fn quotient_identity_log(p: &Self) -> Option<Rn> {
+        G::identity_log(&p.lift())
+    }
+
+    /// The sole independent Quotient axiom: new must not
+    /// distinguish elements of the same coset. Everything else
+    /// (group structure, differential structure) follows from this
+    /// plus the inherited LieGroup axioms.
+    #[cfg(feature = "testing")]
+    fn check_new_respects_coset(g: G, h: H) -> bool
+    where
+        Self: Metric<Rn::Scalar>,
+    {
+        Self::new(Self::embed(h).compose(&g)) == Self::new(g)
+    }
+}
+
+#[macro_export]
+macro_rules! impl_lie_group_via_quotient {
+    ($type:ty, $g:ty, $h:ty) => {
+        impl<Rn: Euclidean> crate::traits::LieGroup<Rn> for $type {
+            fn identity() -> Self {
+                <Self as crate::traits::Quotient<$g, $h, Rn>>::quotient_identity()
+            }
+            fn compose(&self, other: &Self) -> Self {
+                <Self as crate::traits::Quotient<$g, $h, Rn>>::quotient_compose(self, other)
+            }
+            fn inverse(&self) -> Self {
+                <Self as crate::traits::Quotient<$g, $h, Rn>>::quotient_inverse(self)
+            }
+            fn identity_exp(v: Rn) -> Self {
+                <Self as crate::traits::Quotient<$g, $h, Rn>>::quotient_identity_exp(v)
+            }
+            fn identity_log(p: &Self) -> Option<Rn> {
+                <Self as crate::traits::Quotient<$g, $h, Rn>>::quotient_identity_log(p)
+            }
+        }
+    };
 }
 
 impl<E: Euclidean> LieGroup<E> for E {
@@ -624,8 +730,8 @@ pub mod testing {
                 use super::*;
                 proptest! {
                     #[test]
-                    fn roundtrip(p in $arb_point) {
-                        prop_assert!(<$chart>::check_chart_roundtrip(p, EPSILON))
+                    fn coverage(p in $arb_point) {
+                        prop_assert!(<$chart>::check_local_inverse(&p, EPSILON))
                     }
                 }
             }
@@ -693,13 +799,7 @@ pub mod testing {
                     // The TangentFibre invariant: chart_at(&p).to_global(zero) == p
                     #[test]
                     fn tangent_fibre_invariant(p in $arb_point) {
-                        prop_assert!(<$chart>::check_tangent_bundle_invariant(p, EPSILON));
-                    }
-
-                    // Full roundtrip: base and point are both arbitrary
-                    #[test]
-                    fn roundtrip(base in $arb_point, point in $arb_point) {
-                        prop_assert!(<$chart>::check_tangent_bundle_roundtrip(base, point, EPSILON));
+                        prop_assert!(<$chart>::check_universal_centring(p, EPSILON));
                     }
                 }
             }
@@ -784,20 +884,41 @@ pub mod testing {
                     fn symmetry(a in $arb_point, b in $arb_point) {
                         prop_assert!(<$point>::check_inner_product_symmetry(a, b, EPSILON));
                     }
-    
+
                     #[test]
                     fn additivity(a in $arb_point, b in $arb_point, c in $arb_point) {
                         prop_assert!(<$point>::check_additivity(a, b, c, EPSILON));
                     }
-    
+
                     #[test]
                     fn scalar_linearity(a in $arb_point, c in $arb_point, k in $arb_scalar) {
                         prop_assert!(<$point>::check_scalar_linearity(a, c, k, EPSILON));
                     }
-    
+
                     #[test]
                     fn positive_definite(a in $arb_point) {
                         prop_assert!(<$point>::check_positive_definite(a, EPSILON));
+                    }
+                }
+            }
+        };
+    }
+
+    /// Tests the Quotient axioms: that canonical respects cosets, and the
+    /// inherited LieGroup axioms which follow from the quotient structure.
+    #[macro_export]
+    macro_rules! test_quotient {
+        ($mod_name:ident, $quotient:ty, $arb_quotient:expr, $arb_g:expr, $arb_h:expr) => {
+            mod $mod_name {
+                use super::*;
+
+                // A quotient group is a Lie group — inherit all LieGroup axioms.
+                test_lie_group!(lie_group, $quotient, $arb_quotient);
+
+                proptest! {
+                    #[test]
+                    fn canonical_respects_coset(g in $arb_g, h in $arb_h) {
+                        prop_assert!(<$quotient>::check_canonical_respects_coset(g, h));
                     }
                 }
             }

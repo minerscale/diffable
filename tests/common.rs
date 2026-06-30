@@ -3,7 +3,7 @@
 
 pub const EPSILON: f64 = 1e-7;
 
-use diffable::{coords::Coords, hypersphere::Sphere};
+use diffable::{coords::Coords, hypersphere::{So3, Sphere}, traits::Quotient};
 use proptest::prelude::*;
 
 // ---------------------------------------------------------------------------
@@ -60,6 +60,18 @@ prop_compose! {
         z in -10.0f64..10.0f64,
     ) -> Coords<f64, 3> {
         [x, y, z].into()
+    }
+}
+
+prop_compose! {
+    pub fn arb_so3()(
+        w in 0.0f64..1.0f64,  // non-negative real — canonical representative
+        x in -1.0f64..1.0f64,
+        y in -1.0f64..1.0f64,
+        z in -1.0f64..1.0f64,
+    ) -> So3<Coords<f64, 3>> {
+        let g = Sphere::new(w, [x, y, z].into());
+        So3::new(g)
     }
 }
 

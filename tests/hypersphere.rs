@@ -7,7 +7,7 @@ use common::*;
 
 use diffable::{
     coords::Coords,
-    hypersphere::{Sphere, Stereographic},
+    hypersphere::{So3, Sphere, Stereographic},
     test_chart, test_exp_map, test_lie_group, test_metric, test_tangent_bundle,
     traits::{Chart, ExpMap, LieGroup, Metric, TangentBundle},
 };
@@ -37,6 +37,10 @@ test_lie_group!(lie_group_s3, Sphere<_, _>, arb_sphere3());
 test_metric!(metric_s0, Sphere<_, _>, arb_sphere0());
 test_metric!(metric_s1, Sphere<_, _>, arb_sphere1());
 test_metric!(metric_s3, Sphere<_, _>, arb_sphere3());
+
+// Lie group axioms
+test_lie_group!(lie_group_so3, So3<Coords<_, _>>, arb_so3());
+test_tangent_bundle!(tangent_bundle_so3, So3<Coords<_, _>>, So3<Coords<_, _>>, arb_so3(), arb_vec3());
 
 // ---------------------------------------------------------------------------
 // Bespoke tests: properties specific to these manifolds, not general laws

@@ -7,8 +7,9 @@ use common::*;
 
 use diffable::{
     coords::Coords,
-    test_chart, test_euclidean, test_exp_map, test_lie_group, test_metric, test_tangent_bundle, test_inner_product,
-    traits::{Chart, Euclidean, ExpMap, LieGroup, Metric, TangentBundle, InnerProduct},
+    test_chart, test_euclidean, test_exp_map, test_inner_product, test_lie_group, test_metric,
+    test_tangent_bundle,
+    traits::{Chart, Euclidean, ExpMap, InnerProduct, LieGroup, Metric, TangentBundle},
 };
 
 use proptest::prelude::*;

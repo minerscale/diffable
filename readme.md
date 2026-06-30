@@ -12,14 +12,17 @@ The library is organised around a hierarchy of traits that mirror the mathematic
 | `traits::Chart` | A coordinate chart; the space of all charts is an atlas |
 | `traits::ExpMap` | A chart with geodesic structure; straight lines map to geodesics |
 | `traits::TangentBundle` | A family of exp charts, one per point; the tangent bundle `TM` |
-| `traits::LieGroup` | A manifold with a smooth group structure |
-| `traits::Euclidean` | Flat Euclidean space R^N; the canonical model for local coordinates |
+| `traits::LieGroup` | A manifold with a smooth group structure, carrying an exponential map at the identity that automatically generates a full tangent bundle via left translation |
+| `traits::Quotient` | A quotient `G/H` of a Lie group by a central subgroup, automatically inheriting Lie group and tangent bundle structure from the parent group |
+| `traits::Euclidean` | Flat Euclidean space Rⁿ; the canonical model for local coordinates, carrying a canonical inner product, norm, metric, and tangent bundle |
+| `traits::InnerProduct` | An inner product space, inducing a norm and metric |
 | `traits::Metric` | A notion of distance on a manifold |
 
 ## Implementations
 
-- `coords::Coords` — the canonical Euclidean space R^N
+- `coords::Coords` — the canonical Euclidean space Rⁿ
 - `hypersphere` — hyperspheres S⁰, S¹, S³ as Lie groups with geodesic structure
+- `hypersphere::So3` — the rotation group SO(3), as the quotient S³/{±1}
 
 ## Testing
 
