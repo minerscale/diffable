@@ -221,7 +221,7 @@ impl<const N: usize, Rn: Euclidean> Metric<Rn::Scalar> for Sphere<N, Rn> {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct So3<Rn: Euclidean> (Sphere<3, Rn>);
+pub struct So3<Rn: Euclidean>(Sphere<3, Rn>);
 
 impl<Rn: Euclidean> Quotient<Sphere<3, Rn>, Sphere<0, Rn>, Rn> for So3<Rn> {
     fn new(g: Sphere<3, Rn>) -> Self {

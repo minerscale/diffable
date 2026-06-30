@@ -9,7 +9,7 @@ use diffable::{
     coords::Coords,
     hypersphere::{So3, Sphere, Stereographic},
     test_chart, test_exp_map, test_lie_group, test_metric, test_tangent_bundle,
-    traits::{Chart, ExpMap, LieGroup, Metric, TangentBundle},
+    traits::{Chart, ExpMap, LieGroup, Metric, Quotient, TangentBundle},
 };
 
 use proptest::prelude::*;
@@ -27,20 +27,24 @@ test_chart!(stereo_s3, Stereographic<_>, arb_sphere3());
 test_tangent_bundle!(tangent_bundle_s0, Sphere<_, _>, Sphere<_, _>, arb_sphere0(), arb_vec0());
 test_tangent_bundle!(tangent_bundle_s1, Sphere<_, _>, Sphere<_, _>, arb_sphere1(), arb_vec1());
 test_tangent_bundle!(tangent_bundle_s3, Sphere<_, _>, Sphere<_, _>, arb_sphere3(), arb_vec3());
+test_tangent_bundle!(
+    tangent_bundle_so3,
+    So3<Coords<_, _>>,
+    So3<Coords<_, _>>,
+    arb_so3(),
+    arb_vec3()
+);
 
 // Lie group axioms
 test_lie_group!(lie_group_s0, Sphere<_, _>, arb_sphere0());
 test_lie_group!(lie_group_s1, Sphere<_, _>, arb_sphere1());
 test_lie_group!(lie_group_s3, Sphere<_, _>, arb_sphere3());
+test_lie_group!(lie_group_so3, So3<Coords<_, _>>, arb_so3());
 
 // Metric axioms
 test_metric!(metric_s0, Sphere<_, _>, arb_sphere0());
 test_metric!(metric_s1, Sphere<_, _>, arb_sphere1());
 test_metric!(metric_s3, Sphere<_, _>, arb_sphere3());
-
-// Lie group axioms
-test_lie_group!(lie_group_so3, So3<Coords<_, _>>, arb_so3());
-test_tangent_bundle!(tangent_bundle_so3, So3<Coords<_, _>>, So3<Coords<_, _>>, arb_so3(), arb_vec3());
 
 // ---------------------------------------------------------------------------
 // Bespoke tests: properties specific to these manifolds, not general laws
@@ -64,4 +68,32 @@ proptest! {
     fn s1_commutativity(a in arb_sphere1(), b in arb_sphere1()) {
         prop_assert!(a.compose(&b).within(&b.compose(&a), EPSILON));
     }
+}
+
+#[test]
+fn dirac_belt_trick() {
+    let axis: Coords<f64, 3> = [1.0, 0.0, 0.0].into();
+    let su2_identity = Sphere::<3, Coords<f64, 3>>::identity();
+    let so3_identity = So3::<Coords<f64, 3>>::identity();
+
+    let half_period = std::f64::consts::PI;
+    let full_period = std::f64::consts::TAU;
+
+    // Half period: back to SO(3) identity, but NOT SU(2) identity
+    let half_su2 = Sphere::<3, Coords<f64, 3>>::identity_exp(axis * half_period);
+    assert!(
+        So3::new(half_su2.clone()).in_neighbourhood(&so3_identity, EPSILON),
+        "360° rotation should be identity in SO(3)"
+    );
+    assert!(
+        !half_su2.within(&su2_identity, EPSILON),
+        "360° rotation should NOT be identity in SU(2) — the belt trick"
+    );
+
+    // Full period: back to SU(2) identity
+    let full_su2 = Sphere::<3, Coords<f64, 3>>::identity_exp(axis * full_period);
+    assert!(
+        full_su2.within(&su2_identity, EPSILON),
+        "720° rotation should be identity in SU(2)"
+    );
 }
