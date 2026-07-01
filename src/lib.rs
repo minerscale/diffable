@@ -48,5 +48,6 @@ pub mod coords;
 pub mod hypersphere;
 pub mod traits;
 
+pub mod manifold_graph;
 #[cfg(feature = "nalgebra")]
 pub mod nalgebra;

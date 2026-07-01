@@ -15,7 +15,8 @@ impl<R: Real + RealField, const N: usize> InnerProduct<R> for SVector<R, N> {
 }
 
 impl<R: Real + RealField, const N: usize> Euclidean for SVector<R, N> {
-    type Scalar = R;
+    type F = R;
+    const N: usize = N;
 
     type Iter<'a>
         = nalgebra::base::iter::MatrixIter<
@@ -35,5 +36,9 @@ impl<R: Real + RealField, const N: usize> Euclidean for SVector<R, N> {
     fn from_array<const M: usize>(s: [R; M]) -> Self {
         const { assert!(M == N) };
         std::array::from_fn(|i| s[i]).into()
+    }
+
+    fn from_fn(f: impl Fn(usize) -> R) -> Self {
+        std::array::from_fn(f).into()
     }
 }

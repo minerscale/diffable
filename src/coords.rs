@@ -126,7 +126,8 @@ impl<R: Real, const N: usize> InnerProduct<R> for Coords<R, N> {
 }
 
 impl<R: Scalar, const N: usize> Euclidean for Coords<R, N> {
-    type Scalar = R;
+    type F = R;
+    const N: usize = N;
 
     type Iter<'a>
         = std::slice::Iter<'a, R>
@@ -140,5 +141,9 @@ impl<R: Scalar, const N: usize> Euclidean for Coords<R, N> {
     fn from_array<const M: usize>(s: [R; M]) -> Self {
         const { assert!(M == N) };
         std::array::from_fn(|i| s[i]).into()
+    }
+
+    fn from_fn(f: impl Fn(usize) -> Self::F) -> Self {
+        std::array::from_fn(f).into()
     }
 }

@@ -1,6 +1,7 @@
 use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
-use num_traits::{Zero, real::Real};
+use itertools::Itertools;
+use num_traits::{One, Zero, real::Real};
 
 /// A point on a manifold.
 ///
@@ -19,7 +20,7 @@ impl<T: PartialEq + Clone> Point for T {}
 
 /// A chart in an atlas of a manifold.
 ///
-/// The space of all values of a type `C: Chart<P, Rn>` is interpreted
+/// The space of all values of a type `C: Chart<P, V>` is interpreted
 /// as an atlas of the manifold `M` (the space of `P: Point`), covering
 /// it with local coordinate neighbourhoods modelled on `R^N` (`Coords`).
 /// The atlas axiom — that every point is covered — is expressed by
@@ -28,35 +29,41 @@ impl<T: PartialEq + Clone> Point for T {}
 ///
 /// `to_local` and `to_global` are the coordinate maps, with `to_local`
 /// returning `None` at the singularities of the chart.
-pub trait Chart<P: Point, Rn: Euclidean>: Sized {
-    fn to_local(&self, point: &P) -> Option<Rn>;
-    fn to_global(&self, coord: Rn) -> P;
+pub trait Chart<P: Point, V: Euclidean>: Sized {
+    fn to_local(&self, point: &P) -> Option<V>;
+    fn to_global(&self, coord: V) -> P;
     fn chart_at(p: &P) -> Self;
 
-    /// Checks whether `b` lies within `epsilon` of this chart's base point, as
+    /// Calculates the distance between `self` and `other`
+    /// in local coordinates, based at &self.
+    fn local_distance(&self, other: &P) -> Option<V::F> {
+        self.to_local(other).map(|v| v.norm())
+    }
+
+    /// Checks whether `other` lies within `epsilon` of this chart's base point, as
     /// measured in local coordinates.
     ///
-    /// Because every [`Chart`] is a homeomorphism onto an open subset of `Rn`,
+    /// Because every [`Chart`] is a homeomorphism onto an open subset of `V`,
     /// this check is always well-defined topologically: shrinking `epsilon`
     /// shrinks the corresponding neighbourhood on the manifold, and the chart's
     /// pulled-back metric generates the manifold's own topology. What it does
     /// *not* guarantee, for a bare `Chart`, is that `epsilon` corresponds to any
     /// particular distance on the manifold — different charts at the same point
-    /// can disagree numerically about how "close" `b` is, since only an
+    /// can disagree numerically about how "close" `other` is, since only an
     /// [`ExpMap`] additionally certifies that local coordinate distance equals
     /// geodesic distance to first order.
     ///
-    /// The where `P: Chart<P, Rn>` bound forces `Self = P`, letting
+    /// The where `P: Chart<P, V>` bound forces `Self = P`, letting
     /// `self` serve as both the chart and the point being measured from.
-    fn in_neighbourhood(&self, b: &P, epsilon: Rn::Scalar) -> bool
+    fn in_neighbourhood(&self, other: &P, epsilon: V::F) -> bool
     where
-        P: Chart<P, Rn>,
+        P: Chart<P, V>,
     {
-        self.to_local(b).map_or(false, |x| x.norm() <= epsilon)
+        self.local_distance(other).map_or(false, |d| d <= epsilon)
     }
 
     /// Best-effort check for whether `a` and `b` are close,
-    /// without the trait bound P: Chart<P, Rn>.
+    /// without the trait bound P: Chart<P, V>.
     ///
     /// Tries the chart centred at `a`, then at `b`, succeeding if either
     /// places the other point within `epsilon` in local coordinates. A `true`
@@ -75,10 +82,10 @@ pub trait Chart<P: Point, Rn: Euclidean>: Sized {
     /// points that are actually close. This is a property of well-behaved
     /// `chart_at` implementations, not something the trait enforces.
     ///
-    /// If `P` implements `Chart<P, Rn>` directly, prefer
+    /// If `P` implements `Chart<P, V>` directly, prefer
     /// [`Chart::in_neighbourhood`] instead — it has a `false` case that's also
     /// meaningful.
-    fn in_neighbourhood_heuristic(a: &P, b: &P, epsilon: Rn::Scalar) -> bool {
+    fn in_neighbourhood_heuristic(a: &P, b: &P, epsilon: V::F) -> bool {
         let attempt = |chart_base: &P| {
             let chart = Self::chart_at(chart_base);
 
@@ -93,7 +100,7 @@ pub trait Chart<P: Point, Rn: Euclidean>: Sized {
     }
 
     #[cfg(feature = "testing")]
-    fn check_local_inverse(p: &P, epsilon: Rn::Scalar) -> bool {
+    fn check_local_inverse(p: &P, epsilon: V::F) -> bool {
         let chart = Self::chart_at(p);
         match chart.to_local(p) {
             Some(local) => Self::in_neighbourhood_heuristic(p, &chart.to_global(local), epsilon),
@@ -113,7 +120,7 @@ impl<R: Real + std::fmt::Debug> Scalar for R {}
 /// A finite-dimensional Euclidean space.
 ///
 /// The space of all values of a type `E: Euclidean<N>` is interpreted
-/// as R^N (with R := E::Scalar) — the canonical flat Euclidean space of dimension `N`
+/// as R^N (with R := E::F) — the canonical flat Euclidean space of dimension `N`
 /// over the field `R`. This is the space in which all local coordinate charts take
 /// their values, and in which tangent vectors live.
 ///
@@ -135,26 +142,28 @@ impl<R: Real + std::fmt::Debug> Scalar for R {}
 /// Use the `test_euclidean!` macro to verify that your implementation
 /// satisfies the Euclidean axioms.
 pub trait Euclidean:
-    InnerProduct<Self::Scalar>
+    InnerProduct<Self::F>
     + TangentBundle<Self, Self>
     + Add<Output = Self>
     + Sub<Output = Self>
-    + Mul<Self::Scalar, Output = Self>
+    + Mul<Self::F, Output = Self>
     + Neg<Output = Self>
     + Zero
-    + Index<usize, Output = Self::Scalar>
+    + Index<usize, Output = Self::F>
     + IndexMut<usize>
     + Copy
 {
-    type Scalar: Scalar;
+    type F: Scalar;
+    const N: usize;
 
-    type Iter<'a>: Iterator<Item = &'a Self::Scalar>
+    type Iter<'a>: Iterator<Item = &'a Self::F>
     where
         Self: 'a;
     fn iter(&self) -> Self::Iter<'_>;
 
-    fn from_array<const N: usize>(arr: [Self::Scalar; N]) -> Self;
-    fn to_array<const N: usize>(self) -> [Self::Scalar; N] {
+    fn from_fn(f: impl Fn(usize) -> Self::F) -> Self;
+    fn from_array<const N: usize>(arr: [Self::F; N]) -> Self;
+    fn to_array<const N: usize>(self) -> [Self::F; N] {
         std::array::from_fn(|i| self[i])
     }
 
@@ -167,7 +176,7 @@ pub trait Euclidean:
 
     // Translation invariance: d(a + c, b + c) == d(a, b)
     #[cfg(feature = "testing")]
-    fn check_translation_invariance(a: &Self, b: &Self, c: &Self, epsilon: Self::Scalar) -> bool
+    fn check_translation_invariance(a: &Self, b: &Self, c: &Self, epsilon: Self::F) -> bool
     where
         Self: Add<Output = Self> + Clone,
     {
@@ -179,12 +188,7 @@ pub trait Euclidean:
     // Geodesic scaling holds globally (infinite injectivity radius):
     // to_global(v * t) is parallel to to_global(v) AND scaled by t exactly
     #[cfg(feature = "testing")]
-    fn check_global_geodesic_scaling(
-        p: &Self,
-        v: Self,
-        t: Self::Scalar,
-        epsilon: Self::Scalar,
-    ) -> bool {
+    fn check_global_geodesic_scaling(p: &Self, v: Self, t: Self::F, epsilon: Self::F) -> bool {
         let chart = Self::chart_at(p);
         match (
             chart.to_local(&chart.to_global(v * t)),
@@ -205,7 +209,7 @@ pub trait Euclidean:
 
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
-    fn check_pythagorean(a: &Self, b: &Self, epsilon: Self::Scalar) -> bool
+    fn check_pythagorean(a: &Self, b: &Self, epsilon: Self::F) -> bool
     where
         Self: Sub<Output = Self> + Clone,
     {
@@ -219,9 +223,9 @@ pub trait Euclidean:
 
 /// A Lie group structure on a manifold.
 ///
-/// The space of all values of a type `G: LieGroup<Rn>` is interpreted as
+/// The space of all values of a type `G: LieGroup<V>` is interpreted as
 /// a Lie group — a manifold that is also a group, where the group operations
-/// are smooth maps. `Rn` is the Euclidean space coordinatising the group's
+/// are smooth maps. `V` is the Euclidean space coordinatising the group's
 /// tangent space at the identity.
 ///
 /// # Group axioms
@@ -234,7 +238,7 @@ pub trait Euclidean:
 ///
 /// # Exponential map at the identity
 /// `identity_exp` and `identity_log` are the exponential and logarithm maps
-/// centred at the group identity — they witness that `Rn`, the tangent space
+/// centred at the group identity — they witness that `V`, the tangent space
 /// at the identity, genuinely linearises the group there. They are not
 /// required to work, or have any particular meaning, at any other base point.
 ///
@@ -248,44 +252,44 @@ pub trait Euclidean:
 /// the exponential map at the identity alone is sufficient to generate a
 /// full tangent bundle over the entire group, with no separate wrapper type
 /// needed.
-pub trait LieGroup<Rn: Euclidean>: Point {
+pub trait LieGroup<V: Euclidean>: Point {
     fn identity() -> Self;
     fn compose(&self, other: &Self) -> Self;
     fn inverse(&self) -> Self;
 
-    fn identity_exp(v: Rn) -> Self;
-    fn identity_log(p: &Self) -> Option<Rn>;
+    fn identity_exp(v: V) -> Self;
+    fn identity_log(p: &Self) -> Option<V>;
 
     #[cfg(feature = "testing")]
-    fn check_left_identity(&self, epsilon: Rn::Scalar) -> bool {
+    fn check_left_identity(&self, epsilon: V::F) -> bool {
         let id = Self::identity();
 
         self.in_neighbourhood(&id.compose(self), epsilon)
     }
 
     #[cfg(feature = "testing")]
-    fn check_right_identity(&self, epsilon: Rn::Scalar) -> bool {
+    fn check_right_identity(&self, epsilon: V::F) -> bool {
         let id = Self::identity();
 
         self.in_neighbourhood(&self.compose(&id), epsilon)
     }
 
     #[cfg(feature = "testing")]
-    fn check_left_inverse(&self, epsilon: Rn::Scalar) -> bool {
+    fn check_left_inverse(&self, epsilon: V::F) -> bool {
         let id = Self::identity();
 
         self.inverse().compose(&self).in_neighbourhood(&id, epsilon)
     }
 
     #[cfg(feature = "testing")]
-    fn check_right_inverse(&self, epsilon: Rn::Scalar) -> bool {
+    fn check_right_inverse(&self, epsilon: V::F) -> bool {
         let id = Self::identity();
 
         self.compose(&self.inverse()).in_neighbourhood(&id, epsilon)
     }
 
     #[cfg(feature = "testing")]
-    fn check_associativity(a: Self, b: Self, c: Self, epsilon: Rn::Scalar) -> bool {
+    fn check_associativity(a: Self, b: Self, c: Self, epsilon: V::F) -> bool {
         a.compose(&b)
             .compose(&c)
             .in_neighbourhood(&a.compose(&b.compose(&c)), epsilon)
@@ -405,19 +409,19 @@ pub trait InnerProduct<R: Real>: Metric<R> {
     }
 }
 
-/// By implementing ExpMap you certify that for C<P, Rn>: ExpMap<P, Rn> that
+/// By implementing ExpMap you certify that for C<P, V>: ExpMap<P, V> that
 /// straight lines through the origin in R^N map to geodesics on M, and
 /// that distances from the origin equal arc lengths along those geodesics.
-pub trait ExpMap<P: Point, Rn: Euclidean>: Chart<P, Rn> {
+pub trait ExpMap<P: Point, V: Euclidean>: Chart<P, V> {
     fn base_point(&self) -> P {
-        self.to_global(Rn::zero())
+        self.to_global(V::zero())
     }
 
     // Tests that base_point() is consistent with to_local.
     // Meaningful only when base_point() is overridden, since
     // the default impl makes this trivially true by construction.
     #[cfg(feature = "testing")]
-    fn check_base_point_is_origin(&self, epsilon: Rn::Scalar) -> bool {
+    fn check_base_point_is_origin(&self, epsilon: V::F) -> bool {
         self.to_local(&self.base_point())
             .map_or(false, |c| c.norm() < epsilon)
     }
@@ -425,8 +429,8 @@ pub trait ExpMap<P: Point, Rn: Euclidean>: Chart<P, Rn> {
     // Tests that log(exp(0)) == 0, i.e. that the
     // round trip at the origin is the identity.
     #[cfg(feature = "testing")]
-    fn check_preservation_of_origin(&self, epsilon: Rn::Scalar) -> bool {
-        let zero = Rn::zero();
+    fn check_preservation_of_origin(&self, epsilon: V::F) -> bool {
+        let zero = V::zero();
         let exp_zero = self.to_global(zero);
         self.to_local(&exp_zero)
             .map_or(false, |c| c.norm() < epsilon)
@@ -434,7 +438,7 @@ pub trait ExpMap<P: Point, Rn: Euclidean>: Chart<P, Rn> {
 
     // geodesics are reversible: log(exp(v)) == -log(exp(-v))
     #[cfg(feature = "testing")]
-    fn check_geodesic_symmetry(&self, v: Rn, epsilon: Rn::Scalar) -> bool {
+    fn check_geodesic_symmetry(&self, v: V, epsilon: V::F) -> bool {
         match (
             self.to_local(&self.to_global(v)),
             self.to_local(&self.to_global(-v)),
@@ -447,7 +451,7 @@ pub trait ExpMap<P: Point, Rn: Euclidean>: Chart<P, Rn> {
     // geodesics are straight lines: exp(tv) lies on the same geodesic as exp(v),
     // i.e. log(exp(tv)) and log(exp(v)) are parallel in local coords.
     #[cfg(feature = "testing")]
-    fn check_geodesic_scaling(&self, v: Rn, t: Rn::Scalar, epsilon: Rn::Scalar) -> bool {
+    fn check_geodesic_scaling(&self, v: V, t: V::F, epsilon: V::F) -> bool {
         match (
             self.to_local(&self.to_global(v * t)),
             self.to_local(&self.to_global(v)),
@@ -466,7 +470,7 @@ pub trait ExpMap<P: Point, Rn: Euclidean>: Chart<P, Rn> {
 
     // isometry to first order: |exp(epsilon * v) - base| / epsilon → |v|
     #[cfg(feature = "testing")]
-    fn check_first_order_isometry(&self, v: Rn, coef: Rn::Scalar, epsilon: Rn::Scalar) -> bool {
+    fn check_first_order_isometry(&self, v: V, coef: V::F, epsilon: V::F) -> bool {
         let small_v = v * coef;
         self.to_local(&self.to_global(small_v))
             .map_or(true, |local| {
@@ -479,13 +483,13 @@ pub trait ExpMap<P: Point, Rn: Euclidean>: Chart<P, Rn> {
 
 /// A tangent bundle structure on a manifold.
 ///
-/// The space of all values of a type `C: TangentBundle<P, Rn>` is
+/// The space of all values of a type `C: TangentBundle<P, V>` is
 /// interpreted as the tangent bundle `TM` of the manifold `M` (the space
 /// of `P: Point`). Each instance is a single tangent space `T_p M` at
-/// the base point `p`, coordinatised by `Rn`.
+/// the base point `p`, coordinatised by `V`.
 ///
 /// By implementing `TangentBundle` you certify that for all `p: P`:
-/// `C::chart_at(&p).to_global(Rn::zero()) == p`
+/// `C::chart_at(&p).to_global(V::zero()) == p`
 ///
 /// That is, the chart produced at any point is centred at that point —
 /// the origin of the local coordinate system corresponds to the base point
@@ -493,10 +497,30 @@ pub trait ExpMap<P: Point, Rn: Euclidean>: Chart<P, Rn> {
 /// bare [`Chart`] or [`ExpMap`].
 ///
 /// Use the `test_tangent_bundle!` macro to verify this invariant.
-pub trait TangentBundle<P: Point, Rn: Euclidean>: ExpMap<P, Rn> {
+pub trait TangentBundle<P: Point, V: Euclidean>: ExpMap<P, V> {
+    fn sectional_curvature(&self, v: V, w: V, epsilon: V::F) -> V::F {
+        let p2 = self.to_global(v + w * epsilon);
+        let actual = (self.to_local(&p2).unwrap() - v).norm();
+        let flat = (w * epsilon).norm();
+
+        let two = V::F::one() + V::F::one();
+        (two / (epsilon * epsilon)) * (V::F::one() - actual / flat)
+    }
+
+    fn max_sectional_curvature(&self, epsilon: V::F) -> V::F {
+        (0..V::N)
+            .array_combinations::<2>()
+            .map(|[i, j]| {
+                let v = V::from_fn(|k| if k == i { V::F::one() } else { V::F::zero() });
+                let w = V::from_fn(|k| if k == j { V::F::one() } else { V::F::zero() });
+                self.sectional_curvature(v, w, epsilon)
+            })
+            .fold(V::F::zero(), |max, k| if k > max { k } else { max })
+    }
+
     // p is the point on the manifold which is the base point.
     #[cfg(feature = "testing")]
-    fn check_universal_centring(p: P, epsilon: Rn::Scalar) -> bool {
+    fn check_universal_centring(p: P, epsilon: V::F) -> bool {
         let chart = Self::chart_at(&p);
         chart.check_preservation_of_origin(epsilon) && chart.check_base_point_is_origin(epsilon)
     }
@@ -504,7 +528,7 @@ pub trait TangentBundle<P: Point, Rn: Euclidean>: ExpMap<P, Rn> {
 
 /// A quotient of a Lie group by a central subgroup.
 ///
-/// The space of all values of a type `Q: Quotient<G, H, Rn>` is interpreted
+/// The space of all values of a type `Q: Quotient<G, H, V>` is interpreted
 /// as the quotient group `G/H` — the set of cosets `gH`, with the group
 /// operation inherited from `G`. This requires `H` to be central in `G`
 /// (so the quotient is well-defined and the cosets `gH` and `Hg` coincide),
@@ -548,12 +572,12 @@ pub trait TangentBundle<P: Point, Rn: Euclidean>: ExpMap<P, Rn> {
 /// Centrality (`h.compose(g) == g.compose(h)` for all `g: G`, `h: H`) is
 /// what makes left cosets and right cosets coincide, which is what makes
 /// `G/H` a group rather than merely a set of cosets with no induced
-/// operation. `Sphere<0, Rn>` — `{1, -1}` under the relevant composition —
-/// is central in every `Sphere<N, Rn>` for `N ∈ {0, 1, 3}` precisely
+/// operation. `Sphere<0, V>` — `{1, -1}` under the relevant composition —
+/// is central in every `Sphere<N, V>` for `N ∈ {0, 1, 3}` precisely
 /// because `-1` commutes with everything (it is, after all, just a scalar
 /// multiple of the identity), which is what makes `S³/{±1} → SO(3)` and
 /// `(R\{0}, ×)/{±1} → (R⁺, ×)` both legitimate instances of this trait.
-pub trait Quotient<G: LieGroup<Rn>, H: LieGroup<Rn>, Rn: Euclidean>: Point {
+pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Euclidean>: Point {
     /// Maps `g` to the `Quotient` value representing its coset `gH`.
     fn new(g: G) -> Self;
 
@@ -576,11 +600,11 @@ pub trait Quotient<G: LieGroup<Rn>, H: LieGroup<Rn>, Rn: Euclidean>: Point {
         Self::new(self.lift().inverse())
     }
 
-    fn quotient_identity_exp(v: Rn) -> Self {
+    fn quotient_identity_exp(v: V) -> Self {
         Self::new(G::identity_exp(v))
     }
 
-    fn quotient_identity_log(p: &Self) -> Option<Rn> {
+    fn quotient_identity_log(p: &Self) -> Option<V> {
         G::identity_log(&p.lift())
     }
 
@@ -591,33 +615,141 @@ pub trait Quotient<G: LieGroup<Rn>, H: LieGroup<Rn>, Rn: Euclidean>: Point {
     #[cfg(feature = "testing")]
     fn check_new_respects_coset(g: G, h: H) -> bool
     where
-        Self: Metric<Rn::Scalar>,
+        Self: Metric<V::F>,
     {
         Self::new(Self::embed(h).compose(&g)) == Self::new(g)
     }
 }
 
-#[macro_export]
-macro_rules! impl_lie_group_via_quotient {
-    ($type:ty, $g:ty, $h:ty) => {
-        impl<Rn: Euclidean> crate::traits::LieGroup<Rn> for $type {
-            fn identity() -> Self {
-                <Self as crate::traits::Quotient<$g, $h, Rn>>::quotient_identity()
-            }
-            fn compose(&self, other: &Self) -> Self {
-                <Self as crate::traits::Quotient<$g, $h, Rn>>::quotient_compose(self, other)
-            }
-            fn inverse(&self) -> Self {
-                <Self as crate::traits::Quotient<$g, $h, Rn>>::quotient_inverse(self)
-            }
-            fn identity_exp(v: Rn) -> Self {
-                <Self as crate::traits::Quotient<$g, $h, Rn>>::quotient_identity_exp(v)
-            }
-            fn identity_log(p: &Self) -> Option<Rn> {
-                <Self as crate::traits::Quotient<$g, $h, Rn>>::quotient_identity_log(p)
+/// A finite collection of [`TangentBundle`] charts whose injectivity domains
+/// together cover a manifold `P`.
+///
+/// # What makes this special
+/// Every atlas covers its manifold by definition — that is not what
+/// distinguishes `GeodesicCover`. What is special is threefold:
+///
+/// - **Finiteness**: the charts can be explicitly enumerated via [`Self::nodes`]
+/// - **Geodesic structure**: each node is a [`TangentBundle`], so distances
+///   within each injectivity domain are exact, not merely approximate
+/// - **Centring**: each node is centred at its own base point, so the graph
+///   of overlapping injectivity domains faithfully represents the manifold's
+///   geometry
+///
+/// Together these properties reduce global geodesic distance to an exact
+/// graph search problem: nodes are charts, edges connect charts whose
+/// injectivity domains overlap, and the fundamental group `π₁(M)` is
+/// recoverable from the graph's spanning tree structure.
+///
+/// # The covering invariant
+/// The implementor certifies that for every point `p: P`, at least one
+/// node `n` in `self.nodes()` satisfies `n.to_local(p).is_some()` — i.e.
+/// `p` lies within `n`'s injectivity domain. This is the key invariant
+/// that makes geodesic distance computable: every point is reachable from
+/// some node, and every geodesic is captured by some path through the graph.
+///
+/// Tighter coverings (minimal overlap between injectivity domains) give more
+/// efficient graph searches and more faithful recovery of `π₁(M)`.
+/// # Implementing
+/// Use `test_geodesic_cover!` to verify the covering invariant. Nodes should
+/// be spaced such that every point lies within the injectivity domain of at
+/// least one node — the nerve theorem guarantees that a covering by
+/// contractible sets (injectivity domains are star-shaped, hence contractible)
+/// recovers the full homotopy type of the manifold.
+pub trait GeodesicCover<P: Point, V: Euclidean, N: TangentBundle<P, V>> {
+    fn nodes(&self) -> &[N];
+
+    fn heuristic(other: &P) -> impl Fn(&Self) -> V::F {
+        let _ = other;
+        |_| V::F::zero() // default: Dijkstra
+    }
+
+    #[allow(unused)]
+    fn geodesic_distance(&self, other: &P, nodes: &[N], epsilon: V::F) -> V::F {
+        todo!();
+        /*
+        use std::collections::BinaryHeap;
+
+        #[derive(Clone, PartialEq, PartialOrd)]
+        struct State<F> {
+            cost: F,
+            index: usize,
+        }
+
+        impl<F: PartialEq> Eq for State<F> {}
+        impl<F: PartialOrd> Ord for State<F> {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                self.partial_cmp(other)
+                    .expect("AGH! NaN! ABORT ABORT ABORT!")
             }
         }
-    };
+
+        let h = Self::heuristic(other);
+        let mut g: Vec<Option<V::F>> = vec![None; nodes.len()];
+
+        let mut heap = BinaryHeap::<State<V::F>>::new();
+
+        let base = self.base_point();
+
+        fn get_neighbors<P: Point, V: Euclidean, T: TangentBundle<P, V>>(
+            point: &P,
+            nodes: &[T],
+        ) -> impl Iterator<Item = (usize, V::F)> {
+            nodes.iter().enumerate().filter_map(move |(idx, other)| {
+                if point != &other.base_point() {
+                    other.local_distance(&point).map(|d| (idx, d))
+                } else {
+                    None
+                }
+            })
+        }
+
+        // find a node covering the base_point
+        let (start_idx, start_node) = nodes
+            .iter()
+            .enumerate()
+            .find(|(_, node)| node.to_local(&base).is_some())
+            .expect("nodes must cover the manifold — no node covers the start point");
+
+        let distance_start = start_node.local_distance(&base).unwrap();
+        g[start_idx] = Some(distance_start);
+
+        heap.push(State {
+            cost: distance_start + h(start_node),
+            index: start_idx,
+        });
+
+        while let Some(state) = heap.pop() {
+            let current_g = g[state.index].unwrap();
+            let current_node = &nodes[state.index];
+
+            if let Some(last_distance) = current_node.local_distance(other) {
+                return current_g + last_distance;
+            }
+
+            // stale entry check:
+            if state.cost > current_g + h(current_node) + epsilon {
+                continue;
+            }
+
+            for (node_idx, distance_to_previous) in
+                get_neighbors(&nodes[state.index].base_point(), nodes)
+            {
+                let node = &nodes[node_idx];
+                let distance = current_g + distance_to_previous;
+
+                if g[node_idx].map_or(true, |x| distance < x) {
+                    g[node_idx] = Some(distance);
+                    heap.push(State {
+                        cost: distance + h(node),
+                        index: node_idx,
+                    });
+                }
+            }
+        }
+
+        unreachable!("nodes must cover the manifold")
+        */
+    }
 }
 
 impl<E: Euclidean> LieGroup<E> for E {
@@ -642,13 +774,13 @@ impl<E: Euclidean> LieGroup<E> for E {
     }
 }
 
-impl<Rn: Euclidean, L: LieGroup<Rn>> Chart<Self, Rn> for L {
-    fn to_local(&self, point: &Self) -> Option<Rn> {
+impl<V: Euclidean, L: LieGroup<V>> Chart<Self, V> for L {
+    fn to_local(&self, point: &Self) -> Option<V> {
         let translated = self.inverse().compose(point);
         Self::identity_log(&translated)
     }
 
-    fn to_global(&self, coord: Rn) -> Self {
+    fn to_global(&self, coord: V) -> Self {
         let translated = Self::identity_exp(coord);
         self.compose(&translated)
     }
@@ -658,14 +790,37 @@ impl<Rn: Euclidean, L: LieGroup<Rn>> Chart<Self, Rn> for L {
     }
 }
 
-impl<Rn: Euclidean, L: LieGroup<Rn>> ExpMap<Self, Rn> for L {
+impl<V: Euclidean, L: LieGroup<V>> ExpMap<Self, V> for L {
     // optimisation
     fn base_point(&self) -> Self {
         self.clone()
     }
 }
 
-impl<Rn: Euclidean, L: LieGroup<Rn>> TangentBundle<Self, Rn> for L {}
+impl<V: Euclidean, L: LieGroup<V>> TangentBundle<Self, V> for L {}
+
+#[macro_export]
+macro_rules! impl_lie_group_via_quotient {
+    ($type:ty, $g:ty, $h:ty) => {
+        impl<V: Euclidean> crate::traits::LieGroup<V> for $type {
+            fn identity() -> Self {
+                <Self as crate::traits::Quotient<$g, $h, V>>::quotient_identity()
+            }
+            fn compose(&self, other: &Self) -> Self {
+                <Self as crate::traits::Quotient<$g, $h, V>>::quotient_compose(self, other)
+            }
+            fn inverse(&self) -> Self {
+                <Self as crate::traits::Quotient<$g, $h, V>>::quotient_inverse(self)
+            }
+            fn identity_exp(v: V) -> Self {
+                <Self as crate::traits::Quotient<$g, $h, V>>::quotient_identity_exp(v)
+            }
+            fn identity_log(p: &Self) -> Option<V> {
+                <Self as crate::traits::Quotient<$g, $h, V>>::quotient_identity_log(p)
+            }
+        }
+    };
+}
 
 #[cfg(feature = "testing")]
 pub mod testing {
