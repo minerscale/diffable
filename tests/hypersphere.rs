@@ -11,8 +11,8 @@ use diffable::{
     hypersphere::{S1Cover, So3, So3Cover, Sphere, Stereographic},
     test_chart, test_exp_map, test_lie_group, test_metric, test_tangent_bundle,
     traits::{
-        Chart, ExpMap, Group, GroupPresentation, LieGroup, Metric, NerveComplex, Quotient,
-        TangentBundle,
+        Chart, ExpMap, Group, GroupPresentation, InnerProduct, LieGroup, Metric, NerveComplex,
+        Quotient, TangentBundle,
     },
 };
 
@@ -73,6 +73,36 @@ proptest! {
     fn s1_commutativity(a in arb_sphere1(), b in arb_sphere1()) {
         prop_assert!(a.compose(&b) == b.compose(&a));
     }
+}
+
+proptest! {
+    // Equality on SO(3) is equality of cosets: [q] == [-q] for every q,
+    // no matter which representative Quotient::new keeps.
+    #[test]
+    fn so3_antipodal_lifts_are_equal(g in arb_sphere3()) {
+        let neg = Sphere::new(-g.real(), -g.imag());
+        prop_assert!(So3::new(g) == So3::new(neg));
+    }
+}
+
+#[test]
+fn so3_equator_equality() {
+    // 180° rotations lift to quaternions with real part exactly 0, where the
+    // canonical-representative rule (real >= 0) accepts both lifts. Coset
+    // equality must still hold there.
+    let q = Sphere::<3, Coords<R64, 3>>::new(
+        R64::zero(),
+        [R64::one(), R64::zero(), R64::zero()].into(),
+    );
+    let neg_q = Sphere::new(-q.real(), -q.imag());
+    assert!(So3::new(q.clone()) == So3::new(neg_q));
+
+    // and a 180° rotation about an arbitrary-ish axis
+    let axis: Coords<R64, 3> = [R64(1.0), R64(2.0), R64(-0.5)].into();
+    let axis = axis * (R64(1.0) / axis.norm());
+    let half_turn = Sphere::<3, Coords<R64, 3>>::identity_exp(axis * R64(std::f64::consts::PI));
+    let neg = Sphere::new(-half_turn.real(), -half_turn.imag());
+    assert!(So3::new(half_turn) == So3::new(neg));
 }
 
 #[test]
@@ -227,70 +257,22 @@ fn so3_fundamental_group() {
 
 #[test]
 fn so3_check_graph_structure() {
-    // verify we get exactly the Walkup triangulation
-    let walkup_facets: &[[usize; 4]] = &[
-        [0, 1, 2, 3],
-        [0, 1, 2, 4],
-        [0, 1, 3, 5],
-        [0, 1, 4, 5],
-        [0, 2, 3, 6],
-        [0, 2, 4, 6],
-        [0, 3, 5, 6],
-        [0, 4, 5, 6],
-        [1, 2, 3, 7],
-        [1, 2, 4, 8],
-        [1, 2, 7, 8],
-        [1, 3, 5, 9],
-        [1, 3, 7, 9],
-        [1, 4, 5, 10],
-        [1, 4, 8, 10],
-        [1, 5, 9, 10],
-        [1, 6, 7, 8],
-        [1, 6, 7, 9],
-        [1, 6, 8, 10],
-        [1, 6, 9, 10],
-        [2, 3, 6, 10],
-        [2, 3, 7, 10],
-        [2, 4, 6, 9],
-        [2, 4, 8, 9],
-        [2, 5, 7, 8],
-        [2, 5, 7, 10],
-        [2, 5, 8, 9],
-        [2, 5, 9, 10],
-        [2, 6, 9, 10],
-        [3, 4, 7, 9],
-        [3, 4, 7, 10],
-        [3, 4, 8, 9],
-        [3, 4, 8, 10],
-        [3, 5, 6, 8],
-        [3, 5, 8, 9],
-        [3, 6, 8, 10],
-        [4, 5, 6, 7],
-        [4, 5, 7, 10],
-        [4, 6, 7, 8],
-        [5, 6, 7, 8],
-    ];
-
-    let mut walkup_edges = std::collections::HashSet::new();
-    let mut walkup_triangles = std::collections::HashSet::new();
-
-    for facet in walkup_facets {
-        for i in 0..4 {
-            for j in (i + 1)..4 {
-                let a = facet[i].min(facet[j]);
-                let b = facet[i].max(facet[j]);
-                walkup_edges.insert((a, b));
-                for k in (j + 1)..4 {
-                    let mut t = [facet[i], facet[j], facet[k]];
-                    t.sort();
-                    walkup_triangles.insert((t[0], t[1], t[2]));
-                }
-            }
-        }
-    }
-
+    // The nerve of the So3Cover ball cover is the hemi-600-cell: the
+    // 60-vertex vertex-transitive triangulation of RP^3 obtained from the
+    // boundary complex of the 600-cell by identifying antipodal vertices.
+    // Its f-vector is (60, 360, 600, 300); here we verify the 1- and
+    // 2-skeleton, which is what fundamental_group consumes.
+    //
+    // (Why not Walkup's 11-vertex RP^3_11? Its graph is K_11 minus 4 edges,
+    // which contains ~129 triangles while the complex has only 80 2-faces —
+    // so no cover whose 2-simplices are detected as mutually-overlapping
+    // triples can ever reproduce it. The hemi-600-cell is "flag" in the
+    // relevant sense: mutually overlapping triples of balls all genuinely
+    // share a point, and every such triple is a 2-face.)
     let nodes = So3Cover::nodes();
     let n = nodes.len();
+    assert_eq!(n, 60);
+
     let neighbors: Vec<Vec<usize>> = (0..n)
         .map(|i| {
             So3Cover::chart_at(&nodes[i].base_point())
@@ -299,53 +281,48 @@ fn so3_check_graph_structure() {
         })
         .collect();
 
-    let mut our_edges = std::collections::HashSet::new();
-    let mut our_triangles = std::collections::HashSet::new();
+    // vertex-transitive: every node has exactly 12 neighbours,
+    // at distance pi/5 (the 600-cell edge length)
+    for (i, nbrs) in neighbors.iter().enumerate() {
+        assert_eq!(nbrs.len(), 12, "node {} has wrong degree", i);
+        for &j in nbrs {
+            let d = nodes[i].local_distance(&nodes[j].base_point()).unwrap();
+            assert!(
+                d == R64(std::f64::consts::PI / 5.0),
+                "edge {}-{} has length {} != pi/5",
+                i,
+                j,
+                d
+            );
+        }
+    }
 
+    // adjacency is symmetric
+    for i in 0..n {
+        for &j in &neighbors[i] {
+            assert!(neighbors[j].contains(&i), "asymmetric edge {}-{}", i, j);
+        }
+    }
+
+    let mut edges = std::collections::HashSet::new();
+    let mut triangles = std::collections::HashSet::new();
     for i in 0..n {
         for &j in &neighbors[i] {
             if j > i {
-                our_edges.insert((i, j));
+                edges.insert((i, j));
             }
             for &k in &neighbors[i] {
                 if k <= j {
                     continue;
                 }
-                if neighbors[j].contains(&k) {
-                    our_triangles.insert((i, j, k));
+                if j > i && neighbors[j].contains(&k) {
+                    triangles.insert((i, j, k));
                 }
             }
         }
     }
 
-    println!(
-        "walkup edges: {}, our edges: {}",
-        walkup_edges.len(),
-        our_edges.len()
-    );
-    println!(
-        "walkup triangles: {}, our triangles: {}",
-        walkup_triangles.len(),
-        our_triangles.len()
-    );
-    println!(
-        "missing edges: {:?}",
-        walkup_edges.difference(&our_edges).collect::<Vec<_>>()
-    );
-    println!(
-        "extra edges: {:?}",
-        our_edges.difference(&walkup_edges).collect::<Vec<_>>()
-    );
-    println!(
-        "missing triangles: {}",
-        walkup_triangles.difference(&our_triangles).count()
-    );
-    println!(
-        "extra triangles: {}",
-        our_triangles.difference(&walkup_triangles).count()
-    );
-
-    assert_eq!(our_edges, walkup_edges);
-    assert_eq!(our_triangles, walkup_triangles);
-    todo!()
+    println!("edges: {}, triangles: {}", edges.len(), triangles.len());
+    assert_eq!(edges.len(), 360);
+    assert_eq!(triangles.len(), 600);
 }

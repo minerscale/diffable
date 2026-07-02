@@ -645,14 +645,20 @@ pub trait GroupPresentation {
 /// # Implementing
 /// Nodes should be spaced such that every point lies within the injectivity
 /// domain of at least one node. For principled node spacing, use the Rauch
-/// bound `π / √κ_max` (computable via [`ExpMap::max_sectional_curvature`])
+/// bound `π / √κ_max` (computable via [`TangentBundle::max_sectional_curvature`])
 /// as the cover radius at each node — this guarantees the radius stays
 /// within the injectivity domain. Sampling density must additionally satisfy
 /// `d < 2π / √κ_max` (twice the Rauch bound) to ensure adjacent nodes
 /// overlap and the nerve faithfully captures the topology. Near high-curvature
 /// regions, both the radius and the required sampling density shrink
 /// proportionally — the cover automatically adapts to the geometry.
-pub trait NerveComplex<P: Point, V: Euclidean, T: Bounded<P, V> + PartialEq>: ExpMap<P, V> {
+pub trait NerveComplex<
+    P: Point,
+    V: Euclidean,
+    T: TangentBundle<P, V> + Point,
+    B: Bounded<T, V> + PartialEq,
+>: ExpMap<T, V>
+{
     /// Returns the fixed set of [`TangentBundle`] charts that cover the manifold.
     ///
     /// This function must be *effectively pure* — it must return the same nodes
@@ -662,7 +668,7 @@ pub trait NerveComplex<P: Point, V: Euclidean, T: Bounded<P, V> + PartialEq>: Ex
     /// initialiser runs exactly once regardless of how many times `nodes()` is
     /// called:
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// fn nodes() -> &'static [MyNode] {
     ///     static NODES: LazyLock<Vec<MyNode>> = LazyLock::new(|| {
     ///         // compute nodes here, runs exactly once
@@ -681,34 +687,57 @@ pub trait NerveComplex<P: Point, V: Euclidean, T: Bounded<P, V> + PartialEq>: Ex
     /// invariant — every point is covered by at least one node — is automatically
     /// certified by the existing [`Chart`] test infrastructure. No additional
     /// `check_*` methods or `test_*` macros are needed.
-    fn nodes() -> &'static [T]
+    fn nodes() -> &'static [B]
     where
-        T: 'static;
+        B: 'static;
 
-    /// Returns the indices of nodes whose injectivity domains overlap with
-    /// the injectivity domain of node `idx` — i.e. nodes `j` such that
-    /// `self.nodes()[idx].to_local(&self.nodes()[j].base_point()).is_some()`.
+    /// Returns the indices of nodes whose bounded domains overlap the
+    /// bounded domain of this node — the 1-skeleton of the nerve.
+    ///
+    /// # The overlap test
+    /// Two domains are declared to overlap when the *geodesic midpoint* of
+    /// the two base points lies strictly inside both domains (as measured by
+    /// each node's own [`Bounded::sdf`] in its own chart). This is sound for
+    /// any star-shaped domains — a common point is a common point — and it
+    /// is *exact* when the domains are geodesic balls of equal radius `ρ`:
+    /// two such balls intersect iff `d(p_i, p_j) < 2ρ`, iff the midpoint
+    /// (at distance `d/2` from each centre) lies in both.
+    ///
+    /// Note that testing whether each centre lies inside the *other* domain
+    /// is not the same thing: balls of radius `ρ` already overlap at centre
+    /// separation `2ρ`, but their centres only see each other at separation
+    /// `ρ`. The midpoint test reports the true intersection, which is what
+    /// the nerve theorem needs.
     ///
     /// The default implementation is an `O(n)` linear scan over all nodes.
     /// Override this for better performance if your cover has additional
     /// structure (e.g. a spatial index or precomputed adjacency list).
     fn get_neighbors<'a>(&'a self) -> impl Iterator<Item = usize> + 'a
     where
-        T: 'static,
-        P: 'a,
+        B: 'static,
+        T: 'a,
     {
         let base = self.base_point();
-        let inode = T::chart_at(&base);
+        let inode = B::chart_at(&base);
         Self::nodes()
             .iter()
             .enumerate()
             .filter_map(move |(j_idx, jnode)| {
+                let half = (V::F::one() + V::F::one()).recip();
                 // both directions must agree
-                let i_sees_j = inode.to_local(&jnode.base_point());
-                let j_sees_i = jnode.to_local(&base);
+                // Get the non-restricted domain
+                let i_sees_j = inode.inner().to_local(&jnode.base_point().base_point());
+                let j_sees_i = jnode.inner().to_local(&base.base_point());
                 match (i_sees_j, j_sees_i) {
-                    (Some(i), Some(j)) if *jnode != inode => {
-                        if inode.sdf(&j) + jnode.sdf(&i) < V::F::zero() {
+                    (Some(v_ij), Some(v_ji)) if *jnode != inode => {
+                        // The same manifold point — the midpoint of the
+                        // geodesic joining the two base points — expressed
+                        // in each node's own exponential chart. (ExpMap
+                        // guarantees radial geodesics are parametrised by
+                        // arc length, so halving the log halves the arc.)
+                        if inode.sdf(&(v_ij * half)) < V::F::zero()
+                            && jnode.sdf(&(v_ji * half)) < V::F::zero()
+                        {
                             Some(j_idx)
                         } else {
                             None
@@ -722,13 +751,21 @@ pub trait NerveComplex<P: Point, V: Euclidean, T: Bounded<P, V> + PartialEq>: Ex
     /// Computes the fundamental group π₁(M) of the manifold from the
     /// graph structure of this cover via the spanning tree construction.
     ///
-    /// By the nerve theorem, since injectivity domains are contractible
-    /// (star-shaped) and cover the manifold, the nerve of this cover has
-    /// the same homotopy type as `M`. The fundamental group is therefore
-    /// recoverable purely from the graph of overlapping injectivity domains.
+    /// By the nerve theorem, since the domains are contractible and cover
+    /// the manifold (with contractible intersections — a *good* cover),
+    /// the nerve of this cover has the same homotopy type as `M`. The
+    /// fundamental group is therefore recoverable purely from the graph of
+    /// overlapping domains (generators) and the triangles of the nerve
+    /// (relations).
+    ///
+    /// The returned presentation is Tietze-simplified: generators are
+    /// eliminated using the relations wherever possible, so the presentation
+    /// returned is a small — often minimal — presentation of π₁(M) rather
+    /// than the raw one-generator-per-non-tree-edge presentation, which for
+    /// interesting covers can have hundreds of generators.
     fn fundamental_group(&self) -> impl GroupPresentation
     where
-        T: 'static,
+        B: 'static,
     {
         let nodes = Self::nodes();
         let n = nodes.len();
@@ -871,6 +908,155 @@ pub trait NerveComplex<P: Point, V: Euclidean, T: Bounded<P, V> + PartialEq>: Ex
             })
             .collect();
 
+        // -------------------------------------------------------------------
+        // Tietze simplification.
+        //
+        // The raw presentation has one generator per non-tree edge and one
+        // relation per triangle. For any good cover of a manifold with
+        // non-trivial H₃ (e.g. any closed orientable 3-manifold) the nerve
+        // must contain 3-simplices, whose 1-skeletons are K₄s, so the raw
+        // presentation *necessarily* has ≥ 3 generators — no cover exists
+        // whose raw presentation is minimal. Simplification is therefore
+        // part of the computation, not a cosmetic afterthought.
+        //
+        // The moves used are classical Tietze transformations, which
+        // preserve the isomorphism type of the presented group:
+        //   - free + cyclic reduction of relators,
+        //   - deletion of duplicate relators (up to rotation and inversion),
+        //   - elimination of a generator that occurs exactly once in some
+        //     relator, by solving that relator for it and substituting.
+        // -------------------------------------------------------------------
+        fn invert(w: &[(usize, bool)]) -> Vec<(usize, bool)> {
+            w.iter().rev().map(|&(g, inv)| (g, !inv)).collect()
+        }
+
+        fn cyclic_reduce(mut w: Vec<(usize, bool)>) -> Vec<(usize, bool)> {
+            w = reduce_word(w);
+            while w.len() >= 2 {
+                let (f, l) = (w[0], *w.last().unwrap());
+                if f.0 == l.0 && f.1 != l.1 {
+                    w.remove(0);
+                    w.pop();
+                    w = reduce_word(w);
+                } else {
+                    break;
+                }
+            }
+            w
+        }
+
+        // canonical form of a relator up to cyclic rotation and inversion,
+        // for duplicate detection
+        fn canonical_relator(w: &[(usize, bool)]) -> Vec<(usize, bool)> {
+            let mut best: Option<Vec<(usize, bool)>> = None;
+            for cand in [w.to_vec(), invert(w)] {
+                for r in 0..cand.len().max(1) {
+                    let mut rot = cand.clone();
+                    rot.rotate_left(r % cand.len().max(1));
+                    if best.as_ref().is_none_or(|b| rot < *b) {
+                        best = Some(rot);
+                    }
+                }
+            }
+            best.unwrap_or_default()
+        }
+
+        fn substitute(
+            w: &[(usize, bool)],
+            g: usize,
+            replacement: &[(usize, bool)],
+        ) -> Vec<(usize, bool)> {
+            let inv_rep = invert(replacement);
+            let mut out = Vec::new();
+            for &(x, inv) in w {
+                if x == g {
+                    out.extend(if inv {
+                        inv_rep.clone()
+                    } else {
+                        replacement.to_vec()
+                    });
+                } else {
+                    out.push((x, inv));
+                }
+            }
+            reduce_word(out)
+        }
+
+        let mut alive: Vec<bool> = vec![true; generators.len()];
+        let mut rels: Vec<Vec<(usize, bool)>> = relations
+            .into_iter()
+            .map(cyclic_reduce)
+            .filter(|w| !w.is_empty())
+            .collect();
+
+        loop {
+            let mut seen = std::collections::HashSet::new();
+            rels.retain(|w| seen.insert(canonical_relator(w)));
+            rels.sort_by_key(|w| w.len());
+
+            // find a relator in which some generator occurs exactly once
+            let mut action: Option<(usize, Vec<(usize, bool)>, usize)> = None;
+            'search: for (ri, r) in rels.iter().enumerate() {
+                let mut counts = std::collections::HashMap::new();
+                for &(g, _) in r {
+                    *counts.entry(g).or_insert(0usize) += 1;
+                }
+                for (pos, &(g, inv)) in r.iter().enumerate() {
+                    if counts[&g] == 1 {
+                        // rotate r to start at g: r = g^e · rest == 1,
+                        // so g^e = rest⁻¹
+                        let mut rest: Vec<(usize, bool)> = Vec::new();
+                        rest.extend_from_slice(&r[pos + 1..]);
+                        rest.extend_from_slice(&r[..pos]);
+                        let repl = if inv {
+                            reduce_word(rest)
+                        } else {
+                            invert(&rest)
+                        };
+                        action = Some((g, repl, ri));
+                        break 'search;
+                    }
+                }
+            }
+
+            match action {
+                Some((g, repl, ri)) => {
+                    rels.remove(ri);
+                    alive[g] = false;
+                    rels = rels
+                        .iter()
+                        .map(|w| cyclic_reduce(substitute(w, g, &repl)))
+                        .filter(|w| !w.is_empty())
+                        .collect();
+                }
+                None => break,
+            }
+        }
+
+        // renumber the surviving generators to 0..k
+        let mut remap = std::collections::HashMap::new();
+        for (g, &a) in alive.iter().enumerate() {
+            if a {
+                let idx = remap.len();
+                remap.insert(g, idx);
+            }
+        }
+        let relations: Vec<Vec<(usize, bool)>> = rels
+            .iter()
+            .map(|w| {
+                let w: Vec<(usize, bool)> = w.iter().map(|&(g, i)| (remap[&g], i)).collect();
+                // prefer the mostly-uninverted form of each relator
+                // (x·x rather than x⁻¹·x⁻¹)
+                let inv_count = w.iter().filter(|&&(_, i)| i).count();
+                if inv_count * 2 > w.len() {
+                    invert(&w)
+                } else {
+                    w
+                }
+            })
+            .collect();
+        let n_generators = remap.len();
+
         #[derive(Debug, PartialEq)]
         struct FundamentalGroupPresentation {
             n_generators: usize,
@@ -891,7 +1077,7 @@ pub trait NerveComplex<P: Point, V: Euclidean, T: Bounded<P, V> + PartialEq>: Ex
         }
 
         FundamentalGroupPresentation {
-            n_generators: generators.len(),
+            n_generators,
             relations,
         }
     }
@@ -910,13 +1096,9 @@ macro_rules! impl_tangent_bundle_via_bounded {
     ($type:ty, $point:ty, $v:ty) => {
         impl $crate::traits::Chart<$point, $v> for $type {
             fn to_local(&self, point: &$point) -> Option<$v> {
-                self.inner().to_local(point)
-                /* This innocent looking idea is a broken concept because
-                   two domains can touch with neither centre seeing the other's centre
                 self.inner()
                     .to_local(point)
                     .filter(|v| self.sdf(v) < <$v as $crate::traits::Euclidean>::F::zero())
-                */
             }
             fn to_global(&self, coord: $v) -> $point {
                 self.inner().to_global(coord)
