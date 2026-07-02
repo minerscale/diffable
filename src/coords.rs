@@ -10,11 +10,6 @@ use crate::traits::{Euclidean, InnerProduct, Metric, Scalar};
 /// field `R` — the space in which all local coordinate charts take their
 /// values, and in which tangent vectors live. It is intentionally minimal:
 /// a fixed-size array with the algebraic structure of a vector space.
-///
-/// Keeping this as a first-class type rather than depending on nalgebra
-/// avoids a heavy dependency for users who don't need it. For those who
-/// do, the `nalgebra` feature provides `From`/`Into` conversions to and
-/// from `nalgebra::SVector`.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Coords<R: Real, const N: usize>([R; N]);
 

@@ -40,7 +40,6 @@
 //!
 //! ## Optional Features
 //!
-//! - `nalgebra` — interop with nalgebra's `SVector` and `UnitQuaternion`
 //! - `testing` — property-testing macros for verifying trait implementations
 //! - `all` — enables all features
 
@@ -48,6 +47,4 @@ pub mod coords;
 pub mod hypersphere;
 pub mod traits;
 
-pub mod manifold_graph;
-#[cfg(feature = "nalgebra")]
-pub mod nalgebra;
+pub mod epsilon_metric;

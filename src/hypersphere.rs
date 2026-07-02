@@ -1,8 +1,12 @@
 use std::marker::PhantomData;
 
 use crate::{
-    impl_lie_group_via_quotient,
-    traits::{Chart, Euclidean, LieGroup, Metric, Quotient},
+    coords::Coords,
+    impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
+    traits::{
+        Bounded, Chart, Euclidean, ExpMap, Group, InnerProduct, LieGroup, Metric, NerveComplex,
+        Quotient, TangentBundle,
+    },
 };
 use num_traits::{NumCast, One, Zero, real::Real};
 
@@ -30,7 +34,7 @@ enum StereographicPole {
     NorthPole,
 }
 
-pub const EPSILON: f64 = 1e-10;
+pub const EPSILON: f64 = 1e-3;
 
 impl<const N: usize, V: Euclidean> Chart<Sphere<N, V>, V> for Stereographic<V> {
     fn to_local(&self, point: &Sphere<N, V>) -> Option<V> {
@@ -101,7 +105,7 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
     }
 }
 
-impl<V: Euclidean> LieGroup<V> for Sphere<0, V> {
+impl<V: Euclidean> Group for Sphere<0, V> {
     fn identity() -> Self {
         Self::new(V::F::one(), V::zero())
     }
@@ -114,7 +118,9 @@ impl<V: Euclidean> LieGroup<V> for Sphere<0, V> {
     fn inverse(&self) -> Self {
         Self::new(self.real, V::zero())
     }
+}
 
+impl<V: Euclidean> LieGroup<V> for Sphere<0, V> {
     fn identity_exp(_: V) -> Self {
         Sphere::new(V::F::one(), V::zero())
     }
@@ -128,7 +134,7 @@ impl<V: Euclidean> LieGroup<V> for Sphere<0, V> {
     }
 }
 
-impl<V: Euclidean> LieGroup<V> for Sphere<1, V> {
+impl<V: Euclidean> Group for Sphere<1, V> {
     fn identity() -> Self {
         Sphere::new(V::F::one(), V::zero())
     }
@@ -143,7 +149,9 @@ impl<V: Euclidean> LieGroup<V> for Sphere<1, V> {
     fn inverse(&self) -> Self {
         Sphere::new(self.real, -self.imag)
     }
+}
 
+impl<V: Euclidean> LieGroup<V> for Sphere<1, V> {
     fn identity_exp(v: V) -> Self {
         let alpha = v[0];
 
@@ -155,7 +163,7 @@ impl<V: Euclidean> LieGroup<V> for Sphere<1, V> {
     }
 }
 
-impl<V: Euclidean> LieGroup<V> for Sphere<3, V> {
+impl<V: Euclidean> Group for Sphere<3, V> {
     fn identity() -> Self {
         Sphere::new(V::F::one(), V::zero())
     }
@@ -178,7 +186,9 @@ impl<V: Euclidean> LieGroup<V> for Sphere<3, V> {
 
         Sphere::new(a, V::from_array([-b, -c, -d]))
     }
+}
 
+impl<V: Euclidean> LieGroup<V> for Sphere<3, V> {
     fn identity_exp(v: V) -> Self {
         let two = V::F::one() + V::F::one();
         let three = two + V::F::one();
@@ -197,16 +207,18 @@ impl<V: Euclidean> LieGroup<V> for Sphere<3, V> {
         let two = V::F::one() + V::F::one();
         let three = two + V::F::one();
         let six = two * three;
-        let epsilon = <V::F as NumCast>::from(EPSILON).unwrap();
-        if (p.real + V::F::one()).abs() < epsilon {
+
+        let eps = <V::F as NumCast>::from(EPSILON).unwrap();
+        if (p.real + V::F::one()).abs() < eps {
             return None; // antipode singularity
         }
-        let alpha = V::F::acos(p.real);
-        let sin = alpha.sin();
-        let sinc_recip = if sin.abs() < epsilon {
+        // use atan2 instead of acos for numerical stability
+        let imag_norm = p.imag.norm();
+        let alpha = V::F::atan2(imag_norm, p.real);
+        let sinc_recip = if imag_norm < eps {
             V::F::one() + alpha * alpha / six
         } else {
-            alpha / sin
+            alpha / imag_norm // alpha / sin(alpha) = alpha / ||imag||
         };
         Some(p.imag * sinc_recip)
     }
@@ -214,13 +226,15 @@ impl<V: Euclidean> LieGroup<V> for Sphere<3, V> {
 
 impl<const N: usize, V: Euclidean> Metric<V::F> for Sphere<N, V> {
     fn distance(&self, other: &Self) -> V::F {
-        let dot = self.real * other.real + self.imag.dot(&other.imag);
-
-        V::F::acos(dot.min(V::F::one()).max(-V::F::one()))
+        let two = V::F::one() + V::F::one();
+        let diff_real = self.real - other.real;
+        let diff_imag = self.imag - other.imag;
+        let half_chord_sq = (diff_real * diff_real + diff_imag.norm_squared()) / (two * two);
+        half_chord_sq.sqrt().asin() * two
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct So3<V: Euclidean>(Sphere<3, V>);
 
 impl<V: Euclidean> Quotient<Sphere<3, V>, Sphere<0, V>, V> for So3<V> {
@@ -243,3 +257,120 @@ impl<V: Euclidean> Quotient<Sphere<3, V>, Sphere<0, V>, V> for So3<V> {
 }
 
 impl_lie_group_via_quotient!(So3<V>, Sphere<3, _>, Sphere<0, _>);
+
+use crate::epsilon_metric::R64;
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct S1Cover(Sphere<1, Coords<R64, 1>>);
+
+impl Bounded<Sphere<1, Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
+    fn sdf(&self, v: &Coords<R64, 1>) -> R64 {
+        v.norm() - R64(std::f64::consts::PI / 3.0 + 0.1)
+    }
+
+    fn new(p: Sphere<1, Coords<R64, 1>>) -> Self {
+        Self(p)
+    }
+
+    fn inner(&self) -> &Sphere<1, Coords<R64, 1>> {
+        &self.0
+    }
+}
+
+impl_tangent_bundle_via_bounded!(
+    S1Cover, Sphere<1, Coords<R64, 1>>, Coords<R64, 1>
+);
+
+impl NerveComplex<Sphere<1, Coords<R64, 1>>, Coords<R64, 1>, S1Cover> for S1Cover {
+    fn nodes() -> &'static [S1Cover] {
+        use std::sync::LazyLock;
+        static NODES: LazyLock<Vec<S1Cover>> = LazyLock::new(|| {
+            (0..6)
+                .map(|i| {
+                    let angle: R64 = R64(i.into()) * R64(std::f64::consts::TAU) / R64(6.0);
+                    S1Cover(Sphere::new(angle.cos(), [angle.sin()].into()))
+                })
+                .collect()
+        });
+        &NODES
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct So3Cover(So3<Coords<R64, 3>>);
+
+impl Chart<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {
+    fn to_local(&self, point: &So3<Coords<R64, 3>>) -> Option<Coords<R64, 3>> {
+        self.0.to_local(point)
+    }
+    fn to_global(&self, coord: Coords<R64, 3>) -> So3<Coords<R64, 3>> {
+        self.0.to_global(coord)
+    }
+    fn chart_at(p: &So3<Coords<R64, 3>>) -> Self {
+        Self(So3::chart_at(p))
+    }
+}
+
+impl ExpMap<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {}
+
+impl TangentBundle<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {}
+
+impl Bounded<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {
+    fn sdf(&self, v: &Coords<R64, 3>) -> R64 {
+        // distance from v to self's base point (origin in self's frame)
+        let self_dist = v.norm();
+
+        // distance from v to each other node in self's local frame
+        let nearest_other = Self::nodes()
+            .iter()
+            .filter(|node| *node != self)
+            .filter_map(|node| {
+                // other node's base point in self's local coordinates
+                self.to_local(&node.0).map(|local| (*v - local).norm())
+            })
+            .reduce(|a, b| if a < b { a } else { b })
+            .expect("NerveComplex must have at least 2 nodes");
+
+        // negative inside Voronoi cell (self is nearest)
+        self_dist - nearest_other
+    }
+
+    fn new(p: So3<Coords<R64, 3>>) -> Self {
+        Self(p)
+    }
+
+    fn inner(&self) -> &So3<Coords<R64, 3>> {
+        &self.0
+    }
+}
+
+impl NerveComplex<So3<Coords<R64, 3>>, Coords<R64, 3>, So3Cover> for So3Cover {
+    fn nodes() -> &'static [So3Cover] {
+        use std::sync::LazyLock;
+        static NODES: LazyLock<Vec<So3Cover>> = LazyLock::new(|| {
+            let r = R64(0.8);
+            let verts: [[R64; 3]; _] = [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [-1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0, -1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, -1.0],
+                [1.0, -1.0, 1.0],
+                [-1.0, 1.0, 1.0],
+            ]
+            .map(|x| x.map(|x| R64(x)));
+            verts
+                .iter()
+                .map(|&[x, y, z]| {
+                    let v: Coords<R64, 3> = [x * r, y * r, z * r].into();
+                    So3Cover(So3::identity_exp(v))
+                })
+                .collect()
+        });
+        &NODES
+    }
+}

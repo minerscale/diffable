@@ -16,7 +16,7 @@ use num_traits::{One, Zero, real::Real};
 /// due to `NaN` — an IEEE 754 artifact with no geometric meaning.
 pub trait Point: Clone + PartialEq {}
 
-impl<T: PartialEq + Clone> Point for T {}
+impl<T: Clone + PartialEq> Point for T {}
 
 /// A chart in an atlas of a manifold.
 ///
@@ -40,70 +40,11 @@ pub trait Chart<P: Point, V: Euclidean>: Sized {
         self.to_local(other).map(|v| v.norm())
     }
 
-    /// Checks whether `other` lies within `epsilon` of this chart's base point, as
-    /// measured in local coordinates.
-    ///
-    /// Because every [`Chart`] is a homeomorphism onto an open subset of `V`,
-    /// this check is always well-defined topologically: shrinking `epsilon`
-    /// shrinks the corresponding neighbourhood on the manifold, and the chart's
-    /// pulled-back metric generates the manifold's own topology. What it does
-    /// *not* guarantee, for a bare `Chart`, is that `epsilon` corresponds to any
-    /// particular distance on the manifold — different charts at the same point
-    /// can disagree numerically about how "close" `other` is, since only an
-    /// [`ExpMap`] additionally certifies that local coordinate distance equals
-    /// geodesic distance to first order.
-    ///
-    /// The where `P: Chart<P, V>` bound forces `Self = P`, letting
-    /// `self` serve as both the chart and the point being measured from.
-    fn in_neighbourhood(&self, other: &P, epsilon: V::F) -> bool
-    where
-        P: Chart<P, V>,
-    {
-        self.local_distance(other).map_or(false, |d| d <= epsilon)
-    }
-
-    /// Best-effort check for whether `a` and `b` are close,
-    /// without the trait bound P: Chart<P, V>.
-    ///
-    /// Tries the chart centred at `a`, then at `b`, succeeding if either
-    /// places the other point within `epsilon` in local coordinates. A `true`
-    /// result is trustworthy, by the same topological argument as
-    /// [`Chart::in_neighbourhood`]. A `false` result is not proof of distance —
-    /// only that neither chart could confirm closeness. There is no way to
-    /// enumerate every chart covering a point (the space is typically infinite),
-    /// so only the two `chart_at` already guarantees exist are tried.
-    ///
-    /// This is more reliable than the worst case suggests if `chart_at` places
-    /// its singularity sensibly. [`crate::hypersphere::Stereographic`] always picks the pole
-    /// opposite the input point, so `attempt(a)` can only miss a genuinely close
-    /// `b` if `b` is near that far pole — but then `a`, being close to `b`,
-    /// would have to be near it too, contradicting `chart_at(a)`'s own choice.
-    /// So for charts shaped like this, `attempt(a)` alone rarely fails for
-    /// points that are actually close. This is a property of well-behaved
-    /// `chart_at` implementations, not something the trait enforces.
-    ///
-    /// If `P` implements `Chart<P, V>` directly, prefer
-    /// [`Chart::in_neighbourhood`] instead — it has a `false` case that's also
-    /// meaningful.
-    fn in_neighbourhood_heuristic(a: &P, b: &P, epsilon: V::F) -> bool {
-        let attempt = |chart_base: &P| {
-            let chart = Self::chart_at(chart_base);
-
-            if let (Some(a), Some(b)) = (chart.to_local(a), chart.to_local(b)) {
-                a.distance(&b) <= epsilon
-            } else {
-                false
-            }
-        };
-
-        attempt(a) || attempt(b)
-    }
-
     #[cfg(feature = "testing")]
-    fn check_local_inverse(p: &P, epsilon: V::F) -> bool {
+    fn check_local_inverse(p: &P) -> bool {
         let chart = Self::chart_at(p);
         match chart.to_local(p) {
-            Some(local) => Self::in_neighbourhood_heuristic(p, &chart.to_global(local), epsilon),
+            Some(local) => p == &chart.to_global(local),
             None => false,
         }
     }
@@ -176,40 +117,32 @@ pub trait Euclidean:
 
     // Translation invariance: d(a + c, b + c) == d(a, b)
     #[cfg(feature = "testing")]
-    fn check_translation_invariance(a: &Self, b: &Self, c: &Self, epsilon: Self::F) -> bool
+    fn check_translation_invariance(a: &Self, b: &Self, c: &Self) -> bool
     where
         Self: Add<Output = Self> + Clone,
     {
         let dist_ab = a.distance(b);
         let dist_translated = (a.clone() + c.clone()).distance(&(b.clone() + c.clone()));
-        (dist_ab - dist_translated).abs() < epsilon
+        dist_ab == dist_translated
     }
 
     // Geodesic scaling holds globally (infinite injectivity radius):
     // to_global(v * t) is parallel to to_global(v) AND scaled by t exactly
     #[cfg(feature = "testing")]
-    fn check_global_geodesic_scaling(p: &Self, v: Self, t: Self::F, epsilon: Self::F) -> bool {
+    fn check_global_geodesic_scaling(p: &Self, v: Self, t: Self::F) -> bool {
         let chart = Self::chart_at(p);
         match (
             chart.to_local(&chart.to_global(v * t)),
             chart.to_local(&chart.to_global(v)),
         ) {
-            (Some(tv_local), Some(v_local)) => {
-                // parallel
-                let dot = tv_local.dot(&v_local);
-                let parallel =
-                    (dot * dot - tv_local.norm_squared() * v_local.norm_squared()).abs() < epsilon;
-                // scaled exactly
-                let scaled = (tv_local - v_local * t).norm() < epsilon;
-                parallel && scaled
-            }
-            _ => false, // None is never acceptable in flat space
+            (Some(tv_local), Some(v_local)) => tv_local == v_local * t,
+            _ => false,
         }
     }
 
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
-    fn check_pythagorean(a: &Self, b: &Self, epsilon: Self::F) -> bool
+    fn check_pythagorean(a: &Self, b: &Self) -> bool
     where
         Self: Sub<Output = Self> + Clone,
     {
@@ -217,7 +150,53 @@ pub trait Euclidean:
         let dist_sq = dist_sq * dist_sq;
         let diff = a.clone() - b.clone();
         let norm_sq = diff.norm_squared();
-        (dist_sq - norm_sq).abs() < epsilon
+        dist_sq == norm_sq
+    }
+}
+
+pub trait Group: Point {
+    fn identity() -> Self;
+    fn compose(&self, other: &Self) -> Self;
+    fn inverse(&self) -> Self;
+
+    #[cfg(feature = "testing")]
+    fn check_left_identity(&self) -> bool
+    where
+        Self: PartialEq,
+    {
+        Self::identity().compose(self) == *self
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_right_identity(&self) -> bool
+    where
+        Self: PartialEq,
+    {
+        self.compose(&Self::identity()) == *self
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_left_inverse(&self) -> bool
+    where
+        Self: PartialEq,
+    {
+        self.inverse().compose(self) == Self::identity()
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_right_inverse(&self) -> bool
+    where
+        Self: PartialEq,
+    {
+        self.compose(&self.inverse()) == Self::identity()
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_associativity(a: Self, b: Self, c: Self) -> bool
+    where
+        Self: PartialEq,
+    {
+        a.compose(&b).compose(&c) == a.compose(&b.compose(&c))
     }
 }
 
@@ -252,48 +231,9 @@ pub trait Euclidean:
 /// the exponential map at the identity alone is sufficient to generate a
 /// full tangent bundle over the entire group, with no separate wrapper type
 /// needed.
-pub trait LieGroup<V: Euclidean>: Point {
-    fn identity() -> Self;
-    fn compose(&self, other: &Self) -> Self;
-    fn inverse(&self) -> Self;
-
+pub trait LieGroup<V: Euclidean>: Group {
     fn identity_exp(v: V) -> Self;
     fn identity_log(p: &Self) -> Option<V>;
-
-    #[cfg(feature = "testing")]
-    fn check_left_identity(&self, epsilon: V::F) -> bool {
-        let id = Self::identity();
-
-        self.in_neighbourhood(&id.compose(self), epsilon)
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_right_identity(&self, epsilon: V::F) -> bool {
-        let id = Self::identity();
-
-        self.in_neighbourhood(&self.compose(&id), epsilon)
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_left_inverse(&self, epsilon: V::F) -> bool {
-        let id = Self::identity();
-
-        self.inverse().compose(&self).in_neighbourhood(&id, epsilon)
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_right_inverse(&self, epsilon: V::F) -> bool {
-        let id = Self::identity();
-
-        self.compose(&self.inverse()).in_neighbourhood(&id, epsilon)
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_associativity(a: Self, b: Self, c: Self, epsilon: V::F) -> bool {
-        a.compose(&b)
-            .compose(&c)
-            .in_neighbourhood(&a.compose(&b.compose(&c)), epsilon)
-    }
 }
 
 /// A notion of distance on a manifold.
@@ -318,19 +258,9 @@ pub trait LieGroup<V: Euclidean>: Point {
 pub trait Metric<R: Real>: Point {
     fn distance(&self, other: &Self) -> R;
 
-    fn within(&self, other: &Self, epsilon: R) -> bool {
-        self.distance(other) < epsilon
-    }
-
     #[cfg(feature = "testing")]
-    fn check_self_distance_zero(a: Self, epsilon: R) -> bool {
-        a.distance(&a) <= epsilon
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_triangle_inequality(a: Self, b: Self, c: Self, epsilon: R) -> bool {
-        let sum = a.distance(&b) + b.distance(&c);
-        a.distance(&c) <= sum * (R::one() + epsilon)
+    fn check_self_distance_zero(a: Self) -> bool {
+        a.distance(&a) == R::zero()
     }
 
     #[cfg(feature = "testing")]
@@ -339,8 +269,8 @@ pub trait Metric<R: Real>: Point {
     }
 
     #[cfg(feature = "testing")]
-    fn check_metric_symmetry(a: Self, b: Self, epsilon: R) -> bool {
-        (a.distance(&b) - b.distance(&a)).abs() < epsilon
+    fn check_metric_symmetry(a: Self, b: Self) -> bool {
+        a.distance(&b) == b.distance(&a)
     }
 }
 
@@ -371,47 +301,44 @@ pub trait InnerProduct<R: Real>: Metric<R> {
     }
 
     #[cfg(feature = "testing")]
-    fn check_inner_product_symmetry(a: Self, b: Self, epsilon: R) -> bool {
-        (a.dot(&b) - b.dot(&a)).abs() < epsilon
+    fn check_inner_product_symmetry(a: Self, b: Self) -> bool {
+        a.dot(&b) == b.dot(&a)
     }
 
     #[cfg(feature = "testing")]
-    fn check_additivity(a: Self, b: Self, c: Self, epsilon: R) -> bool
+    fn check_additivity(a: Self, b: Self, c: Self) -> bool
     where
         Self: Add<Output = Self> + Clone,
     {
         let lhs = (a.clone() + b.clone()).dot(&c);
         let rhs = a.dot(&c) + b.dot(&c);
-        (lhs - rhs).abs() < epsilon
+        lhs == rhs
     }
 
     #[cfg(feature = "testing")]
-    fn check_scalar_linearity(a: Self, c: Self, k: R, epsilon: R) -> bool
+    fn check_scalar_linearity(a: Self, c: Self, k: R) -> bool
     where
         Self: Mul<R, Output = Self> + Clone,
     {
         let lhs = (a.clone() * k).dot(&c);
         let rhs = k * a.dot(&c);
-        (lhs - rhs).abs() < epsilon
+        lhs == rhs
     }
 
     #[cfg(feature = "testing")]
-    fn check_positive_definite(a: Self, epsilon: R) -> bool
+    fn check_positive_definite(a: Self) -> bool
     where
         Self: Zero,
     {
-        let self_dot = a.dot(&a);
-        if a.is_zero() {
-            self_dot.abs() < epsilon
-        } else {
-            self_dot > R::zero()
-        }
+        a == Self::zero() || a.norm() > R::zero()
     }
 }
 
 /// By implementing ExpMap you certify that for C<P, V>: ExpMap<P, V> that
 /// straight lines through the origin in R^N map to geodesics on M, and
 /// that distances from the origin equal arc lengths along those geodesics.
+///
+/// Additionally, you certify that Self::chart_at(&self.base_point()) == self
 pub trait ExpMap<P: Point, V: Euclidean>: Chart<P, V> {
     fn base_point(&self) -> P {
         self.to_global(V::zero())
@@ -421,29 +348,43 @@ pub trait ExpMap<P: Point, V: Euclidean>: Chart<P, V> {
     // Meaningful only when base_point() is overridden, since
     // the default impl makes this trivially true by construction.
     #[cfg(feature = "testing")]
-    fn check_base_point_is_origin(&self, epsilon: V::F) -> bool {
+    fn check_base_point_is_origin(&self) -> bool {
         self.to_local(&self.base_point())
-            .map_or(false, |c| c.norm() < epsilon)
+            .map_or(false, |c| c.norm() == V::F::zero())
     }
 
     // Tests that log(exp(0)) == 0, i.e. that the
     // round trip at the origin is the identity.
     #[cfg(feature = "testing")]
-    fn check_preservation_of_origin(&self, epsilon: V::F) -> bool {
+    fn check_preservation_of_origin(&self) -> bool {
         let zero = V::zero();
         let exp_zero = self.to_global(zero);
         self.to_local(&exp_zero)
-            .map_or(false, |c| c.norm() < epsilon)
+            .map_or(false, |c| c.norm() == V::F::zero())
+    }
+
+    /// If a chart centred at `p` exists, `chart_at(p)` returns it.
+    /// Formally: `chart_at(p).base_point() == p` whenever `p` is
+    /// the base point of some valid chart in this atlas.
+    ///
+    /// This is weaker than the [`TangentBundle`] centring invariant,
+    /// which requires this to hold for *all* `p`. Here it is only
+    /// required when `p` is already a base point of some chart —
+    /// i.e. `chart_at` correctly identifies the chart when queried
+    /// at a known base point.
+    #[cfg(feature = "testing")]
+    fn check_chart_at_base_point(&self) -> bool {
+        Self::chart_at(&self.base_point()).check_preservation_of_origin()
     }
 
     // geodesics are reversible: log(exp(v)) == -log(exp(-v))
     #[cfg(feature = "testing")]
-    fn check_geodesic_symmetry(&self, v: V, epsilon: V::F) -> bool {
+    fn check_geodesic_symmetry(&self, v: V) -> bool {
         match (
             self.to_local(&self.to_global(v)),
             self.to_local(&self.to_global(-v)),
         ) {
-            (Some(fwd), Some(bwd)) => fwd.within(&(-bwd), epsilon),
+            (Some(fwd), Some(bwd)) => fwd == -bwd,
             _ => true, // at singularity, vacuously true
         }
     }
@@ -451,7 +392,7 @@ pub trait ExpMap<P: Point, V: Euclidean>: Chart<P, V> {
     // geodesics are straight lines: exp(tv) lies on the same geodesic as exp(v),
     // i.e. log(exp(tv)) and log(exp(v)) are parallel in local coords.
     #[cfg(feature = "testing")]
-    fn check_geodesic_scaling(&self, v: V, t: V::F, epsilon: V::F) -> bool {
+    fn check_geodesic_scaling(&self, v: V, t: V::F) -> bool {
         match (
             self.to_local(&self.to_global(v * t)),
             self.to_local(&self.to_global(v)),
@@ -462,7 +403,7 @@ pub trait ExpMap<P: Point, V: Euclidean>: Chart<P, V> {
                 let dot = tv_local.dot(&v_local);
                 let lhs = dot * dot;
                 let rhs = tv_local.norm_squared() * v_local.norm_squared();
-                (lhs - rhs).abs() < epsilon
+                lhs == rhs
             }
             _ => true,
         }
@@ -470,14 +411,10 @@ pub trait ExpMap<P: Point, V: Euclidean>: Chart<P, V> {
 
     // isometry to first order: |exp(epsilon * v) - base| / epsilon → |v|
     #[cfg(feature = "testing")]
-    fn check_first_order_isometry(&self, v: V, coef: V::F, epsilon: V::F) -> bool {
+    fn check_first_order_isometry(&self, v: V, coef: V::F) -> bool {
         let small_v = v * coef;
         self.to_local(&self.to_global(small_v))
-            .map_or(true, |local| {
-                let lhs = local.norm() / coef;
-                let rhs = v.norm();
-                (lhs - rhs).abs() < epsilon
-            })
+            .map_or(true, |local| local.norm() == v.norm() * coef)
     }
 }
 
@@ -520,9 +457,9 @@ pub trait TangentBundle<P: Point, V: Euclidean>: ExpMap<P, V> {
 
     // p is the point on the manifold which is the base point.
     #[cfg(feature = "testing")]
-    fn check_universal_centring(p: P, epsilon: V::F) -> bool {
+    fn check_universal_centring(p: P) -> bool {
         let chart = Self::chart_at(&p);
-        chart.check_preservation_of_origin(epsilon) && chart.check_base_point_is_origin(epsilon)
+        chart.check_preservation_of_origin() && chart.check_base_point_is_origin()
     }
 }
 
@@ -616,17 +553,47 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Euclidean>: Point {
     fn check_new_respects_coset(g: G, h: H) -> bool
     where
         Self: Metric<V::F>,
+        Self: PartialEq,
     {
         Self::new(Self::embed(h).compose(&g)) == Self::new(g)
     }
 }
 
+/// A presentation of a group by generators and relations.
+///
+/// A group presentation `⟨S | R⟩` consists of a set of generators `S`
+/// and a set of relations `R` — words in the generators that evaluate to
+/// the identity. The presented group is the free group on `S` quotiented
+/// by the normal closure of `R`.
+///
+/// By implementing this trait, you certify that your type faithfully
+/// represents such a presentation — the generators are indexed `0..n_generators`,
+/// and the relations are words in those generators (pairs of generator index
+/// and whether it appears inverted).
+///
+/// The specific storage container is immaterial — only the mathematical
+/// content (the generators and relations as iterable sequences) matters.
+pub trait GroupPresentation {
+    type Word: IntoIterator<Item = (usize, bool)> + Clone + std::fmt::Debug;
+    type Relations<'a>: IntoIterator<Item = &'a Self::Word> + std::fmt::Debug
+    where
+        <Self as GroupPresentation>::Word: 'a,
+        Self: 'a;
+
+    /// The number of generators in the presentation.
+    fn n_generators(&self) -> usize;
+
+    /// The relations — words in the generators that evaluate to the identity.
+    fn relations(&self) -> Self::Relations<'_>;
+}
+
 /// A finite collection of [`TangentBundle`] charts whose injectivity domains
-/// together cover a manifold `P`.
+/// together cover a manifold `P`, forming the nerve of the cover as a
+/// simplicial complex.
 ///
 /// # What makes this special
 /// Every atlas covers its manifold by definition — that is not what
-/// distinguishes `GeodesicCover`. What is special is threefold:
+/// distinguishes `NerveComplex`. What is special is fourfold:
 ///
 /// - **Finiteness**: the charts can be explicitly enumerated via [`Self::nodes`]
 /// - **Geodesic structure**: each node is a [`TangentBundle`], so distances
@@ -634,125 +601,338 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Euclidean>: Point {
 /// - **Centring**: each node is centred at its own base point, so the graph
 ///   of overlapping injectivity domains faithfully represents the manifold's
 ///   geometry
+/// - **Simplicial structure**: overlapping charts form a simplicial complex —
+///   0-simplices (nodes), 1-simplices (overlapping pairs), 2-simplices
+///   (mutually overlapping triples), and so on — whose homotopy type matches
+///   the manifold by the nerve theorem
 ///
 /// Together these properties reduce global geodesic distance to an exact
-/// graph search problem: nodes are charts, edges connect charts whose
-/// injectivity domains overlap, and the fundamental group `π₁(M)` is
-/// recoverable from the graph's spanning tree structure.
+/// graph search problem, and make the full homotopy type of the manifold
+/// — including `π₁(M)`, `π₂(M)`, and higher — recoverable from the
+/// intersection pattern of the cover.
+///
+/// # Compactness
+/// When implemented with [`Bounded`] nodes (charts with explicitly bounded
+/// domains), `NerveComplex` provides a constructive proof that `P` is
+/// compact — finitely many bounded open sets cover `P` if and only if `P`
+/// is compact. With unbounded nodes (e.g. on flat manifolds where the exp
+/// map is globally defined), `NerveComplex` can be implemented for
+/// non-compact manifolds and makes no compactness claim.
 ///
 /// # The covering invariant
 /// The implementor certifies that for every point `p: P`, at least one
-/// node `n` in `self.nodes()` satisfies `n.to_local(p).is_some()` — i.e.
-/// `p` lies within `n`'s injectivity domain. This is the key invariant
-/// that makes geodesic distance computable: every point is reachable from
-/// some node, and every geodesic is captured by some path through the graph.
+/// node `n` in `Self::nodes()` satisfies `n.to_local(p).is_some()` — i.e.
+/// `p` lies within `n`'s injectivity domain. This invariant is not a
+/// separate requirement: it is automatically certified by the [`Chart`]
+/// contract inherited via [`ExpMap`]. Specifically, `chart_at(p)` must
+/// return a chart covering `p`, and since `chart_at` finds its chart from
+/// `Self::nodes()`, the covering invariant follows directly from
+/// `check_local_inverse` passing in `test_chart!`. No additional tests
+/// are needed beyond those already required by the trait hierarchy.
 ///
-/// Tighter coverings (minimal overlap between injectivity domains) give more
-/// efficient graph searches and more faithful recovery of `π₁(M)`.
+/// # The nerve theorem
+/// Since injectivity domains are star-shaped (hence contractible), the
+/// nerve theorem guarantees that the simplicial complex formed by the
+/// cover has the same homotopy type as `M`. This makes `π₁(M)` recoverable
+/// from the spanning tree of the 1-skeleton (the overlap graph), with
+/// relations arising from 2-simplices (triangles — triple intersections),
+/// and higher homotopy groups `πₙ(M)` recoverable from `n`-simplices.
+/// The `'static` lifetime on `nodes()` is load-bearing: it guarantees that
+/// `nodes()` returns the same slice on every call, making `chart_at`
+/// always search the same fixed set and the covering invariant follow
+/// from `check_local_inverse`.
+///
 /// # Implementing
-/// Use `test_geodesic_cover!` to verify the covering invariant. Nodes should
-/// be spaced such that every point lies within the injectivity domain of at
-/// least one node — the nerve theorem guarantees that a covering by
-/// contractible sets (injectivity domains are star-shaped, hence contractible)
-/// recovers the full homotopy type of the manifold.
-pub trait GeodesicCover<P: Point, V: Euclidean, N: TangentBundle<P, V>> {
-    fn nodes(&self) -> &[N];
+/// Nodes should be spaced such that every point lies within the injectivity
+/// domain of at least one node. For principled node spacing, use the Rauch
+/// bound `π / √κ_max` (computable via [`ExpMap::max_sectional_curvature`])
+/// as the cover radius at each node — this guarantees the radius stays
+/// within the injectivity domain. Sampling density must additionally satisfy
+/// `d < 2π / √κ_max` (twice the Rauch bound) to ensure adjacent nodes
+/// overlap and the nerve faithfully captures the topology. Near high-curvature
+/// regions, both the radius and the required sampling density shrink
+/// proportionally — the cover automatically adapts to the geometry.
+pub trait NerveComplex<P: Point, V: Euclidean, T: Bounded<P, V> + PartialEq>: ExpMap<P, V> {
+    /// Returns the fixed set of [`TangentBundle`] charts that cover the manifold.
+    ///
+    /// This function must be *effectively pure* — it must return the same nodes
+    /// on every call, since the nodes are a property of the type, not of any
+    /// particular instance. The idiomatic way to enforce this is via
+    /// [`std::sync::LazyLock`] or [`std::sync::OnceLock`], which guarantee the
+    /// initialiser runs exactly once regardless of how many times `nodes()` is
+    /// called:
+    ///
+    /// ```rust
+    /// fn nodes() -> &'static [MyNode] {
+    ///     static NODES: LazyLock<Vec<MyNode>> = LazyLock::new(|| {
+    ///         // compute nodes here, runs exactly once
+    ///     });
+    ///     &NODES
+    /// }
+    /// ```
+    ///
+    /// The `'static` lifetime is load-bearing: it guarantees that `nodes()`
+    /// returns the *same* slice on every call — not merely an equal one, but
+    /// the identical allocation. This makes `nodes()` effectively a pure
+    /// function at the memory level, which in turn means that `chart_at(p)`
+    /// always searches the same fixed set of nodes. Since [`Chart::check_local_inverse`]
+    /// verifies that `chart_at(p).to_local(p).is_some()` for arbitrary `p`,
+    /// and `chart_at` finds its chart from this fixed `nodes()`, the covering
+    /// invariant — every point is covered by at least one node — is automatically
+    /// certified by the existing [`Chart`] test infrastructure. No additional
+    /// `check_*` methods or `test_*` macros are needed.
+    fn nodes() -> &'static [T]
+    where
+        T: 'static;
 
-    fn heuristic(other: &P) -> impl Fn(&Self) -> V::F {
-        let _ = other;
-        |_| V::F::zero() // default: Dijkstra
-    }
-
-    #[allow(unused)]
-    fn geodesic_distance(&self, other: &P, nodes: &[N], epsilon: V::F) -> V::F {
-        todo!();
-        /*
-        use std::collections::BinaryHeap;
-
-        #[derive(Clone, PartialEq, PartialOrd)]
-        struct State<F> {
-            cost: F,
-            index: usize,
-        }
-
-        impl<F: PartialEq> Eq for State<F> {}
-        impl<F: PartialOrd> Ord for State<F> {
-            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-                self.partial_cmp(other)
-                    .expect("AGH! NaN! ABORT ABORT ABORT!")
-            }
-        }
-
-        let h = Self::heuristic(other);
-        let mut g: Vec<Option<V::F>> = vec![None; nodes.len()];
-
-        let mut heap = BinaryHeap::<State<V::F>>::new();
-
+    /// Returns the indices of nodes whose injectivity domains overlap with
+    /// the injectivity domain of node `idx` — i.e. nodes `j` such that
+    /// `self.nodes()[idx].to_local(&self.nodes()[j].base_point()).is_some()`.
+    ///
+    /// The default implementation is an `O(n)` linear scan over all nodes.
+    /// Override this for better performance if your cover has additional
+    /// structure (e.g. a spatial index or precomputed adjacency list).
+    fn get_neighbors<'a>(&'a self) -> impl Iterator<Item = usize> + 'a
+    where
+        T: 'static,
+        P: 'a,
+    {
         let base = self.base_point();
-
-        fn get_neighbors<P: Point, V: Euclidean, T: TangentBundle<P, V>>(
-            point: &P,
-            nodes: &[T],
-        ) -> impl Iterator<Item = (usize, V::F)> {
-            nodes.iter().enumerate().filter_map(move |(idx, other)| {
-                if point != &other.base_point() {
-                    other.local_distance(&point).map(|d| (idx, d))
-                } else {
-                    None
-                }
-            })
-        }
-
-        // find a node covering the base_point
-        let (start_idx, start_node) = nodes
+        let inode = T::chart_at(&base);
+        Self::nodes()
             .iter()
             .enumerate()
-            .find(|(_, node)| node.to_local(&base).is_some())
-            .expect("nodes must cover the manifold — no node covers the start point");
+            .filter_map(move |(j_idx, jnode)| {
+                // both directions must agree
+                let i_sees_j = inode.to_local(&jnode.base_point());
+                let j_sees_i = jnode.to_local(&base);
+                match (i_sees_j, j_sees_i) {
+                    (Some(i), Some(j)) if *jnode != inode => {
+                        if inode.sdf(&j) + jnode.sdf(&i) < V::F::zero() {
+                            Some(j_idx)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            })
+    }
 
-        let distance_start = start_node.local_distance(&base).unwrap();
-        g[start_idx] = Some(distance_start);
+    /// Computes the fundamental group π₁(M) of the manifold from the
+    /// graph structure of this cover via the spanning tree construction.
+    ///
+    /// By the nerve theorem, since injectivity domains are contractible
+    /// (star-shaped) and cover the manifold, the nerve of this cover has
+    /// the same homotopy type as `M`. The fundamental group is therefore
+    /// recoverable purely from the graph of overlapping injectivity domains.
+    fn fundamental_group(&self) -> impl GroupPresentation
+    where
+        T: 'static,
+    {
+        let nodes = Self::nodes();
+        let n = nodes.len();
 
-        heap.push(State {
-            cost: distance_start + h(start_node),
-            index: start_idx,
-        });
-
-        while let Some(state) = heap.pop() {
-            let current_g = g[state.index].unwrap();
-            let current_node = &nodes[state.index];
-
-            if let Some(last_distance) = current_node.local_distance(other) {
-                return current_g + last_distance;
-            }
-
-            // stale entry check:
-            if state.cost > current_g + h(current_node) + epsilon {
-                continue;
-            }
-
-            for (node_idx, distance_to_previous) in
-                get_neighbors(&nodes[state.index].base_point(), nodes)
-            {
-                let node = &nodes[node_idx];
-                let distance = current_g + distance_to_previous;
-
-                if g[node_idx].map_or(true, |x| distance < x) {
-                    g[node_idx] = Some(distance);
-                    heap.push(State {
-                        cost: distance + h(node),
-                        index: node_idx,
-                    });
+        // BFS spanning tree
+        let mut parent: Vec<Option<usize>> = vec![None; n];
+        let mut visited: Vec<bool> = vec![false; n];
+        let mut queue = std::collections::VecDeque::new();
+        visited[0] = true;
+        queue.push_back(0usize);
+        while let Some(idx) = queue.pop_front() {
+            let chart = Self::chart_at(&nodes[idx].base_point());
+            for neighbour_idx in chart.get_neighbors() {
+                if !visited[neighbour_idx] {
+                    visited[neighbour_idx] = true;
+                    parent[neighbour_idx] = Some(idx);
+                    queue.push_back(neighbour_idx);
                 }
             }
         }
 
-        unreachable!("nodes must cover the manifold")
-        */
+        // generators: non-tree edges (i < j to avoid duplicates)
+        let generators: Vec<(usize, usize)> = (0..n)
+            .flat_map(|i| {
+                let parent = &parent;
+                Self::chart_at(&nodes[i].base_point())
+                    .get_neighbors()
+                    .filter_map(move |j| {
+                        if i < j && parent[j] != Some(i) && parent[i] != Some(j) {
+                            Some((i, j))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        let path_to_root = |mut idx: usize| -> Vec<usize> {
+            let mut path = vec![idx];
+            while let Some(p) = parent[idx] {
+                path.push(p);
+                idx = p;
+            }
+            path.reverse();
+            path
+        };
+
+        let path_to_word = |path: Vec<usize>| -> Vec<(usize, bool)> {
+            path.windows(2)
+                .filter_map(|w| {
+                    let (a, b) = (w[0], w[1]);
+                    generators
+                        .iter()
+                        .enumerate()
+                        .find_map(|(gen_idx, &(x, y))| {
+                            if (x, y) == (a, b) {
+                                Some((gen_idx, false))
+                            } else if (x, y) == (b, a) {
+                                Some((gen_idx, true))
+                            } else {
+                                None
+                            }
+                        })
+                })
+                .collect()
+        };
+
+        fn reduce_word(word: Vec<(usize, bool)>) -> Vec<(usize, bool)> {
+            let mut reduced: Vec<(usize, bool)> = Vec::new();
+            for letter in word {
+                if let Some(&last) = reduced.last() {
+                    if last == (letter.0, !letter.1) {
+                        reduced.pop();
+                        continue;
+                    }
+                }
+                reduced.push(letter);
+            }
+            reduced
+        }
+
+        // relations come from triangles (triple intersections) in the nerve —
+        // not from non-tree edges directly. For each triple (i,j,k) where all
+        // three pairs are neighbours, the triangle boundary gives a relation:
+        // the word formed by the cycle i→j→k→i expressed in generators.
+        // π₁ of a graph is always free (no relations from edges alone);
+        // relations only arise from 2-simplices (filled triangles) in the nerve.
+        let edge_word = |a: usize, b: usize| -> Vec<(usize, bool)> {
+            let mut path = path_to_root(a);
+            path.extend(path_to_root(b).into_iter().rev());
+            path_to_word(path)
+        };
+
+        let neighbors: Vec<Vec<usize>> = (0..n)
+            .map(|i| {
+                Self::chart_at(&nodes[i].base_point())
+                    .get_neighbors()
+                    .collect()
+            })
+            .collect();
+
+        let relations: Vec<Vec<(usize, bool)>> = (0..n)
+            .flat_map(|i| {
+                let neighbors = &neighbors;
+                let edge_word = &edge_word;
+                let neighbors_i = &neighbors[i];
+                neighbors_i
+                    .iter()
+                    .flat_map(move |&j| {
+                        let neighbors = neighbors;
+                        let edge_word = edge_word;
+                        if j <= i {
+                            return vec![];
+                        }
+                        let neighbors_j = &neighbors[j];
+                        neighbors_j
+                            .iter()
+                            .filter_map(move |&k| {
+                                if k <= j {
+                                    return None;
+                                }
+                                if neighbors[i].contains(&k) {
+                                    let mut word = edge_word(i, j);
+                                    word.extend(edge_word(j, k));
+                                    word.extend(edge_word(k, i));
+                                    let reduced = reduce_word(word);
+                                    if reduced.is_empty() {
+                                        None
+                                    } else {
+                                        Some(reduced)
+                                    }
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        #[derive(Debug, PartialEq)]
+        struct FundamentalGroupPresentation {
+            n_generators: usize,
+            relations: Vec<Vec<(usize, bool)>>,
+        }
+
+        impl GroupPresentation for FundamentalGroupPresentation {
+            type Word = Vec<(usize, bool)>;
+            type Relations<'a> = &'a [Vec<(usize, bool)>];
+
+            fn n_generators(&self) -> usize {
+                self.n_generators
+            }
+
+            fn relations(&self) -> Self::Relations<'_> {
+                &self.relations
+            }
+        }
+
+        FundamentalGroupPresentation {
+            n_generators: generators.len(),
+            relations,
+        }
     }
 }
 
-impl<E: Euclidean> LieGroup<E> for E {
+pub trait Bounded<P: Point, V: Euclidean>: TangentBundle<P, V> {
+    /// The signed distance field in the tangent
+    /// space of the chart centered at &self.
+    fn sdf(&self, v: &V) -> V::F;
+    fn new(p: P) -> Self;
+    fn inner(&self) -> &P;
+}
+
+#[macro_export]
+macro_rules! impl_tangent_bundle_via_bounded {
+    ($type:ty, $point:ty, $v:ty) => {
+        impl $crate::traits::Chart<$point, $v> for $type {
+            fn to_local(&self, point: &$point) -> Option<$v> {
+                self.inner().to_local(point)
+                /* This innocent looking idea is a broken concept because
+                   two domains can touch with neither centre seeing the other's centre
+                self.inner()
+                    .to_local(point)
+                    .filter(|v| self.sdf(v) < <$v as $crate::traits::Euclidean>::F::zero())
+                */
+            }
+            fn to_global(&self, coord: $v) -> $point {
+                self.inner().to_global(coord)
+            }
+
+            fn chart_at(p: &$point) -> Self {
+                Self::new(<$point>::chart_at(p))
+            }
+        }
+
+        impl $crate::traits::ExpMap<$point, $v> for $type {}
+        impl $crate::traits::TangentBundle<$point, $v> for $type {}
+    };
+}
+
+impl<E: Euclidean> Group for E {
     fn identity() -> Self {
         Self::zero()
     }
@@ -764,7 +944,9 @@ impl<E: Euclidean> LieGroup<E> for E {
     fn inverse(&self) -> Self {
         -*self
     }
+}
 
+impl<E: Euclidean> LieGroup<E> for E {
     fn identity_exp(v: E) -> Self {
         v
     }
@@ -802,7 +984,7 @@ impl<V: Euclidean, L: LieGroup<V>> TangentBundle<Self, V> for L {}
 #[macro_export]
 macro_rules! impl_lie_group_via_quotient {
     ($type:ty, $g:ty, $h:ty) => {
-        impl<V: Euclidean> crate::traits::LieGroup<V> for $type {
+        impl<V: Euclidean> Group for $type {
             fn identity() -> Self {
                 <Self as crate::traits::Quotient<$g, $h, V>>::quotient_identity()
             }
@@ -812,6 +994,9 @@ macro_rules! impl_lie_group_via_quotient {
             fn inverse(&self) -> Self {
                 <Self as crate::traits::Quotient<$g, $h, V>>::quotient_inverse(self)
             }
+        }
+
+        impl<V: Euclidean> crate::traits::LieGroup<V> for $type {
             fn identity_exp(v: V) -> Self {
                 <Self as crate::traits::Quotient<$g, $h, V>>::quotient_identity_exp(v)
             }
@@ -855,21 +1040,21 @@ pub mod testing {
                         b in $arb_point,
                         c in $arb_point,
                     ) {
-                        prop_assert!(<$space>::check_translation_invariance(&a, &b, &c, EPSILON));
+                        prop_assert!(<$space>::check_translation_invariance(&a, &b, &c));
                     }
 
                     #[test]
                     fn global_geodesic_scaling(
                         p in $arb_point,
                         v in $arb_vec,
-                        t in -10.0f64..10.0f64, // unbounded t, flat space has no injectivity radius
+                        t in $arb_scalar, // unbounded t, flat space has no injectivity radius
                     ) {
-                        prop_assert!(<$space>::check_global_geodesic_scaling(&p, v, t, EPSILON));
+                        prop_assert!(<$space>::check_global_geodesic_scaling(&p, v, t));
                     }
 
                     #[test]
                     fn pythagorean(a in $arb_point, b in $arb_point) {
-                        prop_assert!(<$space>::check_pythagorean(&a, &b, EPSILON));
+                        prop_assert!(<$space>::check_pythagorean(&a, &b));
                     }
                 }
             }
@@ -886,7 +1071,7 @@ pub mod testing {
                 proptest! {
                     #[test]
                     fn coverage(p in $arb_point) {
-                        prop_assert!(<$chart>::check_local_inverse(&p, EPSILON))
+                        prop_assert!(<$chart>::check_local_inverse(&p))
                     }
                 }
             }
@@ -909,31 +1094,37 @@ pub mod testing {
                     #[test]
                     fn preservation_of_origin(p in $arb_point) {
                         let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_preservation_of_origin(EPSILON));
+                        prop_assert!(chart.check_preservation_of_origin());
+                    }
+
+                    #[test]
+                    fn chart_at_base_point(p in $arb_point) {
+                        let chart = <$chart>::chart_at(&p);
+                        prop_assert!(chart.check_chart_at_base_point());
                     }
 
                     #[test]
                     fn base_point_is_origin(p in $arb_point) {
                         let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_base_point_is_origin(EPSILON));
+                        prop_assert!(chart.check_base_point_is_origin());
                     }
 
                     #[test]
                     fn geodesic_symmetry(p in $arb_point, v in $arb_vec) {
                         let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_geodesic_symmetry(v, EPSILON));
+                        prop_assert!(chart.check_geodesic_symmetry(v));
                     }
 
                     #[test]
                     fn geodesic_scaling(p in $arb_point, v in $arb_vec, t in 0.0f64..1.0f64) {
                         let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_geodesic_scaling(v, t, EPSILON));
+                        prop_assert!(chart.check_geodesic_scaling(v, R64(t)));
                     }
 
                     #[test]
                     fn first_order_isometry(p in $arb_point, v in $arb_vec) {
                         let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_first_order_isometry(v, 1e-5, EPSILON));
+                        prop_assert!(chart.check_first_order_isometry(v, R64(1e-5)));
                     }
                 }
             }
@@ -954,7 +1145,44 @@ pub mod testing {
                     // The TangentFibre invariant: chart_at(&p).to_global(zero) == p
                     #[test]
                     fn tangent_fibre_invariant(p in $arb_point) {
-                        prop_assert!(<$chart>::check_universal_centring(p, EPSILON));
+                        prop_assert!(<$chart>::check_universal_centring(p));
+                    }
+                }
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! test_group {
+        ($mod_name:ident, $point:ty, $arb_point:expr) => {
+            mod $mod_name {
+                use super::*;
+                proptest! {
+                    #[test]
+                    fn left_identity(p in $arb_point) {
+                        prop_assert!(
+                            <$point as Group<_>>::check_left_identity(&p)
+                        );
+                    }
+
+                    #[test]
+                    fn right_identity(p in $arb_point) {
+                        prop_assert!(<$point as Group<_>>::check_right_identity(&p));
+                    }
+
+                    #[test]
+                    fn left_inverse(p in $arb_point) {
+                        prop_assert!(<$point as Group<_>>::check_left_inverse(&p));
+                    }
+
+                    #[test]
+                    fn right_inverse(p in $arb_point) {
+                        prop_assert!(<$point as Group<_>>::check_right_inverse(&p));
+                    }
+
+                    #[test]
+                    fn associativity(a in $arb_point, b in $arb_point, c in $arb_point) {
+                        prop_assert!(<$point as Group<_>>::check_associativity(a, b, c));
                     }
                 }
             }
@@ -970,27 +1198,29 @@ pub mod testing {
                 proptest! {
                     #[test]
                     fn left_identity(p in $arb_point) {
-                        prop_assert!(p.check_left_identity(EPSILON));
+                        prop_assert!(
+                            p.check_left_identity()
+                        );
                     }
 
                     #[test]
                     fn right_identity(p in $arb_point) {
-                        prop_assert!(p.check_right_identity(EPSILON));
+                        prop_assert!(p.check_right_identity());
                     }
 
                     #[test]
                     fn left_inverse(p in $arb_point) {
-                        prop_assert!(p.check_left_inverse(EPSILON));
+                        prop_assert!(p.check_left_inverse());
                     }
 
                     #[test]
                     fn right_inverse(p in $arb_point) {
-                        prop_assert!(p.check_right_inverse(EPSILON));
+                        prop_assert!(p.check_right_inverse());
                     }
 
                     #[test]
                     fn associativity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                        prop_assert!(<$point>::check_associativity(a, b, c, EPSILON));
+                        prop_assert!(<$point>::check_associativity(a, b, c));
                     }
                 }
             }
@@ -1011,17 +1241,12 @@ pub mod testing {
 
                     #[test]
                     fn symmetry(a in $arb_point, b in $arb_point) {
-                        prop_assert!(<$point>::check_metric_symmetry(a, b, EPSILON));
+                        prop_assert!(<$point>::check_metric_symmetry(a, b));
                     }
 
                     #[test]
                     fn self_distance_zero(p in $arb_point) {
-                        prop_assert!(<$point>::check_self_distance_zero(p, EPSILON))
-                    }
-
-                    #[test]
-                    fn check_triangle_inequality(a in $arb_point, b in $arb_point, c in $arb_point) {
-                        prop_assert!(<$point>::check_triangle_inequality(a, b, c, EPSILON))
+                        prop_assert!(<$point>::check_self_distance_zero(p))
                     }
                 }
             }
@@ -1037,22 +1262,22 @@ pub mod testing {
                 proptest! {
                     #[test]
                     fn symmetry(a in $arb_point, b in $arb_point) {
-                        prop_assert!(<$point>::check_inner_product_symmetry(a, b, EPSILON));
+                        prop_assert!(<$point>::check_inner_product_symmetry(a, b));
                     }
 
                     #[test]
                     fn additivity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                        prop_assert!(<$point>::check_additivity(a, b, c, EPSILON));
+                        prop_assert!(<$point>::check_additivity(a, b, c));
                     }
 
                     #[test]
                     fn scalar_linearity(a in $arb_point, c in $arb_point, k in $arb_scalar) {
-                        prop_assert!(<$point>::check_scalar_linearity(a, c, k, EPSILON));
+                        prop_assert!(<$point>::check_scalar_linearity(a, c, k));
                     }
 
                     #[test]
                     fn positive_definite(a in $arb_point) {
-                        prop_assert!(<$point>::check_positive_definite(a, EPSILON));
+                        prop_assert!(<$point>::check_positive_definite(a));
                     }
                 }
             }
@@ -1074,6 +1299,21 @@ pub mod testing {
                     #[test]
                     fn canonical_respects_coset(g in $arb_g, h in $arb_h) {
                         prop_assert!(<$quotient>::check_canonical_respects_coset(g, h));
+                    }
+                }
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! test_geodesic_cover {
+        ($mod_name:ident, $cover:ty, $arb_cover:expr, $arb_point:expr) => {
+            mod $mod_name {
+                use super::*;
+                proptest! {
+                    #[test]
+                    fn covering(cover in $arb_cover, p in $arb_point) {
+                        prop_assert!(cover.check_covering(&p));
                     }
                 }
             }

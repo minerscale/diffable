@@ -7,9 +7,10 @@ use common::*;
 
 use diffable::{
     coords::Coords,
+    epsilon_metric::R64,
     test_chart, test_euclidean, test_exp_map, test_inner_product, test_lie_group, test_metric,
     test_tangent_bundle,
-    traits::{Chart, Euclidean, ExpMap, InnerProduct, LieGroup, Metric, TangentBundle},
+    traits::{Chart, Euclidean, ExpMap, Group, InnerProduct, Metric, TangentBundle},
 };
 
 use proptest::prelude::*;
@@ -21,7 +22,7 @@ test_euclidean!(euclidian_v2, Coords<_, _>, arb_vec::<2>(), arb_vec::<2>(), arb_
 test_euclidean!(euclidian_v3, Coords<_, _>, arb_vec::<3>(), arb_vec::<3>(), arb_scalar());
 
 // Lie group axioms
-test_lie_group!(lie_group_v0, Coords<f64, 0>, arb_vec::<0>());
-test_lie_group!(lie_group_v1, Coords<f64, 1>, arb_vec::<1>());
-test_lie_group!(lie_group_v2, Coords<f64, 2>, arb_vec::<2>());
-test_lie_group!(lie_group_v3, Coords<f64, 3>, arb_vec::<3>());
+test_lie_group!(lie_group_v0, Coords<R64, 0>, arb_vec::<0>());
+test_lie_group!(lie_group_v1, Coords<R64, 1>, arb_vec::<1>());
+test_lie_group!(lie_group_v2, Coords<R64, 2>, arb_vec::<2>());
+test_lie_group!(lie_group_v3, Coords<R64, 3>, arb_vec::<3>());
