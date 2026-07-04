@@ -135,9 +135,7 @@ pub trait NerveComplex<
     ///
     /// [`Chart`]: crate::traits::Chart
     /// [`check_local_inverse`]: crate::traits::Chart::check_local_inverse
-    fn nodes() -> &'static [B]
-    where
-        B: 'static;
+    fn nodes() -> &'static [B];
 
     /// Returns the indices of nodes whose bounded domains overlap the
     /// bounded domain of this node — the 1-skeleton of the nerve.
@@ -293,44 +291,26 @@ pub trait NerveComplex<
 
         let neighbors: Vec<Vec<usize>> = (0..n).map(|i| Self::get_neighbors(i).collect()).collect();
 
-        let relations: Vec<Vec<(usize, bool)>> = (0..n)
+        let triangles: Vec<(usize, usize, usize)> = (0..n)
             .flat_map(|i| {
                 let neighbors = &neighbors;
-                let edge_word = &edge_word;
-                let neighbors_i = &neighbors[i];
-                neighbors_i
-                    .iter()
-                    .flat_map(move |&j| {
-                        let neighbors = neighbors;
-                        let edge_word = edge_word;
-                        if j <= i {
-                            return vec![];
-                        }
-                        let neighbors_j = &neighbors[j];
-                        neighbors_j
-                            .iter()
-                            .filter_map(move |&k| {
-                                if k <= j {
-                                    return None;
-                                }
-                                if neighbors[i].contains(&k) {
-                                    let mut word = edge_word(i, j);
-                                    word.extend(edge_word(j, k));
-                                    word.extend(edge_word(k, i));
-                                    let reduced = reduce_word(word);
-                                    if reduced.is_empty() {
-                                        None
-                                    } else {
-                                        Some(reduced)
-                                    }
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<Vec<_>>()
+                neighbors[i].iter().flat_map(move |&j| {
+                    neighbors[j].iter().filter_map(move |&k| {
+                        (i < j && j < k && neighbors[i].contains(&k)).then_some((i, j, k))
                     })
-                    .collect::<Vec<_>>()
+                })
             })
+            .collect();
+
+        let relations: Vec<Vec<(usize, bool)>> = triangles
+            .into_iter()
+            .map(|(i, j, k)| {
+                let mut w = edge_word(i, j);
+                w.extend(edge_word(j, k));
+                w.extend(edge_word(k, i));
+                reduce_word(w)
+            })
+            .filter(|w| !w.is_empty())
             .collect();
 
         // -------------------------------------------------------------------
@@ -508,6 +488,12 @@ pub trait NerveComplex<
     }
 }
 
+/// Restricts the domain of [`Chart::to_local`] to some subset
+/// defined by a signed distance function in the tangent space
+/// at each point on a [`TangentBundle`].
+///
+/// [`Chart::to_local`]: crate::traits::Chart::to_local
+/// [`TangentBundle`]: crate::traits::TangentBundle
 pub trait Bounded<P: Point, V: Euclidean>: TangentBundle<P, V> {
     /// The signed distance field in the tangent
     /// space of the chart centered at &self.

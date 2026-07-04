@@ -4,7 +4,7 @@
 use diffable::{
     coords::Coords,
     epsilon_metric::R64,
-    hypersphere::{So3, Sphere},
+    hypersphere::{S0, S1, S3, So3, Sphere},
     traits::Quotient,
 };
 
@@ -14,22 +14,22 @@ use proptest::prelude::*;
 // ---------------------------------------------------------------------------
 // Generators
 // ---------------------------------------------------------------------------
-pub fn arb_sphere0() -> impl Strategy<Value = Sphere<0, Coords<R64, 0>>> {
+pub fn arb_sphere0() -> impl Strategy<Value = S0<Coords<R64, 0>>> {
     proptest::bool::ANY.prop_map(|positive| {
         if positive {
-            Sphere::new(R64::one(), [].into())
+            S0(Sphere::new(R64::one(), [].into()))
         } else {
-            Sphere::new(-R64::one(), [].into())
+            S0(Sphere::new(-R64::one(), [].into()))
         }
     })
 }
 
 prop_compose! {
     pub fn arb_sphere1()(angle in -std::f64::consts::PI..std::f64::consts::PI)
-        -> Sphere<1, Coords<R64, 1>>
+        -> S1<Coords<R64, 1>>
     {
         let angle = R64(angle);
-        Sphere::new(angle.cos(), [angle.sin()].into())
+        S1(Sphere::new(angle.cos(), [angle.sin()].into()))
     }
 }
 
@@ -39,9 +39,33 @@ prop_compose! {
         x in -1.0f64..1.0f64,
         y in -1.0f64..1.0f64,
         z in -1.0f64..1.0f64,
-    ) -> Sphere<3, Coords<R64, 3>> {
+    ) -> S3<Coords<R64, 3>> {
         let w = if w.abs() + x.abs() + y.abs() + z.abs() < 1e-10 { 1.0 } else { w };
-        Sphere::new(R64(w), [x, y, z].map(|x| R64(x)).into())
+        S3(Sphere::new(R64(w), [x, y, z].map(|x| R64(x)).into()))
+    }
+}
+
+prop_compose! {
+    pub fn arb_sphere2()(
+        w in -1.0f64..1.0f64,
+        x in -1.0f64..1.0f64,
+        y in -1.0f64..1.0f64,
+    ) -> Sphere<2, Coords<R64, 2>> {
+        let w = if w.abs() + x.abs() + y.abs() < 1e-10 { 1.0 } else { w };
+        Sphere::new(R64(w), [x, y].map(R64).into())
+    }
+}
+
+prop_compose! {
+    pub fn arb_sphere4()(
+        w in -1.0f64..1.0f64,
+        x in -1.0f64..1.0f64,
+        y in -1.0f64..1.0f64,
+        z in -1.0f64..1.0f64,
+        u in -1.0f64..1.0f64,
+    ) -> Sphere<4, Coords<R64, 4>> {
+        let w = if w.abs() + x.abs() + y.abs() + z.abs() + u.abs() < 1e-10 { 1.0 } else { w };
+        Sphere::new(R64(w), [x, y, z, u].map(R64).into())
     }
 }
 
@@ -60,12 +84,32 @@ prop_compose! {
 }
 
 prop_compose! {
+    pub fn arb_vec2()(
+        x in -10.0f64..10.0f64,
+        y in -10.0f64..10.0f64,
+    ) -> Coords<R64, 2> {
+        [R64(x), R64(y)].into()
+    }
+}
+
+prop_compose! {
     pub fn arb_vec3()(
         x in -10.0f64..10.0f64,
         y in -10.0f64..10.0f64,
         z in -10.0f64..10.0f64,
     ) -> Coords<R64, 3> {
         [R64(x), R64(y), R64(z)].into()
+    }
+}
+
+prop_compose! {
+    pub fn arb_vec4()(
+        x in -10.0f64..10.0f64,
+        y in -10.0f64..10.0f64,
+        z in -10.0f64..10.0f64,
+        w in -10.0f64..10.0f64,
+    ) -> Coords<R64, 4> {
+        [R64(x), R64(y), R64(z), R64(w)].into()
     }
 }
 

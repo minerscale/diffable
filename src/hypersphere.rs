@@ -5,7 +5,7 @@ use crate::{
     impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
     traits::{
         Bounded, Chart, Euclidean, ExpMap, Group, InnerProduct, LieGroup, Metric, NerveComplex,
-        Quotient, TangentBundle,
+        Quotient, Smooth, TangentBundle,
     },
 };
 use num_traits::{NumCast, One, Zero, real::Real};
@@ -105,28 +105,145 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
     }
 }
 
-impl<V: Euclidean> Group for Sphere<0, V> {
+impl<const N: usize, V: Euclidean> Smooth<V> for Sphere<N, V> {
+    fn exp(&self, v: V) -> Self {
+        let two = V::F::one() + V::F::one();
+        let six = two * (two + V::F::one());
+        let eps = <V::F as NumCast>::from(EPSILON).unwrap();
+        let alpha = v.norm();
+
+        let (sin_a, cos_a) = alpha.sin_cos();
+        let sinc = if alpha < eps {
+            V::F::one() - alpha * alpha / six
+        } else {
+            sin_a / alpha
+        };
+
+        // exp at north pole (1, 0): result is (cos α, v · sinc α)
+        let q_real = cos_a;
+        let q_imag = v * sinc;
+
+        // Rotate from north pole to self.
+        // R_p acts in the (e_0, im/‖im‖) plane, identity elsewhere.
+        let im_norm = self.imag.norm();
+
+        if im_norm < eps * eps * eps * eps {
+            // self ≈ ±north pole
+            if self.real > V::F::zero() {
+                // self ≈ north pole, no rotation needed
+                Sphere::new(q_real, q_imag)
+            } else {
+                // self ≈ south pole, negate the real component
+                Sphere::new(-q_real, q_imag)
+            }
+        } else {
+            // self = (r, im) with im_hat = im / ‖im‖
+            // R_p rotates e_0 → (r, im) and im_hat → (-im_norm, r·im_hat)... no.
+            //
+            // The rotation in the (e_0, im_hat) plane by angle θ where
+            // cos θ = r, sin θ = ‖im‖:
+            //
+            //   R_p(a, b·im_hat + w_perp) = (a·r - b·im_norm, (a·im_norm + b·r)·im_hat + w_perp)
+            //
+            // where a is the e_0 component, b is the im_hat component,
+            // and w_perp is orthogonal to both.
+            //
+            // For input q = (q_real, q_imag):
+            //   a = q_real
+            //   b·im_hat + w_perp = q_imag, so b = q_imag · im_hat = q_imag · (im/‖im‖)
+
+            let im_hat_recip = im_norm.recip();
+            let b = self.imag.dot(&q_imag) * im_hat_recip;
+            let w_perp = q_imag - self.imag * (b * im_hat_recip);
+
+            let new_real = q_real * self.real - b * im_norm;
+            let new_imag = self.imag * ((q_real * im_norm + b * self.real) * im_hat_recip) + w_perp;
+
+            Sphere::new(new_real, new_imag)
+        }
+    }
+
+    fn log(&self, other: &Self) -> Option<V> {
+        let two = V::F::one() + V::F::one();
+        let six = two * (two + V::F::one());
+        let eps = <V::F as NumCast>::from(EPSILON).unwrap();
+
+        // Rotate other from self back to north pole: R_p⁻¹ · other
+        // R_p⁻¹ rotates by -θ in the same plane:
+        //   R_p⁻¹(a, b·im_hat + w_perp) = (a·r + b·im_norm, (-a·im_norm + b·r)·im_hat + w_perp)
+
+        let im_norm = self.imag.norm();
+
+        let (rot_real, rot_imag) = if im_norm < eps * eps * eps * eps {
+            if self.real > V::F::zero() {
+                (other.real, other.imag)
+            } else {
+                (-other.real, other.imag)
+            }
+        } else {
+            let im_hat_recip = im_norm.recip();
+            let b = self.imag.dot(&other.imag) * im_hat_recip;
+            let w_perp = other.imag - self.imag * (b * im_hat_recip);
+
+            let new_real = other.real * self.real + b * im_norm;
+            let new_imag =
+                self.imag * ((-other.real * im_norm + b * self.real) * im_hat_recip) + w_perp;
+
+            (new_real, new_imag)
+        };
+
+        // Now compute log at north pole: inverse of (cos α, v · sinc α)
+        // rot_imag = v · sinc α, rot_real = cos α
+        // α = ‖v‖, so α = atan2(‖rot_imag‖, rot_real)
+
+        if (rot_real + V::F::one()).abs() < eps {
+            return None; // antipodal
+        }
+
+        let imag_norm = rot_imag.norm();
+        let alpha = V::F::atan2(imag_norm, rot_real);
+
+        let sinc_recip = if imag_norm < eps {
+            V::F::one() + alpha * alpha / six
+        } else {
+            alpha / imag_norm
+        };
+
+        Some(rot_imag * sinc_recip)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct S0<V: Euclidean>(pub Sphere<0, V>);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct S1<V: Euclidean>(pub Sphere<1, V>);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct S3<V: Euclidean>(pub Sphere<3, V>);
+
+impl<V: Euclidean> Group for S0<V> {
     fn identity() -> Self {
-        Self::new(V::F::one(), V::zero())
+        Self(Sphere::new(V::F::one(), V::zero()))
     }
 
     fn compose(&self, other: &Self) -> Self {
-        Self::new(self.real * other.real, V::zero())
+        Self(Sphere::new(self.0.real * other.0.real, V::zero()))
     }
 
     // in Z/2Z each element is its own inverse.
     fn inverse(&self) -> Self {
-        Self::new(self.real, V::zero())
+        Self(Sphere::new(self.0.real, V::zero()))
     }
 }
 
-impl<V: Euclidean> LieGroup<V> for Sphere<0, V> {
+impl<V: Euclidean> LieGroup<V> for S0<V> {
     fn identity_exp(_: V) -> Self {
-        Sphere::new(V::F::one(), V::zero())
+        Self::identity()
     }
 
     fn identity_log(p: &Self) -> Option<V> {
-        if p.real > V::F::zero() {
+        if p.0.real > V::F::zero() {
             Some(V::zero())
         } else {
             None
@@ -134,61 +251,64 @@ impl<V: Euclidean> LieGroup<V> for Sphere<0, V> {
     }
 }
 
-impl<V: Euclidean> Group for Sphere<1, V> {
+impl<V: Euclidean> Group for S1<V> {
     fn identity() -> Self {
-        Sphere::new(V::F::one(), V::zero())
+        Self(Sphere::new(V::F::one(), V::zero()))
     }
 
     fn compose(&self, other: &Self) -> Self {
-        let (a1, [b1]) = (self.real, self.imag.to_array());
-        let (a2, [b2]) = (other.real, other.imag.to_array());
+        let (a1, [b1]) = (self.0.real, self.0.imag.to_array());
+        let (a2, [b2]) = (other.0.real, other.0.imag.to_array());
 
-        Sphere::new(a1 * a2 - b1 * b2, V::from_array([a1 * b2 + a2 * b1]))
+        Self(Sphere::new(
+            a1 * a2 - b1 * b2,
+            V::from_array([a1 * b2 + a2 * b1]),
+        ))
     }
 
     fn inverse(&self) -> Self {
-        Sphere::new(self.real, -self.imag)
+        Self(Sphere::new(self.0.real, -self.0.imag))
     }
 }
 
-impl<V: Euclidean> LieGroup<V> for Sphere<1, V> {
+impl<V: Euclidean> LieGroup<V> for S1<V> {
     fn identity_exp(v: V) -> Self {
         let alpha = v[0];
 
-        Sphere::new(alpha.cos(), V::from_array([alpha.sin()]))
+        S1(Sphere::new(alpha.cos(), V::from_array([alpha.sin()])))
     }
 
     fn identity_log(p: &Self) -> Option<V> {
-        Some(V::from_array([V::F::atan2(p.imag[0], p.real)]))
+        Some(V::from_array([V::F::atan2(p.0.imag[0], p.0.real)]))
     }
 }
 
-impl<V: Euclidean> Group for Sphere<3, V> {
+impl<V: Euclidean> Group for S3<V> {
     fn identity() -> Self {
-        Sphere::new(V::F::one(), V::zero())
+        Self(Sphere::new(V::F::one(), V::zero()))
     }
 
     fn compose(&self, other: &Self) -> Self {
-        let (a1, [b1, c1, d1]) = (self.real, self.imag.to_array());
-        let (a2, [b2, c2, d2]) = (other.real, other.imag.to_array());
-        Sphere::new(
+        let (a1, [b1, c1, d1]) = (self.0.real, self.0.imag.to_array());
+        let (a2, [b2, c2, d2]) = (other.0.real, other.0.imag.to_array());
+        Self(Sphere::new(
             a1 * a2 - b1 * b2 - c1 * c2 - d1 * d2,
             V::from_array([
                 a1 * b2 + b1 * a2 + c1 * d2 - d1 * c2,
                 a1 * c2 - b1 * d2 + c1 * a2 + d1 * b2,
                 a1 * d2 + b1 * c2 - c1 * b2 + d1 * a2,
             ]),
-        )
+        ))
     }
 
     fn inverse(&self) -> Self {
-        let (a, [b, c, d]) = (self.real, self.imag.to_array());
+        let (a, [b, c, d]) = (self.0.real, self.0.imag.to_array());
 
-        Sphere::new(a, V::from_array([-b, -c, -d]))
+        Self(Sphere::new(a, V::from_array([-b, -c, -d])))
     }
 }
 
-impl<V: Euclidean> LieGroup<V> for Sphere<3, V> {
+impl<V: Euclidean> LieGroup<V> for S3<V> {
     fn identity_exp(v: V) -> Self {
         let two = V::F::one() + V::F::one();
         let three = two + V::F::one();
@@ -200,7 +320,7 @@ impl<V: Euclidean> LieGroup<V> for Sphere<3, V> {
         } else {
             sin / alpha
         };
-        Sphere::new(cos, v * sinc)
+        Self(Sphere::new(cos, v * sinc))
     }
 
     fn identity_log(p: &Self) -> Option<V> {
@@ -209,18 +329,18 @@ impl<V: Euclidean> LieGroup<V> for Sphere<3, V> {
         let six = two * three;
 
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
-        if (p.real + V::F::one()).abs() < eps {
+        if (p.0.real + V::F::one()).abs() < eps {
             return None; // antipode singularity
         }
         // use atan2 instead of acos for numerical stability
-        let imag_norm = p.imag.norm();
-        let alpha = V::F::atan2(imag_norm, p.real);
+        let imag_norm = p.0.imag.norm();
+        let alpha = V::F::atan2(imag_norm, p.0.real);
         let sinc_recip = if imag_norm < eps {
             V::F::one() + alpha * alpha / six
         } else {
             alpha / imag_norm // alpha / sin(alpha) = alpha / ||imag||
         };
-        Some(p.imag * sinc_recip)
+        Some(p.0.imag * sinc_recip)
     }
 }
 
@@ -235,39 +355,40 @@ impl<const N: usize, V: Euclidean> Metric<V::F> for Sphere<N, V> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct So3<V: Euclidean>(Sphere<3, V>);
+pub struct So3<V: Euclidean>(S3<V>);
 
-impl<V: Euclidean> Quotient<Sphere<3, V>, Sphere<0, V>, V> for So3<V> {
-    fn new(g: Sphere<3, V>) -> Self {
+impl<V: Euclidean> Quotient<S3<V>, S0<V>, V> for So3<V> {
+    fn new(g: S3<V>) -> Self {
         // lexographic ordering on the fields
         match g
+            .0
             .real()
             .partial_cmp(&V::F::zero())
             .unwrap()
-            .then(g.imag().iter().partial_cmp(V::zero().iter()).unwrap())
+            .then(g.0.imag().iter().partial_cmp(V::zero().iter()).unwrap())
         {
-            std::cmp::Ordering::Less => So3(Sphere::new(-g.real(), -g.imag())),
+            std::cmp::Ordering::Less => So3(S3(Sphere::new(-g.0.real(), -g.0.imag()))),
             std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => So3(g),
         }
     }
 
-    fn lift(&self) -> Sphere<3, V> {
+    fn lift(&self) -> S3<V> {
         self.0.clone()
     }
 
-    fn embed(h: Sphere<0, V>) -> Sphere<3, V> {
-        Sphere::new(h.real(), V::zero())
+    fn embed(h: S0<V>) -> S3<V> {
+        S3(Sphere::new(h.0.real(), V::zero()))
     }
 }
 
-impl_lie_group_via_quotient!(So3<V>, Sphere<3, _>, Sphere<0, _>);
+impl_lie_group_via_quotient!(So3<V>, S3<V>, S0<V>);
 
 use crate::epsilon_metric::R64;
 
 #[derive(PartialEq, Debug, Clone)]
-pub struct S1Cover(Sphere<1, Coords<R64, 1>>);
+pub struct S1Cover(S1<Coords<R64, 1>>);
 
-impl Bounded<Sphere<1, Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
+impl Bounded<S1<Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
     // Each node's domain is the open arc of radius ρ = π/6 + 0.05 about its
     // base point. Six such arcs centred at the sixth roots of unity form an
     // open good cover of S¹:
@@ -281,29 +402,27 @@ impl Bounded<Sphere<1, Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
         v.norm() - R64(std::f64::consts::PI / 6.0 + 0.05)
     }
 
-    fn new(p: Sphere<1, Coords<R64, 1>>) -> Self {
+    fn new(p: S1<Coords<R64, 1>>) -> Self {
         Self(p)
     }
 
-    fn inner(&self) -> &Sphere<1, Coords<R64, 1>> {
+    fn inner(&self) -> &S1<Coords<R64, 1>> {
         &self.0
     }
 }
 
 impl_tangent_bundle_via_bounded!(
-    S1Cover, Sphere<1, Coords<R64, 1>>, Coords<R64, 1>
+    S1Cover, S1<Coords<R64, 1>>, Coords<R64, 1>
 );
 
-impl NerveComplex<Sphere<1, Coords<R64, 1>>, Coords<R64, 1>, Sphere<1, Coords<R64, 1>>, S1Cover>
-    for S1Cover
-{
+impl NerveComplex<S1<Coords<R64, 1>>, Coords<R64, 1>, S1<Coords<R64, 1>>, S1Cover> for S1Cover {
     fn nodes() -> &'static [S1Cover] {
         use std::sync::LazyLock;
         static NODES: LazyLock<Vec<S1Cover>> = LazyLock::new(|| {
             (0..6)
                 .map(|i| {
                     let angle: R64 = R64(i.into()) * R64(std::f64::consts::TAU) / R64(6.0);
-                    S1Cover(Sphere::new(angle.cos(), [angle.sin()].into()))
+                    S1Cover(S1(Sphere::new(angle.cos(), [angle.sin()].into())))
                 })
                 .collect()
         });
@@ -454,7 +573,7 @@ impl NerveComplex<So3<Coords<R64, 3>>, Coords<R64, 3>, So3<Coords<R64, 3>>, So3C
                 }
                 if seen.insert(q.map(|c| (c * 1e6).round() as i64)) {
                     let [w, x, y, z] = q.map(R64);
-                    nodes.push(So3Cover(So3::new(Sphere::new(w, [x, y, z].into()))));
+                    nodes.push(So3Cover(So3::new(S3(Sphere::new(w, [x, y, z].into())))));
                 }
             }
             debug_assert_eq!(nodes.len(), 60);

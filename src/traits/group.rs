@@ -1,4 +1,4 @@
-use super::{Chart, Euclidean, ExpMap, Metric, Point, TangentBundle};
+use super::{Euclidean, Metric, Point, Smooth};
 
 /// A group.
 ///
@@ -193,30 +193,18 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Euclidean>: Point {
     }
 }
 
-impl<V: Euclidean, L: LieGroup<V>> Chart<Self, V> for L {
-    fn to_local(&self, point: &Self) -> Option<V> {
-        let translated = self.inverse().compose(point);
-        Self::identity_log(&translated)
-    }
-
-    fn to_global(&self, coord: V) -> Self {
+// left translation
+impl<V: Euclidean, L: LieGroup<V>> Smooth<V> for L {
+    fn exp(&self, coord: V) -> Self {
         let translated = Self::identity_exp(coord);
         self.compose(&translated)
     }
 
-    fn chart_at(p: &Self) -> Self {
-        p.clone()
+    fn log(&self, point: &Self) -> Option<V> {
+        let translated = self.inverse().compose(point);
+        Self::identity_log(&translated)
     }
 }
-
-impl<V: Euclidean, L: LieGroup<V>> ExpMap<Self, V> for L {
-    // optimisation
-    fn base_point(&self) -> Self {
-        self.clone()
-    }
-}
-
-impl<V: Euclidean, L: LieGroup<V>> TangentBundle<Self, V> for L {}
 
 #[macro_export]
 macro_rules! impl_lie_group_via_quotient {

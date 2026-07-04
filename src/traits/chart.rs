@@ -168,3 +168,60 @@ pub trait TangentBundle<P: Point, V: Euclidean>: ExpMap<P, V> {
         chart.check_preservation_of_origin() && chart.check_base_point_is_origin()
     }
 }
+
+/// Intrinsic smooth structure on a manifold.
+///
+/// A type implementing `Smooth<V>` carries its own smooth structure:
+/// every point determines a canonical chart centred at itself via `exp`
+/// (the exponential map) and `log` (its inverse). This is the
+/// self-charting case — no external atlas type is needed.
+///
+/// Implementing `Smooth<V>` automatically provides [`Chart<Self, V>`],
+/// [`ExpMap<Self, V>`], and [`TangentBundle<Self, V>`] via blanket
+/// implementations, so `exp` and `log` are the only methods an
+/// implementor needs to write.
+///
+/// Implement `Smooth` for manifolds whose geodesic structure is
+/// intrinsically determined but which are not Lie groups — spheres
+/// of any dimension, hyperbolic spaces, and similar. For Lie groups,
+/// implement [`LieGroup`] instead; a blanket implementation derives
+/// `Smooth` from the group operation via left translation.
+///
+/// [`Chart<Self, V>`]: crate::traits::Chart
+/// [`ExpMap<Self, V>`]: crate::traits::ExpMap
+/// [`TangentBundle<Self, V>`]: crate::traits::TangentBundle
+/// [`LieGroup`]: crate::traits::LieGroup
+pub trait Smooth<V: Euclidean>: Point {
+    /// The exponential map at `self`: sends a tangent vector `v` to the
+    /// point reached by following the geodesic from `self` in direction
+    /// `v` for unit time.
+    fn exp(&self, v: V) -> Self;
+
+    /// The logarithmic map at `self`: recovers the tangent vector whose
+    /// geodesic reaches `other`, or `None` at the cut locus (e.g. the
+    /// antipode on a sphere).
+    fn log(&self, other: &Self) -> Option<V>;
+}
+
+impl<V: Euclidean, S: Smooth<V>> Chart<Self, V> for S {
+    fn to_local(&self, point: &Self) -> Option<V> {
+        self.log(point)
+    }
+
+    fn to_global(&self, coord: V) -> Self {
+        self.exp(coord)
+    }
+
+    fn chart_at(p: &Self) -> Self {
+        p.clone()
+    }
+}
+
+impl<V: Euclidean, L: Smooth<V>> ExpMap<Self, V> for L {
+    // optimisation
+    fn base_point(&self) -> Self {
+        self.clone()
+    }
+}
+
+impl<V: Euclidean, L: Smooth<V>> TangentBundle<Self, V> for L {}

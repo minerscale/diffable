@@ -23,6 +23,7 @@ macro_rules! test_euclidean {
             );
             test_metric!(metric, $space, $arb_vec);
             test_inner_product!(inner_product, $space, $arb_point, $arb_scalar);
+            test_group!(group, $space, $arb_vec);
 
             proptest! {
                 #[test]
@@ -141,7 +142,7 @@ macro_rules! test_tangent_bundle {
             proptest! {
                 // The TangentFibre invariant: chart_at(&p).to_global(zero) == p
                 #[test]
-                fn tangent_fibre_invariant(p in $arb_point) {
+                fn check_universal_centring(p in $arb_point) {
                     prop_assert!(<$chart>::check_universal_centring(p));
                 }
             }
@@ -158,61 +159,23 @@ macro_rules! test_group {
                 #[test]
                 fn left_identity(p in $arb_point) {
                     prop_assert!(
-                        <$point as Group<_>>::check_left_identity(&p)
+                        <$point>::check_left_identity(&p)
                     );
                 }
 
                 #[test]
                 fn right_identity(p in $arb_point) {
-                    prop_assert!(<$point as Group<_>>::check_right_identity(&p));
+                    prop_assert!(<$point>::check_right_identity(&p));
                 }
 
                 #[test]
                 fn left_inverse(p in $arb_point) {
-                    prop_assert!(<$point as Group<_>>::check_left_inverse(&p));
+                    prop_assert!(<$point>::check_left_inverse(&p));
                 }
 
                 #[test]
                 fn right_inverse(p in $arb_point) {
-                    prop_assert!(<$point as Group<_>>::check_right_inverse(&p));
-                }
-
-                #[test]
-                fn associativity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point as Group<_>>::check_associativity(a, b, c));
-                }
-            }
-        }
-    };
-}
-
-/// Tests the LieGroup axioms: identity, inverses, associativity.
-#[macro_export]
-macro_rules! test_lie_group {
-    ($mod_name:ident, $point:ty, $arb_point:expr) => {
-        mod $mod_name {
-            use super::*;
-            proptest! {
-                #[test]
-                fn left_identity(p in $arb_point) {
-                    prop_assert!(
-                        p.check_left_identity()
-                    );
-                }
-
-                #[test]
-                fn right_identity(p in $arb_point) {
-                    prop_assert!(p.check_right_identity());
-                }
-
-                #[test]
-                fn left_inverse(p in $arb_point) {
-                    prop_assert!(p.check_left_inverse());
-                }
-
-                #[test]
-                fn right_inverse(p in $arb_point) {
-                    prop_assert!(p.check_right_inverse());
+                    prop_assert!(<$point>::check_right_inverse(&p));
                 }
 
                 #[test]
