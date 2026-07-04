@@ -48,3 +48,4 @@ pub mod hypersphere;
 pub mod traits;
 
 pub mod epsilon_metric;
+pub use epsilon_metric::{R32, R64};

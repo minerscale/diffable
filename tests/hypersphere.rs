@@ -29,11 +29,12 @@ test_chart!(stereo_s1, Stereographic<_>, arb_sphere1());
 test_chart!(stereo_s3, Stereographic<_>, arb_sphere3());
 
 // Sphere as TangentBundle (via blanket LieGroup impl; includes all ExpMap tests)
-test_tangent_bundle!(tangent_bundle_s0, Sphere<_, _>, Sphere<_, _>, arb_sphere0(), arb_vec0());
-test_tangent_bundle!(tangent_bundle_s1, Sphere<_, _>, Sphere<_, _>, arb_sphere1(), arb_vec1());
-test_tangent_bundle!(tangent_bundle_s3, Sphere<_, _>, Sphere<_, _>, arb_sphere3(), arb_vec3());
+test_tangent_bundle!(tangent_bundle_s0, R64, Sphere<_, _>, Sphere<_, _>, arb_sphere0(), arb_vec0());
+test_tangent_bundle!(tangent_bundle_s1, R64, Sphere<_, _>, Sphere<_, _>, arb_sphere1(), arb_vec1());
+test_tangent_bundle!(tangent_bundle_s3, R64, Sphere<_, _>, Sphere<_, _>, arb_sphere3(), arb_vec3());
 test_tangent_bundle!(
     tangent_bundle_so3,
+    R64,
     So3<Coords<_, _>>,
     So3<Coords<_, _>>,
     arb_so3(),
@@ -45,6 +46,8 @@ test_lie_group!(lie_group_s0, Sphere<_, _>, arb_sphere0());
 test_lie_group!(lie_group_s1, Sphere<_, _>, arb_sphere1());
 test_lie_group!(lie_group_s3, Sphere<_, _>, arb_sphere3());
 test_lie_group!(lie_group_so3, So3<Coords<_, _>>, arb_so3());
+
+test_exp_map!(so3_cover, R64, So3Cover, arb_so3(), arb_vec3());
 
 // Metric axioms
 test_metric!(metric_s0, Sphere<_, _>, arb_sphere0());
@@ -144,8 +147,7 @@ fn s1_fundamental_group() {
     }
 
     for i in 0..S1Cover::nodes().len() {
-        let chart = S1Cover::chart_at(&S1Cover::nodes()[i].base_point());
-        let neighbors: Vec<_> = chart.get_neighbors().collect();
+        let neighbors: Vec<_> = S1Cover::get_neighbors(i).collect();
         println!(
             "node {}: {} neighbors {:?}",
             i,
@@ -156,8 +158,7 @@ fn s1_fundamental_group() {
 
     // debug: check what neighbours each node sees
     for i in 0..S1Cover::nodes().len() {
-        let chart = S1Cover::chart_at(&S1Cover::nodes()[i].base_point());
-        let neighbors: Vec<_> = chart.get_neighbors().collect();
+        let neighbors: Vec<_> = S1Cover::get_neighbors(i).collect();
         println!(
             "node {}: {:?} -> {} neighbors",
             i,
@@ -232,8 +233,7 @@ fn so3_fundamental_group() {
     }
 
     for i in 0..So3Cover::nodes().len() {
-        let chart = So3Cover::chart_at(&So3Cover::nodes()[i].base_point());
-        let neighbors: Vec<_> = chart.get_neighbors().collect();
+        let neighbors: Vec<_> = So3Cover::get_neighbors(i).collect();
         println!(
             "node {}: {} neighbors {:?}",
             i,
@@ -274,11 +274,7 @@ fn so3_check_graph_structure() {
     assert_eq!(n, 60);
 
     let neighbors: Vec<Vec<usize>> = (0..n)
-        .map(|i| {
-            So3Cover::chart_at(&nodes[i].base_point())
-                .get_neighbors()
-                .collect()
-        })
+        .map(|i| So3Cover::get_neighbors(i).collect())
         .collect();
 
     // vertex-transitive: every node has exactly 12 neighbours,
