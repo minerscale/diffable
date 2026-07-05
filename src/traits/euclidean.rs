@@ -38,6 +38,7 @@ pub trait Euclidean:
     + Index<usize, Output = Self::F>
     + IndexMut<usize>
     + Copy
+    + std::fmt::Debug
 {
     type F: Scalar;
     const N: usize;

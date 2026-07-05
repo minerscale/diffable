@@ -1,11 +1,8 @@
 use std::marker::PhantomData;
 
 use crate::{
-    coords::Coords,
-    impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
-    traits::{
-        Bounded, Chart, Euclidean, ExpMap, Group, InnerProduct, LieGroup, Metric, NerveComplex,
-        Quotient, Smooth, TangentBundle,
+    coords::Coords, impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded, traits::{
+        Bounded, Chart, Euclidean, ExpMap, Group, InnerProduct, LieGroup, Metric, NerveComplex, Quotient, Scalar, Smooth, TangentBundle,
     },
 };
 use num_traits::{NumCast, One, Zero, real::Real};
@@ -104,112 +101,107 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
         sphere.normalised()
     }
 }
-
 impl<const N: usize, V: Euclidean> Smooth<V> for Sphere<N, V> {
     fn exp(&self, v: V) -> Self {
-        let two = V::F::one() + V::F::one();
-        let six = two * (two + V::F::one());
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
+
+        // identity-frame exp, centred at +e0: (cos α, v · sinc α)
         let alpha = v.norm();
-
+        
         let (sin_a, cos_a) = alpha.sin_cos();
-        let sinc = if alpha < eps {
-            V::F::one() - alpha * alpha / six
-        } else {
-            sin_a / alpha
-        };
+        let sinc = sinc_from(alpha, sin_a, eps);
 
-        // exp at north pole (1, 0): result is (cos α, v · sinc α)
-        let q_real = cos_a;
-        let q_imag = v * sinc;
-
-        // Rotate from north pole to self.
-        // R_p acts in the (e_0, im/‖im‖) plane, identity elsewhere.
-        let im_norm = self.imag.norm();
-
-        if im_norm < eps * eps * eps * eps {
-            // self ≈ ±north pole
-            if self.real > V::F::zero() {
-                // self ≈ north pole, no rotation needed
-                Sphere::new(q_real, q_imag)
-            } else {
-                // self ≈ south pole, negate the real component
-                Sphere::new(-q_real, q_imag)
-            }
-        } else {
-            // self = (r, im) with im_hat = im / ‖im‖
-            // R_p rotates e_0 → (r, im) and im_hat → (-im_norm, r·im_hat)... no.
-            //
-            // The rotation in the (e_0, im_hat) plane by angle θ where
-            // cos θ = r, sin θ = ‖im‖:
-            //
-            //   R_p(a, b·im_hat + w_perp) = (a·r - b·im_norm, (a·im_norm + b·r)·im_hat + w_perp)
-            //
-            // where a is the e_0 component, b is the im_hat component,
-            // and w_perp is orthogonal to both.
-            //
-            // For input q = (q_real, q_imag):
-            //   a = q_real
-            //   b·im_hat + w_perp = q_imag, so b = q_imag · im_hat = q_imag · (im/‖im‖)
-
-            let im_hat_recip = im_norm.recip();
-            let b = self.imag.dot(&q_imag) * im_hat_recip;
-            let w_perp = q_imag - self.imag * (b * im_hat_recip);
-
-            let new_real = q_real * self.real - b * im_norm;
-            let new_imag = self.imag * ((q_real * im_norm + b * self.real) * im_hat_recip) + w_perp;
-
-            Sphere::new(new_real, new_imag)
-        }
+        // transport the identity-frame point to self's frame
+        self.from_identity(cos_a, v * sinc)
     }
 
     fn log(&self, other: &Self) -> Option<V> {
-        let two = V::F::one() + V::F::one();
-        let six = two * (two + V::F::one());
+        let one = V::F::one();
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
 
-        // Rotate other from self back to north pole: R_p⁻¹ · other
-        // R_p⁻¹ rotates by -θ in the same plane:
-        //   R_p⁻¹(a, b·im_hat + w_perp) = (a·r + b·im_norm, (-a·im_norm + b·r)·im_hat + w_perp)
+        // transport `other` into the +e0 identity frame
+        let p = self.to_identity(other.real, other.imag);
 
-        let im_norm = self.imag.norm();
-
-        let (rot_real, rot_imag) = if im_norm < eps * eps * eps * eps {
-            if self.real > V::F::zero() {
-                (other.real, other.imag)
-            } else {
-                (-other.real, other.imag)
-            }
-        } else {
-            let im_hat_recip = im_norm.recip();
-            let b = self.imag.dot(&other.imag) * im_hat_recip;
-            let w_perp = other.imag - self.imag * (b * im_hat_recip);
-
-            let new_real = other.real * self.real + b * im_norm;
-            let new_imag =
-                self.imag * ((-other.real * im_norm + b * self.real) * im_hat_recip) + w_perp;
-
-            (new_real, new_imag)
-        };
-
-        // Now compute log at north pole: inverse of (cos α, v · sinc α)
-        // rot_imag = v · sinc α, rot_real = cos α
-        // α = ‖v‖, so α = atan2(‖rot_imag‖, rot_real)
-
-        if (rot_real + V::F::one()).abs() < eps {
-            return None; // antipodal
+        // identity-frame log: invert (cos α, v · sinc α)
+        if (p.real + one).abs() < eps {
+            return None; // antipodal to self: cut locus
         }
+        let alpha = V::F::atan2(p.imag.norm(), p.real);
+        
+        let sinc_recip = sinc_recip(alpha, eps);
+        Some(p.imag * sinc_recip)
+    }
+}
 
-        let imag_norm = rot_imag.norm();
-        let alpha = V::F::atan2(imag_norm, rot_real);
+/// The cardinal sine `sin(α)/α`, with a Taylor fallback near zero to
+/// avoid the `0/0` at the origin.
+///
+/// Series: `sin(α)/α = 1 − α²/6 + α⁴/120 − …`
+/// The two-term approximation `1 − α²/6` is used for `α < eps`; its
+/// error there is the dropped `α⁴/120` term (~8×10⁻¹⁵ at eps = 1e-3),
+/// far below the R64 tolerance.
+fn sinc_from<F: Scalar>(alpha: F, sin_a: F, eps: F) -> F {
+    let one = F::one();
+    if alpha < eps {
+        let six = (one + one) * (one + one + one);
+        one - alpha * alpha / six
+    } else {
+        sin_a / alpha
+    }
+}
 
-        let sinc_recip = if imag_norm < eps {
-            V::F::one() + alpha * alpha / six
-        } else {
-            alpha / imag_norm
-        };
+/// The reciprocal cardinal sine `α/sin(α)`, with a Taylor fallback near
+/// zero.
+///
+/// Series: `α/sin(α) = 1 + α²/6 + 7α⁴/360 + …`
+/// Note this is **not** a sign-flipped copy of [`sinc`]'s series: only the
+/// α² term flips sign; the α⁴ coefficient is `7/360`, not `±1/120`
+/// (because `1/(1−x) ≠ 1 ∓ x` beyond first order). The two-term
+/// approximation `1 + α²/6` is used for `α < eps`; its error there is the
+/// dropped `7α⁴/360` term (~2×10⁻¹⁴ at eps = 1e-3), below the R64
+/// tolerance.
+fn sinc_recip<F: Scalar>(alpha: F, eps: F) -> F {
+    let one = F::one();
+    if alpha < eps {
+        let six = (one + one) * (one + one + one);
+        one + alpha * alpha / six
+    } else {
+        alpha / alpha.sin()
+    }
+}
 
-        Some(rot_imag * sinc_recip)
+impl<const N: usize, V: Euclidean> Sphere<N, V> {
+    
+    // s = -sign(self.real): reflect from the far pole (no self.real∓1 cancellation).
+    fn far_pole_sign(&self) -> V::F {
+        if self.real > V::F::zero() { -V::F::one() } else { V::F::one() }
+    }
+
+    // Householder swapping self ↔ s·e0, applied to (x_real, x_imag).
+    fn reflect(&self, s: V::F, x_real: V::F, x_imag: V) -> (V::F, V) {
+        let two = V::F::one() + V::F::one();
+        let u_real = self.real - s;                // = self.real ∓ 1, but s is the FAR pole so no cancellation
+        let u_imag = self.imag;
+        let u_dot_u = u_real * u_real + u_imag.norm_squared(); // ≥ 2
+        let u_dot_x = u_real * x_real + u_imag.dot(&x_imag);
+        let c = two * u_dot_x / u_dot_u;
+        (x_real - c * u_real, x_imag - u_imag * c)
+    }
+
+    // self-frame → +e0 identity frame  (used by log)
+    fn to_identity(&self, x_real: V::F, x_imag: V) -> Self {
+        let s = self.far_pole_sign();
+        let (r, im) = self.reflect(s, x_real, x_imag);   // self → s·e0
+        if s < V::F::zero() { Sphere::new(-r, im) } else { Sphere::new(r, im) } // F if s=-1
+    }
+
+    // +e0 identity frame → self-frame  (used by exp): inverse of to_identity
+    fn from_identity(&self, x_real: V::F, x_imag: V) -> Self {
+        let s = self.far_pole_sign();
+        // inverse: apply F first (if s=-1), then H
+        let (x_real, x_imag) = if s < V::F::zero() { (-x_real, x_imag) } else { (x_real, x_imag) };
+        let (r, im) = self.reflect(s, x_real, x_imag);
+        Sphere::new(r, im)
     }
 }
 
@@ -310,24 +302,14 @@ impl<V: Euclidean> Group for S3<V> {
 
 impl<V: Euclidean> LieGroup<V> for S3<V> {
     fn identity_exp(v: V) -> Self {
-        let two = V::F::one() + V::F::one();
-        let three = two + V::F::one();
-        let six = two * three;
         let alpha = V::F::sqrt(v.iter().fold(V::F::zero(), |acc, &x| acc + x * x));
         let (sin, cos) = alpha.sin_cos();
-        let sinc = if alpha < <V::F as NumCast>::from(EPSILON).unwrap() {
-            V::F::one() - alpha * alpha / six
-        } else {
-            sin / alpha
-        };
+        
+        let sinc = sinc_from(alpha, sin, <V::F as NumCast>::from(EPSILON).unwrap());
         Self(Sphere::new(cos, v * sinc))
     }
 
     fn identity_log(p: &Self) -> Option<V> {
-        let two = V::F::one() + V::F::one();
-        let three = two + V::F::one();
-        let six = two * three;
-
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
         if (p.0.real + V::F::one()).abs() < eps {
             return None; // antipode singularity
@@ -335,11 +317,8 @@ impl<V: Euclidean> LieGroup<V> for S3<V> {
         // use atan2 instead of acos for numerical stability
         let imag_norm = p.0.imag.norm();
         let alpha = V::F::atan2(imag_norm, p.0.real);
-        let sinc_recip = if imag_norm < eps {
-            V::F::one() + alpha * alpha / six
-        } else {
-            alpha / imag_norm // alpha / sin(alpha) = alpha / ||imag||
-        };
+
+        let sinc_recip = sinc_recip(alpha, eps);
         Some(p.0.imag * sinc_recip)
     }
 }

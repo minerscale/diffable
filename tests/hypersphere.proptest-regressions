@@ -1,0 +1,14 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc feb78a415739be7e670a85249c249295fca9d2b3a6833ae96fba8dc73cd45a05 # shrinks to p = Sphere { real: R64(-0.9997617666389398), imag: Coords([R64(0.021826817610137144)]) }
+cc 815bf4e058d61d89848777b0c04e5915677db328376e8e080ba473fc661b7b9e # shrinks to p = Sphere { real: R64(-0.9997384819239852), imag: Coords([R64(0.0), R64(0.022868488369928698)]) }
+cc f0a63fc9092319438c8ec9d3504fb234ca40cd13a1fb90361ddc05f654547efc # shrinks to p = Sphere { real: R64(-0.9999999965232995), imag: Coords([R64(0.0), R64(0.0), R64(8.338705561888479e-5)]) }
+cc b4e9d0d9245103d69a490ce75cecb560b4a20ef87a8241c8aabce3f757fadb4f # shrinks to p = Sphere { real: R64(-0.9963023069207781), imag: Coords([R64(0.016825340399448965), R64(-0.08425331533404871)]) }, v = Coords([R64(9.309780674030831), R64(1.7675573250833554)])
+cc dd1c0370de158cf41b963b845004df71d58135cbe40a0a05e564526993a7be94 # shrinks to p = Sphere { real: R64(-0.999946152893382), imag: Coords([R64(0.0), R64(0.0), R64(0.0), R64(-0.010377442542607682)]) }
+cc 17b606994d62cc91344782f7a8cee3c66f4cae84773dd3ef9b94ede1ff7b231c # shrinks to p = Sphere { real: R64(-0.8532962586175723), imag: Coords([R64(0.0), R64(0.0), R64(-0.5214264042309836)]) }, v = Coords([R64(-4.940293647627596), R64(7.506013991399217), R64(-2.8412574653133773)])
+cc e0f85cbe0fe7d05bfd68ec1bca6d4ae0eff139610223a040acf98bc914512591 # shrinks to p = Sphere { real: R64(0.9999881363142722), imag: Coords([R64(-0.004871060532224075)]) }
+cc 82592ef60197bae1fd5dde0c53e06852fc8401b8b15fbba523ffc8da4ad82a95 # shrinks to p = Sphere { real: R64(0.9999999986596788), imag: Coords([R64(-5.177492369570264e-5)]) }
