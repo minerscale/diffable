@@ -5,6 +5,7 @@ use diffable::{
     coords::Coords,
     epsilon_metric::R64,
     hypersphere::{S0, S1, S3, So3, Sphere},
+    torus::{S1Quotient, Z},
     traits::Quotient,
 };
 
@@ -123,4 +124,16 @@ prop_compose! {
     ) -> R64 {
         R64(x)
     }
+}
+
+prop_compose! {
+    pub fn arb_z()(
+        z in -100isize..100isize,
+    ) -> Z<Coords<R64, 1>> {
+        Z::new(z)
+    }
+}
+
+pub fn arb_s1_quotient() -> impl Strategy<Value = S1Quotient<Coords<R64, 1>>> {
+    arb_scalar().prop_map(|x| S1Quotient::new([x].into()))
 }

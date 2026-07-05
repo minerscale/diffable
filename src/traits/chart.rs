@@ -1,3 +1,5 @@
+use crate::traits::Metric;
+
 use super::{Euclidean, Point};
 use itertools::Itertools;
 use num_traits::{One, Zero};
@@ -86,43 +88,74 @@ pub trait ExpMap<P: Point, V: Euclidean>: Chart<P, V> {
     where
         V: PartialEq,
     {
-        match (
-            self.to_local(&self.to_global(v)),
-            self.to_local(&self.to_global(-v)),
-        ) {
-            (Some(fwd), Some(bwd)) => fwd == -bwd,
-            _ => true, // at singularity, vacuously true
+        let fwd = match self.to_local(&self.to_global(v)) {
+            Some(x) => x,
+            None => return true,
+        };
+        let bwd = match self.to_local(&self.to_global(-v)) {
+            Some(x) => x,
+            None => return true,
+        };
+        // gate: skip if either geodesic wrapped (folded norm ≠ input norm)
+        if fwd.norm() != v.norm() || bwd.norm() != (-v).norm() {
+            return true;
         }
+        fwd == -bwd
     }
 
     // geodesics are straight lines: exp(tv) lies on the same geodesic as exp(v),
     // i.e. log(exp(tv)) and log(exp(v)) are parallel in local coords.
     #[cfg(feature = "testing")]
     fn check_geodesic_scaling(&self, v: V, t: V::F) -> bool {
-        match (
-            self.to_local(&self.to_global(v * t)),
-            self.to_local(&self.to_global(v)),
-        ) {
-            (Some(tv_local), Some(v_local)) => {
-                // tv_local and v_local should be parallel:
-                // tv_local × v_local == 0, i.e. dot(tv_local, v_local)² == |tv_local|² * |v_local|²
-                let dot = tv_local.dot(&v_local);
-                let lhs = dot * dot;
-                let rhs = tv_local.norm_squared() * v_local.norm_squared();
-                lhs == rhs
-            }
-            _ => true,
+        let v_local = match self.to_local(&self.to_global(v)) {
+            Some(x) => x,
+            None => return true,
+        };
+        let tv_local = match self.to_local(&self.to_global(v * t)) {
+            Some(x) => x,
+            None => return true,
+        };
+        // Gate: did either geodesic wrap? exp parametrises by arc length, so
+        // ‖log(exp(w))‖ ≤ ‖w‖ always, with equality iff no wrapping. If the
+        // folded coord is shorter than the input, it wrapped — skip.
+        if v_local.norm() != v.norm() || tv_local.norm() != (v * t).norm() {
+            return true;
         }
-    }
-
-    // isometry to first order: |exp(epsilon * v) - base| / epsilon → |v|
-    #[cfg(feature = "testing")]
-    fn check_first_order_isometry(&self, v: V, coef: V::F) -> bool {
-        let small_v = v * coef;
-        self.to_local(&self.to_global(small_v))
-            .map_or(true, |local| local.norm() == v.norm() * coef)
+        let dot = tv_local.dot(&v_local);
+        dot * dot == tv_local.norm_squared() * v_local.norm_squared()
     }
 }
+
+/// A manifold whose metric and exponential map agree — a Riemannian manifold.
+///
+/// Both [`ExpMap`] (geodesics, exponential coordinates) and [`Metric`]
+/// (a distance function) can exist independently: a metric needs no charts,
+/// and an exponential map induces coordinate distances without committing to
+/// a global metric. This trait certifies that the two *coincide* — that the
+/// geodesic arc length delivered by `exp` equals the distance reported by
+/// `Metric`. Equivalently, `exp` is a radial isometry: `d(p, exp_p(v)) = ‖v‖`
+/// within the injectivity radius.
+///
+/// This is the defining compatibility of a Riemannian manifold, where the
+/// distance *is* the infimal geodesic length. Verified by `test_riemannian!`.
+pub trait Riemannian<V: Euclidean>: ExpMap<Self, V> + Metric<V::F> {
+    #[cfg(feature = "testing")]
+    fn check_isometry(&self, v: V) -> bool {
+        let global = self.to_global(v);
+
+        // local is now guaranteed to be in the injectivity domain.
+        let local = match self.to_local(&global) {
+            Some(v) => v,
+            None => return true, // restricted log map
+        };
+
+        // Measure with the metric: geodesic arc length must equal tangent norm.
+        let moved = self.base_point().distance(&global);
+        moved == local.norm()
+    }
+}
+
+impl<V: Euclidean, E: ExpMap<Self, V> + Metric<V::F>> Riemannian<V> for E {}
 
 /// A tangent bundle structure on a manifold.
 ///

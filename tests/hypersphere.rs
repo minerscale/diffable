@@ -9,10 +9,11 @@ use diffable::{
     coords::Coords,
     epsilon_metric::R64,
     hypersphere::{S0, S1, S1Cover, S3, So3, So3Cover, Sphere, Stereographic},
-    test_chart, test_exp_map, test_group, test_metric, test_tangent_bundle,
+    test_chart, test_exp_map, test_group, test_metric, test_quotient, test_riemannian,
+    test_tangent_bundle,
     traits::{
         Chart, ExpMap, Group, GroupPresentation, InnerProduct, LieGroup, Metric, NerveComplex,
-        Quotient, TangentBundle,
+        Quotient, Riemannian, TangentBundle,
     },
 };
 
@@ -26,24 +27,50 @@ use proptest::prelude::*;
 // Stereographic chart roundtrips
 test_chart!(stereo_s0, Stereographic<_>, arb_sphere0().prop_map(|x| x.0));
 test_chart!(stereo_s1, Stereographic<_>, arb_sphere1().prop_map(|x| x.0));
+test_chart!(stereo_s2, Stereographic<_>, arb_sphere2());
 test_chart!(stereo_s3, Stereographic<_>, arb_sphere3().prop_map(|x| x.0));
 
 // Metric axioms
-test_metric!(metric_s0, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0));
-test_metric!(metric_s1, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0));
-test_metric!(metric_s3, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0));
+test_metric!(metric_sphere0, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0));
+test_metric!(metric_sphere1, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0));
+test_metric!(metric_sphere2, Sphere<_, _>, arb_sphere2());
+test_metric!(metric_sphere3, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0));
 
-test_tangent_bundle!(tangent_bundle_sphere0, R64, Sphere<_, _>, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0), arb_vec0());
-test_tangent_bundle!(tangent_bundle_sphere1, R64, Sphere<_, _>, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0), arb_vec1());
-test_tangent_bundle!(tangent_bundle_sphere2, R64, Sphere<_, _>, Sphere<_, _>, arb_sphere2(), arb_vec2());
-test_tangent_bundle!(tangent_bundle_sphere3, R64, Sphere<_, _>, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0), arb_vec3());
-test_tangent_bundle!(tangent_bundle_sphere4, R64, Sphere<_, _>, Sphere<_, _>, arb_sphere4(), arb_vec4());
+// Metric + ExpMap compatibility
+test_riemannian!(riemannian_sphere0, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0), arb_vec::<0>());
+test_riemannian!(riemannian_sphere1, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0), arb_vec::<1>());
+test_riemannian!(riemannian_sphere2, Sphere<_, _>, arb_sphere2(), arb_vec::<2>());
+test_riemannian!(riemannian_sphere3, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0), arb_vec::<3>());
+
+test_riemannian!(
+    riemannian_s0,
+    S0<Coords<_, _>>,
+    arb_sphere0(),
+    arb_vec::<0>()
+);
+test_riemannian!(
+    riemannian_s1,
+    S1<Coords<_, _>>,
+    arb_sphere1(),
+    arb_vec::<1>()
+);
+test_riemannian!(
+    riemannian_s3,
+    S3<Coords<_, _>>,
+    arb_sphere3(),
+    arb_vec::<3>()
+);
+
+test_tangent_bundle!(tangent_bundle_sphere0, R64, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0), arb_vec0());
+test_tangent_bundle!(tangent_bundle_sphere1, R64, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0), arb_vec1());
+test_tangent_bundle!(tangent_bundle_sphere2, R64, Sphere<_, _>, arb_sphere2(), arb_vec2());
+test_tangent_bundle!(tangent_bundle_sphere3, R64, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0), arb_vec3());
+test_tangent_bundle!(tangent_bundle_sphere4, R64, Sphere<_, _>, arb_sphere4(), arb_vec4());
 
 // Sphere as TangentBundle (via blanket LieGroup impl; includes all ExpMap tests)
 test_tangent_bundle!(
     tangent_bundle_s0,
     R64,
-    S0<Coords<_, _>>,
     S0<Coords<_, _>>,
     arb_sphere0(),
     arb_vec0()
@@ -52,7 +79,6 @@ test_tangent_bundle!(
     tangent_bundle_s1,
     R64,
     S1<Coords<_, _>>,
-    S1<Coords<_, _>>,
     arb_sphere1(),
     arb_vec1()
 );
@@ -60,14 +86,12 @@ test_tangent_bundle!(
     tangent_bundle_s3,
     R64,
     S3<Coords<_, _>>,
-    S3<Coords<_, _>>,
     arb_sphere3(),
     arb_vec3()
 );
 test_tangent_bundle!(
     tangent_bundle_so3,
     R64,
-    So3<Coords<_, _>>,
     So3<Coords<_, _>>,
     arb_so3(),
     arb_vec3()
@@ -77,7 +101,14 @@ test_tangent_bundle!(
 test_group!(lie_group_s0, S0<_>, arb_sphere0());
 test_group!(lie_group_s1, S1<_>, arb_sphere1());
 test_group!(lie_group_s3, S3<_>, arb_sphere3());
-test_group!(lie_group_so3, So3<Coords<_, _>>, arb_so3());
+// ($mod_name:ident, $quotient:ty, $arb_quotient:expr, $arb_g:expr, $arb_h:expr)
+test_quotient!(
+    lie_group_so3,
+    So3<Coords<_, _>>,
+    arb_so3(),
+    arb_sphere3(),
+    arb_sphere0().prop_map(|v| S0(Sphere::new(v.0.real(), Coords::zero())))
+);
 
 test_exp_map!(so3_cover, R64, So3Cover, arb_so3(), arb_vec3());
 

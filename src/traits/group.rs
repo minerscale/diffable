@@ -1,4 +1,4 @@
-use super::{Euclidean, Metric, Point, Smooth};
+use super::{Euclidean, Point, Smooth};
 
 /// A group.
 ///
@@ -186,7 +186,6 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Euclidean>: Point {
     #[cfg(feature = "testing")]
     fn check_new_respects_coset(g: G, h: H) -> bool
     where
-        Self: Metric<V::F>,
         Self: PartialEq,
     {
         Self::new(Self::embed(h).compose(&g)) == Self::new(g)
@@ -208,8 +207,8 @@ impl<V: Euclidean, L: LieGroup<V>> Smooth<V> for L {
 
 #[macro_export]
 macro_rules! impl_lie_group_via_quotient {
-    ($type:ty, $g:ty, $h:ty) => {
-        impl<V: Euclidean> Group for $type {
+    ($type:ty, $g:ty, $h:ty $(, $bound:path)*) => {
+        impl<V: Euclidean + $($bound +)*> Group for $type {
             fn identity() -> Self {
                 <Self as crate::traits::Quotient<$g, $h, V>>::quotient_identity()
             }
@@ -221,7 +220,7 @@ macro_rules! impl_lie_group_via_quotient {
             }
         }
 
-        impl<V: Euclidean> crate::traits::LieGroup<V> for $type {
+        impl<V: Euclidean + $($bound +)*> crate::traits::LieGroup<V> for $type {
             fn identity_exp(v: V) -> Self {
                 <Self as crate::traits::Quotient<$g, $h, V>>::quotient_identity_exp(v)
             }

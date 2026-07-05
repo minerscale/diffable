@@ -1,8 +1,11 @@
 use std::marker::PhantomData;
 
 use crate::{
-    coords::Coords, impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded, traits::{
-        Bounded, Chart, Euclidean, ExpMap, Group, InnerProduct, LieGroup, Metric, NerveComplex, Quotient, Scalar, Smooth, TangentBundle,
+    coords::Coords,
+    impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
+    traits::{
+        Bounded, Chart, Euclidean, ExpMap, Group, InnerProduct, LieGroup, Metric, NerveComplex,
+        Quotient, Scalar, Smooth, TangentBundle,
     },
 };
 use num_traits::{NumCast, One, Zero, real::Real};
@@ -107,7 +110,7 @@ impl<const N: usize, V: Euclidean> Smooth<V> for Sphere<N, V> {
 
         // identity-frame exp, centred at +e0: (cos α, v · sinc α)
         let alpha = v.norm();
-        
+
         let (sin_a, cos_a) = alpha.sin_cos();
         let sinc = sinc_from(alpha, sin_a, eps);
 
@@ -127,7 +130,7 @@ impl<const N: usize, V: Euclidean> Smooth<V> for Sphere<N, V> {
             return None; // antipodal to self: cut locus
         }
         let alpha = V::F::atan2(p.imag.norm(), p.real);
-        
+
         let sinc_recip = sinc_recip(alpha, eps);
         Some(p.imag * sinc_recip)
     }
@@ -171,16 +174,19 @@ fn sinc_recip<F: Scalar>(alpha: F, eps: F) -> F {
 }
 
 impl<const N: usize, V: Euclidean> Sphere<N, V> {
-    
     // s = -sign(self.real): reflect from the far pole (no self.real∓1 cancellation).
     fn far_pole_sign(&self) -> V::F {
-        if self.real > V::F::zero() { -V::F::one() } else { V::F::one() }
+        if self.real > V::F::zero() {
+            -V::F::one()
+        } else {
+            V::F::one()
+        }
     }
 
     // Householder swapping self ↔ s·e0, applied to (x_real, x_imag).
     fn reflect(&self, s: V::F, x_real: V::F, x_imag: V) -> (V::F, V) {
         let two = V::F::one() + V::F::one();
-        let u_real = self.real - s;                // = self.real ∓ 1, but s is the FAR pole so no cancellation
+        let u_real = self.real - s; // = self.real ∓ 1, but s is the FAR pole so no cancellation
         let u_imag = self.imag;
         let u_dot_u = u_real * u_real + u_imag.norm_squared(); // ≥ 2
         let u_dot_x = u_real * x_real + u_imag.dot(&x_imag);
@@ -191,15 +197,23 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
     // self-frame → +e0 identity frame  (used by log)
     fn to_identity(&self, x_real: V::F, x_imag: V) -> Self {
         let s = self.far_pole_sign();
-        let (r, im) = self.reflect(s, x_real, x_imag);   // self → s·e0
-        if s < V::F::zero() { Sphere::new(-r, im) } else { Sphere::new(r, im) } // F if s=-1
+        let (r, im) = self.reflect(s, x_real, x_imag); // self → s·e0
+        if s < V::F::zero() {
+            Sphere::new(-r, im)
+        } else {
+            Sphere::new(r, im)
+        } // F if s=-1
     }
 
     // +e0 identity frame → self-frame  (used by exp): inverse of to_identity
     fn from_identity(&self, x_real: V::F, x_imag: V) -> Self {
         let s = self.far_pole_sign();
         // inverse: apply F first (if s=-1), then H
-        let (x_real, x_imag) = if s < V::F::zero() { (-x_real, x_imag) } else { (x_real, x_imag) };
+        let (x_real, x_imag) = if s < V::F::zero() {
+            (-x_real, x_imag)
+        } else {
+            (x_real, x_imag)
+        };
         let (r, im) = self.reflect(s, x_real, x_imag);
         Sphere::new(r, im)
     }
@@ -213,6 +227,24 @@ pub struct S1<V: Euclidean>(pub Sphere<1, V>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct S3<V: Euclidean>(pub Sphere<3, V>);
+
+impl<V: Euclidean> Metric<V::F> for S0<V> {
+    fn distance(&self, other: &Self) -> V::F {
+        self.0.distance(&other.0)
+    }
+}
+
+impl<V: Euclidean> Metric<V::F> for S1<V> {
+    fn distance(&self, other: &Self) -> V::F {
+        self.0.distance(&other.0)
+    }
+}
+
+impl<V: Euclidean> Metric<V::F> for S3<V> {
+    fn distance(&self, other: &Self) -> V::F {
+        self.0.distance(&other.0)
+    }
+}
 
 impl<V: Euclidean> Group for S0<V> {
     fn identity() -> Self {
@@ -304,7 +336,7 @@ impl<V: Euclidean> LieGroup<V> for S3<V> {
     fn identity_exp(v: V) -> Self {
         let alpha = V::F::sqrt(v.iter().fold(V::F::zero(), |acc, &x| acc + x * x));
         let (sin, cos) = alpha.sin_cos();
-        
+
         let sinc = sinc_from(alpha, sin, <V::F as NumCast>::from(EPSILON).unwrap());
         Self(Sphere::new(cos, v * sinc))
     }
@@ -325,11 +357,15 @@ impl<V: Euclidean> LieGroup<V> for S3<V> {
 
 impl<const N: usize, V: Euclidean> Metric<V::F> for Sphere<N, V> {
     fn distance(&self, other: &Self) -> V::F {
-        let two = V::F::one() + V::F::one();
-        let diff_real = self.real - other.real;
-        let diff_imag = self.imag - other.imag;
-        let half_chord_sq = (diff_real * diff_real + diff_imag.norm_squared()) / (two * two);
-        half_chord_sq.sqrt().asin() * two
+        // ambient inner product of two unit vectors = cos(geodesic distance)
+        let cos_d = self.real * other.real + self.imag.dot(&other.imag);
+        // the perpendicular component gives sin(geodesic distance):
+        // ‖q − (p·q)p‖ = sin(θ)
+        let w_real = other.real - cos_d * self.real;
+        let w_imag = other.imag - self.imag * cos_d;
+        let sin_d = (w_real * w_real + w_imag.norm_squared()).sqrt();
+        // θ = atan2(sin, cos), stable everywhere including antipode (θ=π)
+        V::F::atan2(sin_d, cos_d)
     }
 }
 

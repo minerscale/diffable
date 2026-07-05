@@ -1,4 +1,5 @@
 use num_derive::{Float, FromPrimitive, Num, NumCast, NumOps, One, Signed, ToPrimitive, Zero};
+use num_traits::Euclid;
 use std::ops::Neg;
 
 // This newtype over floating points identifies point which are close to each other,
@@ -42,6 +43,16 @@ macro_rules! define_epsilon_metric {
                 } else {
                     self.0.partial_cmp(&other.0)
                 }
+            }
+        }
+
+        impl Euclid for $name {
+            fn div_euclid(&self, v: &Self) -> Self {
+                Self(self.0.div_euclid(v.0))
+            }
+
+            fn rem_euclid(&self, v: &Self) -> Self {
+                Self(self.0.rem_euclid(v.0))
             }
         }
 

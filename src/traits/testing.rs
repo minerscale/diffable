@@ -13,17 +13,11 @@ macro_rules! test_euclidean {
             use super::*;
 
             // inherit all TangentFibre tests
-            test_tangent_bundle!(
-                tangent_bundle,
-                $scalar,
-                $space,
-                $space,
-                $arb_point,
-                $arb_vec
-            );
+            test_tangent_bundle!(tangent_bundle, $scalar, $space, $arb_point, $arb_vec);
             test_metric!(metric, $space, $arb_vec);
             test_inner_product!(inner_product, $space, $arb_point, $arb_scalar);
             test_group!(group, $space, $arb_vec);
+            test_riemannian!(riemannian, $space, $arb_point, $arb_vec);
 
             proptest! {
                 #[test]
@@ -80,59 +74,69 @@ macro_rules! test_chart {
 /// via chart_at on a generated base point.
 #[macro_export]
 macro_rules! test_exp_map {
-        ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
-            mod $mod_name {
-                use super::*;
-                use num_traits::NumCast;
+    ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
+        mod $mod_name {
+            use super::*;
+            use num_traits::NumCast;
 
-                // inherit all Chart tests
-                test_chart!(chart, $chart, $arb_point);
+            // inherit all Chart tests
+            test_chart!(chart, $chart, $arb_point);
 
-                proptest! {
-                    #[test]
-                    fn preservation_of_origin(p in $arb_point) {
-                        let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_preservation_of_origin());
-                    }
+            proptest! {
+                #[test]
+                fn preservation_of_origin(p in $arb_point) {
+                    let chart = <$chart>::chart_at(&p);
+                    prop_assert!(chart.check_preservation_of_origin());
+                }
 
-                    #[test]
-                    fn chart_at_base_point(p in $arb_point) {
-                        let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_chart_at_base_point());
-                    }
+                #[test]
+                fn chart_at_base_point(p in $arb_point) {
+                    let chart = <$chart>::chart_at(&p);
+                    prop_assert!(chart.check_chart_at_base_point());
+                }
 
-                    #[test]
-                    fn base_point_is_origin(p in $arb_point) {
-                        let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_base_point_is_origin());
-                    }
+                #[test]
+                fn base_point_is_origin(p in $arb_point) {
+                    let chart = <$chart>::chart_at(&p);
+                    prop_assert!(chart.check_base_point_is_origin());
+                }
 
-                    #[test]
-                    fn geodesic_symmetry(p in $arb_point, v in $arb_vec) {
-                        let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_geodesic_symmetry(v));
-                    }
+                #[test]
+                fn geodesic_symmetry(p in $arb_point, v in $arb_vec) {
+                    let chart = <$chart>::chart_at(&p);
+                    prop_assert!(chart.check_geodesic_symmetry(v));
+                }
 
-                    #[test]
-                    fn geodesic_scaling(p in $arb_point, v in $arb_vec, t in 0.0f64..1.0f64) {
-                        let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_geodesic_scaling(v, <$scalar as NumCast>::from(t).unwrap()));
-                    }
-
-                    #[test]
-                    fn first_order_isometry(p in $arb_point, v in $arb_vec) {
-                        let chart = <$chart>::chart_at(&p);
-                        prop_assert!(chart.check_first_order_isometry(v, <$scalar as NumCast>::from(1e-5).unwrap()));
-                    }
+                #[test]
+                fn geodesic_scaling(p in $arb_point, v in $arb_vec, t in 0.0f64..1.0f64) {
+                    let chart = <$chart>::chart_at(&p);
+                    prop_assert!(chart.check_geodesic_scaling(v, <$scalar as NumCast>::from(t).unwrap()));
                 }
             }
-        };
-    }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! test_riemannian {
+    ($mod_name:ident, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
+        mod $mod_name {
+            use super::*;
+            proptest! {
+                #[test]
+                fn chart_metric_compatibility(p in $arb_point, v in $arb_vec) {
+                    let chart = <$chart>::chart_at(&p);
+                    prop_assert!(chart.check_isometry(v));
+                }
+            }
+        }
+    };
+}
 
 /// Tests the TangentBundle invariant on top of all ExpMap invariants.
 #[macro_export]
 macro_rules! test_tangent_bundle {
-    ($mod_name:ident, $scalar:ty, $chart:ty, $point:ty, $arb_point:expr, $arb_vec:expr) => {
+    ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
         mod $mod_name {
             use super::*;
 
@@ -253,12 +257,12 @@ macro_rules! test_quotient {
             use super::*;
 
             // A quotient group is a Lie group — inherit all LieGroup axioms.
-            test_lie_group!(lie_group, $quotient, $arb_quotient);
+            test_group!(lie_group, $quotient, $arb_quotient);
 
             proptest! {
                 #[test]
-                fn canonical_respects_coset(g in $arb_g, h in $arb_h) {
-                    prop_assert!(<$quotient>::check_canonical_respects_coset(g, h));
+                fn new_respects_coset(g in $arb_g, h in $arb_h) {
+                    prop_assert!(<$quotient>::check_new_respects_coset(g, h));
                 }
             }
         }

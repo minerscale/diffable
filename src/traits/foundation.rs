@@ -3,7 +3,7 @@ use std::ops::{Add, Mul};
 
 #[cfg(feature = "testing")]
 use num_traits::Zero;
-use num_traits::real::Real;
+use num_traits::{Euclid, real::Real};
 
 /// An element of the carrier set of a manifold, group, or metric space.
 ///
@@ -73,9 +73,9 @@ impl<T: Clone> Point for T {}
 ///
 /// [`R64`]: crate::epsilon_metric::R64
 /// [`R32`]: crate::epsilon_metric::R32
-pub trait Scalar: Real + std::fmt::Debug {}
+pub trait Scalar: Real + Euclid + std::fmt::Debug {}
 
-impl<R: Real + std::fmt::Debug> Scalar for R {}
+impl<R: Real + Euclid + std::fmt::Debug> Scalar for R {}
 
 /// A notion of distance on a manifold.
 ///
