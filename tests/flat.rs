@@ -9,7 +9,7 @@ use diffable::{
     epsilon_metric::R64,
     flat::{KleinBottle, S1, Torus},
     test_quotient, test_riemannian, test_tangent_bundle,
-    traits::{CMonoid, Chart, Quotient},
+    traits::{Chart, Quotient},
 };
 use proptest::prelude::*;
 
@@ -71,10 +71,10 @@ fn modulo() {
     let x = R64(12.4);
     let k: S1<Coords<R64, 1>> = S1::new([x].into());
 
-    println!("{:?}", k.compose(&k).compose(&k));
+    println!("{:?}", k + k + k);
 
     assert_eq!(
-        k.compose(&k).compose(&k).lift(),
+        (k + k + k).lift(),
         [(x + x + x).rem_euclid(&R64(1.0))].into()
     );
 }

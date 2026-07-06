@@ -1,10 +1,13 @@
-use std::marker::PhantomData;
+use std::{
+    marker::PhantomData,
+    ops::{Add, Neg},
+};
 
 use crate::{
     coords::Coords,
     impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
     traits::{
-        Bounded, CMonoid, Chart, Euclidean, ExpMap, Group, InnerProduct, LieGroup, Metric,
+        Bounded, Chart, Euclidean, ExpMap, InnerProduct, LieGroup, Metric,
         NerveComplex, Quotient, Scalar, Smooth, TangentBundle,
     },
 };
@@ -98,12 +101,21 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
         }
     }
 
+    fn identity() -> Self {
+        Sphere::new(V::F::one(), V::zero())
+    }
+
+    fn is_identity(&self) -> bool {
+        self.real.is_zero() && self.imag.is_zero()
+    }
+
     pub fn new(real: V::F, imag: V) -> Self {
         let sphere = Sphere { real, imag };
 
         sphere.normalised()
     }
 }
+
 impl<const N: usize, V: Euclidean> Smooth<V> for Sphere<N, V> {
     fn exp(&self, v: V) -> Self {
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
@@ -246,26 +258,35 @@ impl<V: Euclidean> Metric<V::F> for S3<V> {
     }
 }
 
-impl<V: Euclidean> CMonoid for S0<V> {
-    fn identity() -> Self {
-        Self(Sphere::new(V::F::one(), V::zero()))
+impl<V: Euclidean> Zero for S0<V> {
+    fn zero() -> Self {
+        Self(Sphere::identity())
     }
 
-    fn compose(&self, other: &Self) -> Self {
-        Self(Sphere::new(self.0.real * other.0.real, V::zero()))
+    fn is_zero(&self) -> bool {
+        self.0.is_identity()
     }
 }
 
-impl<V: Euclidean> Group for S0<V> {
-    // in Z/2Z each element is its own inverse.
-    fn inverse(&self) -> Self {
+impl<V: Euclidean> Add for S0<V> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(Sphere::new(self.0.real * rhs.0.real, V::zero()))
+    }
+}
+
+impl<V: Euclidean> Neg for S0<V> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
         Self(Sphere::new(self.0.real, V::zero()))
     }
 }
 
 impl<V: Euclidean> LieGroup<V> for S0<V> {
     fn identity_exp(_: V) -> Self {
-        Self::identity()
+        Self::zero()
     }
 
     fn identity_log(p: &Self) -> Option<V> {
@@ -277,14 +298,22 @@ impl<V: Euclidean> LieGroup<V> for S0<V> {
     }
 }
 
-impl<V: Euclidean> CMonoid for UnitComplex<V> {
-    fn identity() -> Self {
-        Self(Sphere::new(V::F::one(), V::zero()))
+impl<V: Euclidean> Zero for UnitComplex<V> {
+    fn zero() -> Self {
+        Self(Sphere::identity())
     }
 
-    fn compose(&self, other: &Self) -> Self {
+    fn is_zero(&self) -> bool {
+        self.0.is_identity()
+    }
+}
+
+impl<V: Euclidean> Add for UnitComplex<V> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
         let (a1, [b1]) = (self.0.real, self.0.imag.to_array());
-        let (a2, [b2]) = (other.0.real, other.0.imag.to_array());
+        let (a2, [b2]) = (rhs.0.real, rhs.0.imag.to_array());
 
         Self(Sphere::new(
             a1 * a2 - b1 * b2,
@@ -293,8 +322,10 @@ impl<V: Euclidean> CMonoid for UnitComplex<V> {
     }
 }
 
-impl<V: Euclidean> Group for UnitComplex<V> {
-    fn inverse(&self) -> Self {
+impl<V: Euclidean> Neg for UnitComplex<V> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
         Self(Sphere::new(self.0.real, -self.0.imag))
     }
 }
@@ -311,14 +342,22 @@ impl<V: Euclidean> LieGroup<V> for UnitComplex<V> {
     }
 }
 
-impl<V: Euclidean> CMonoid for S3<V> {
-    fn identity() -> Self {
-        Self(Sphere::new(V::F::one(), V::zero()))
+impl<V: Euclidean> Zero for S3<V> {
+    fn zero() -> Self {
+        Self(Sphere::identity())
     }
 
-    fn compose(&self, other: &Self) -> Self {
+    fn is_zero(&self) -> bool {
+        self.0.is_identity()
+    }
+}
+
+impl<V: Euclidean> Add for S3<V> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
         let (a1, [b1, c1, d1]) = (self.0.real, self.0.imag.to_array());
-        let (a2, [b2, c2, d2]) = (other.0.real, other.0.imag.to_array());
+        let (a2, [b2, c2, d2]) = (rhs.0.real, rhs.0.imag.to_array());
         Self(Sphere::new(
             a1 * a2 - b1 * b2 - c1 * c2 - d1 * d2,
             V::from_array([
@@ -330,8 +369,10 @@ impl<V: Euclidean> CMonoid for S3<V> {
     }
 }
 
-impl<V: Euclidean> Group for S3<V> {
-    fn inverse(&self) -> Self {
+impl<V: Euclidean> Neg for S3<V> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
         let (a, [b, c, d]) = (self.0.real, self.0.imag.to_array());
 
         Self(Sphere::new(a, V::from_array([-b, -c, -d])))

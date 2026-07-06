@@ -1,29 +1,49 @@
 use std::{
-    marker::PhantomData,
-    ops::{Add, Neg},
+    marker::PhantomData, ops::{Add, Mul, Neg},
 };
 
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 use crate::{
-    impl_group_via_grothendieck,
-    traits::{CMonoid, Euclidean, Group, LieGroup},
+    impl_ring_via_grothendieck, traits::{Euclidean, LieGroup},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct N(pub usize);
 
-impl CMonoid for N {
-    fn identity() -> Self {
-        Self(0)
+impl Zero for N {
+    fn zero() -> Self {
+        N(0)
     }
 
-    fn compose(&self, other: &Self) -> Self {
-        Self(self.0 + other.0)
+    fn is_zero(&self) -> bool {
+        self.0 == 0
     }
 }
 
-impl_group_via_grothendieck!(Z<V>, N, <V: Euclidean>);
+impl One for N {
+    fn one() -> Self {
+        Self(1)
+    }
+}
+
+impl Add for N {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Mul for N {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self(self.0 * rhs.0)
+    }
+}
+
+impl_ring_via_grothendieck!(Z<V>, N, <V: Euclidean>);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Z<V: Euclidean>(pub isize, PhantomData<V>);
@@ -37,9 +57,9 @@ impl<V: Euclidean> Z<V> {
 impl<V: Euclidean> Into<(N, N)> for Z<V> {
     fn into(self) -> (N, N) {
         if self.0 < 0 {
-            (N::identity(), N(isize::try_into(-self.0).unwrap()))
+            (N::zero(), N(isize::try_into(-self.0).unwrap()))
         } else {
-            (N(isize::try_into(self.0).unwrap()), N::identity())
+            (N(isize::try_into(self.0).unwrap()), N::zero())
         }
     }
 }
@@ -57,32 +77,6 @@ impl<V: Euclidean> From<(N, N)> for Z<V> {
             let diff = neg - pos;
             Self::new(-isize::try_from(diff).unwrap())
         }
-    }
-}
-
-impl<V: Euclidean> Add for Z<V> {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self::new(self.0 + rhs.0)
-    }
-}
-
-impl<V: Euclidean> Zero for Z<V> {
-    fn zero() -> Self {
-        Self::new(0)
-    }
-
-    fn is_zero(&self) -> bool {
-        self.0 == 0
-    }
-}
-
-impl<V: Euclidean> Neg for Z<V> {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Self(-self.0, PhantomData)
     }
 }
 

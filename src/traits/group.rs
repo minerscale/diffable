@@ -1,15 +1,15 @@
+use std::ops::{Add, Mul, Neg};
+
 use super::{Euclidean, Point, Smooth};
+use num_traits::{One, Zero};
 
-pub trait CMonoid: Point {
-    fn identity() -> Self;
-    fn compose(&self, other: &Self) -> Self;
-
+pub trait CMonoid: Point + Zero + Add<Output = Self> {
     #[cfg(feature = "testing")]
     fn check_left_identity(&self) -> bool
     where
         Self: PartialEq,
     {
-        Self::identity().compose(self) == *self
+        Self::zero() + self.clone() == *self
     }
 
     #[cfg(feature = "testing")]
@@ -17,7 +17,7 @@ pub trait CMonoid: Point {
     where
         Self: PartialEq,
     {
-        self.compose(&Self::identity()) == *self
+        self.clone() + Self::zero() == *self
     }
 
     #[cfg(feature = "testing")]
@@ -25,33 +25,148 @@ pub trait CMonoid: Point {
     where
         Self: PartialEq,
     {
-        a.compose(&b).compose(&c) == a.compose(&b.compose(&c))
+        (a.clone() + b.clone()) + c.clone() == a + (b + c)
     }
 }
+
+impl<M: Point + Zero + Add<Output = Self>> CMonoid for M {}
 
 #[macro_export]
 macro_rules! impl_group_via_grothendieck {
     ($target:ty, $monoid:ty, <$param:ident $(: $bounds:path)?>) => {
-        impl<$param $(: $bounds)?> CMonoid for $target {
-            fn identity() -> Self {
-                (<$monoid>::identity(), <$monoid>::identity()).into()
+        impl<$param $(: $bounds)?> Zero for $target {
+            fn zero() -> Self {
+                (<$monoid>::zero(), <$monoid>::zero()).into()
             }
 
-            fn compose(&self, other: &Self) -> Self {
+            fn is_zero(&self) -> bool {
                 let (a, b) = self.clone().into();
-                let (c, d) = other.clone().into();
-                (a.compose(&c), b.compose(&d)).into()
+                a == b
             }
         }
 
-        impl<$param $(: $bounds)?> Group for $target {
-            fn inverse(&self) -> Self {
-                let (a, b) = self.clone().into();
+        impl<$param $(: $bounds)?> Add for $target {
+            type Output = Self;
+
+            fn add(self, other: Self) -> Self {
+                let (a, b) = self.into();
+                let (c, d) = other.into();
+                (a + c, b + d).into()
+            }
+        }
+
+        impl<$param $(: $bounds)?> Neg for $target {
+            type Output = Self;
+
+            fn neg(self) -> Self {
+                let (a, b) = self.into();
                 (b, a).into()
             }
         }
     };
 }
+
+#[macro_export]
+macro_rules! impl_ring_via_grothendieck {
+    ($target:ty, $rig:ty, <$param:ident $(: $bounds:path)?>) => {
+
+        crate::impl_group_via_grothendieck!($target, $rig, <$param $(: $bounds)?>);
+
+        impl<$param $(: $bounds)?> One for $target {
+            fn one() -> Self {
+                // 1 represents (1 - 0)
+                (<$rig>::one(), <$rig>::zero()).into()
+            }
+        }
+
+        impl<$param $(: $bounds)?> Mul for $target {
+            type Output = Self;
+
+            fn mul(self, other: Self) -> Self {
+                let (a, b) = self.into();
+                let (c, d) = other.into();
+                
+                // Using the expansion: (a - b)(c - d) = (ac + bd) - (ad + bc)
+                let pos = (a.clone() * c.clone()) + (b.clone() * d.clone());
+                let neg = (a * d) + (b * c);
+                
+                (pos, neg).into()
+            }
+        }
+    }
+}
+
+pub trait Rig: CMonoid + One + Mul<Output = Self> {
+    #[cfg(feature = "testing")]
+    fn check_mul_left_identity(&self) -> bool
+    where
+        Self: PartialEq,
+    {
+        Self::one() * self.clone() == *self
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_mul_right_identity(&self) -> bool
+    where
+        Self: PartialEq,
+    {
+        self.clone() * Self::one() == *self
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_mul_associativity(a: Self, b: Self, c: Self) -> bool
+    where
+        Self: PartialEq,
+    {
+        (a.clone() * b.clone()) * c.clone() == a * (b * c)
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_mul_commutativity(a: Self, b: Self) -> bool
+    where
+        Self: PartialEq,
+    {
+        a.clone() * b.clone() == b * a
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_left_distributivity(a: Self, b: Self, c: Self) -> bool
+    where
+        Self: PartialEq,
+    {
+        a.clone() * (b.clone() + c.clone()) == (a.clone() * b) + (a * c)
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_right_distributivity(a: Self, b: Self, c: Self) -> bool
+    where
+        Self: PartialEq,
+    {
+        (a.clone() + b.clone()) * c.clone() == (a * c.clone()) + (b * c)
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_left_annihilation(&self) -> bool
+    where
+        Self: PartialEq,
+    {
+        Self::zero() * self.clone() == Self::zero()
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_right_annihilation(&self) -> bool
+    where
+        Self: PartialEq,
+    {
+        self.clone() * Self::zero() == Self::zero()
+    }
+}
+
+impl<R: CMonoid + Mul<Output = Self> + One> Rig for R {}
+
+pub trait Ring: Group + Rig {}
+
+impl<R: Group + Rig> Ring for R {}
 
 /// A group.
 ///
@@ -68,14 +183,13 @@ macro_rules! impl_group_via_grothendieck {
 /// - **Associativity**: `(a * b) * c = a * (b * c)`
 ///
 /// Certified by implementing this trait; verified by `test_group!`.
-pub trait Group: CMonoid {
-    fn inverse(&self) -> Self;
+pub trait Group: CMonoid + Neg<Output = Self> {
     #[cfg(feature = "testing")]
     fn check_left_inverse(&self) -> bool
     where
         Self: PartialEq,
     {
-        self.inverse().compose(self) == Self::identity()
+        (-self.clone()) + self.clone() == Self::zero()
     }
 
     #[cfg(feature = "testing")]
@@ -83,9 +197,11 @@ pub trait Group: CMonoid {
     where
         Self: PartialEq,
     {
-        self.compose(&self.inverse()) == Self::identity()
+        self.clone() + -self.clone() == Self::zero()
     }
 }
+
+impl<G: CMonoid + Neg<Output = Self>> Group for G {}
 
 /// A Lie group structure on a manifold.
 ///
@@ -190,15 +306,15 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Euclidean>: Point {
     fn embed(h: H) -> G;
 
     fn quotient_identity() -> Self {
-        Self::new(G::identity())
+        Self::new(G::zero())
     }
 
     fn quotient_compose(&self, other: &Self) -> Self {
-        Self::new(self.lift().compose(&other.lift()))
+        Self::new(self.lift() + other.lift())
     }
 
     fn quotient_inverse(&self) -> Self {
-        Self::new(self.lift().inverse())
+        Self::new(-self.lift())
     }
 
     fn quotient_identity_exp(v: V) -> Self {
@@ -218,7 +334,7 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Euclidean>: Point {
     where
         Self: PartialEq,
     {
-        Self::new(Self::embed(h).compose(&g)) == Self::new(g)
+        Self::new(Self::embed(h) + g.clone()) == Self::new(g)
     }
 }
 
@@ -226,11 +342,11 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Euclidean>: Point {
 impl<V: Euclidean, L: LieGroup<V>> Smooth<V> for L {
     fn exp(&self, coord: V) -> Self {
         let translated = Self::identity_exp(coord);
-        self.compose(&translated)
+        self.clone() + translated
     }
 
     fn log(&self, point: &Self) -> Option<V> {
-        let translated = self.inverse().compose(point);
+        let translated = -self.clone() + point.clone();
         Self::identity_log(&translated)
     }
 }
@@ -238,19 +354,29 @@ impl<V: Euclidean, L: LieGroup<V>> Smooth<V> for L {
 #[macro_export]
 macro_rules! impl_lie_group_via_quotient {
     ($type:ty, $g:ty, $h:ty $(, $bound:path)*) => {
-        impl<V: Euclidean + $($bound +)*> CMonoid for $type {
-            fn identity() -> Self {
+        impl<V: Euclidean + $($bound +)*> num_traits::Zero for $type {
+            fn zero() -> Self {
                 <Self as crate::traits::Quotient<$g, $h, V>>::quotient_identity()
             }
-            fn compose(&self, other: &Self) -> Self {
-                <Self as crate::traits::Quotient<$g, $h, V>>::quotient_compose(self, other)
+
+            fn is_zero(&self) -> bool {
+                self.lift().is_zero()
             }
         }
 
-        impl<V: Euclidean + $($bound +)*> Group for $type {
+        impl<V: Euclidean + $($bound +)*> std::ops::Add for $type {
+            type Output = Self;
 
-            fn inverse(&self) -> Self {
-                <Self as crate::traits::Quotient<$g, $h, V>>::quotient_inverse(self)
+            fn add(self, rhs: Self) -> Self {
+                <Self as crate::traits::Quotient<$g, $h, V>>::quotient_compose(&self, &rhs)
+            }
+        }
+
+        impl<V: Euclidean + $($bound +)*> std::ops::Neg for $type {
+            type Output = Self;
+
+            fn neg(self) -> Self {
+                <Self as crate::traits::Quotient<$g, $h, V>>::quotient_inverse(&self)
             }
         }
 

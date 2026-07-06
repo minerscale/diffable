@@ -296,3 +296,70 @@ macro_rules! test_quotient {
         }
     };
 }
+
+#[macro_export]
+macro_rules! test_ring {
+    ($mod_name:ident, $point:ty, $arb_point:expr) => {
+        mod $mod_name {
+            use super::*;
+            use diffable::{traits::Ring, test_rig, test_group};
+
+            test_group!(group, $point, $arb_point);
+            test_rig!(rig, $point, $arb_point);
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! test_rig {
+    ($mod_name:ident, $point:ty, $arb_point:expr) => {
+        mod $mod_name {
+            use super::*;
+            use diffable::{test_cmonoid, traits::Rig};
+
+            test_cmonoid!(cmonoid, $point, $arb_point);
+
+            proptest! {
+                #[test]
+                fn mul_left_identity(g in $arb_point) {
+                    prop_assert!(g.check_mul_left_identity());
+                }
+
+                #[test]
+                fn mul_right_identity(g in $arb_point) {
+                    prop_assert!(g.check_mul_right_identity());
+                }
+
+                #[test]
+                fn mul_associativity(a in $arb_point, b in $arb_point, c in $arb_point) {
+                    prop_assert!(<$point>::check_mul_associativity(a, b, c));
+                }
+
+                #[test]
+                fn mul_commutativity(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_mul_commutativity(a, b));
+                }
+
+                #[test]
+                fn left_distributivity(a in $arb_point, b in $arb_point, c in $arb_point) {
+                    prop_assert!(<$point>::check_left_distributivity(a, b, c));
+                }
+
+                #[test]
+                fn right_distributivity(a in $arb_point, b in $arb_point, c in $arb_point) {
+                    prop_assert!(<$point>::check_right_distributivity(a, b, c));
+                }
+
+                #[test]
+                fn left_annihilation(g in $arb_point) {
+                    prop_assert!(g.check_left_annihilation());
+                }
+
+                #[test]
+                fn right_annihilation(g in $arb_point) {
+                    prop_assert!(g.check_right_annihilation());
+                }
+            }
+        }
+    }
+}

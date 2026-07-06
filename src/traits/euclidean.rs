@@ -1,9 +1,7 @@
 use num_traits::Zero;
 use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
-use crate::traits::CMonoid;
-
-use super::{Group, InnerProduct, LieGroup, Scalar, TangentBundle};
+use super::{InnerProduct, LieGroup, Scalar, TangentBundle};
 
 /// A finite-dimensional Euclidean space.
 ///
@@ -102,22 +100,6 @@ pub trait Euclidean:
         let diff = a.clone() - b.clone();
         let norm_sq = diff.norm_squared();
         dist_sq == norm_sq
-    }
-}
-
-impl<E: Euclidean> CMonoid for E {
-    fn identity() -> Self {
-        Self::zero()
-    }
-
-    fn compose(&self, other: &Self) -> Self {
-        *self + *other
-    }
-}
-
-impl<E: Euclidean> Group for E {
-    fn inverse(&self) -> Self {
-        -*self
     }
 }
 
