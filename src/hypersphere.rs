@@ -4,8 +4,8 @@ use crate::{
     coords::Coords,
     impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
     traits::{
-        Bounded, Chart, Euclidean, ExpMap, Group, InnerProduct, LieGroup, Metric, NerveComplex,
-        Quotient, Scalar, Smooth, TangentBundle,
+        Bounded, Chart, CMonoid, Euclidean, ExpMap, Group, InnerProduct, LieGroup,
+        Metric, NerveComplex, Quotient, Scalar, Smooth, TangentBundle,
     },
 };
 use num_traits::{NumCast, One, Zero, real::Real};
@@ -223,7 +223,7 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
 pub struct S0<V: Euclidean>(pub Sphere<0, V>);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct S1<V: Euclidean>(pub Sphere<1, V>);
+pub struct UnitComplex<V: Euclidean>(pub Sphere<1, V>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct S3<V: Euclidean>(pub Sphere<3, V>);
@@ -234,7 +234,7 @@ impl<V: Euclidean> Metric<V::F> for S0<V> {
     }
 }
 
-impl<V: Euclidean> Metric<V::F> for S1<V> {
+impl<V: Euclidean> Metric<V::F> for UnitComplex<V> {
     fn distance(&self, other: &Self) -> V::F {
         self.0.distance(&other.0)
     }
@@ -246,7 +246,7 @@ impl<V: Euclidean> Metric<V::F> for S3<V> {
     }
 }
 
-impl<V: Euclidean> Group for S0<V> {
+impl<V: Euclidean> CMonoid for S0<V> {
     fn identity() -> Self {
         Self(Sphere::new(V::F::one(), V::zero()))
     }
@@ -254,7 +254,9 @@ impl<V: Euclidean> Group for S0<V> {
     fn compose(&self, other: &Self) -> Self {
         Self(Sphere::new(self.0.real * other.0.real, V::zero()))
     }
+}
 
+impl<V: Euclidean> Group for S0<V> {
     // in Z/2Z each element is its own inverse.
     fn inverse(&self) -> Self {
         Self(Sphere::new(self.0.real, V::zero()))
@@ -275,7 +277,7 @@ impl<V: Euclidean> LieGroup<V> for S0<V> {
     }
 }
 
-impl<V: Euclidean> Group for S1<V> {
+impl<V: Euclidean> CMonoid for UnitComplex<V> {
     fn identity() -> Self {
         Self(Sphere::new(V::F::one(), V::zero()))
     }
@@ -289,17 +291,19 @@ impl<V: Euclidean> Group for S1<V> {
             V::from_array([a1 * b2 + a2 * b1]),
         ))
     }
+}
 
+impl<V: Euclidean> Group for UnitComplex<V> {
     fn inverse(&self) -> Self {
         Self(Sphere::new(self.0.real, -self.0.imag))
     }
 }
 
-impl<V: Euclidean> LieGroup<V> for S1<V> {
+impl<V: Euclidean> LieGroup<V> for UnitComplex<V> {
     fn identity_exp(v: V) -> Self {
         let alpha = v[0];
 
-        S1(Sphere::new(alpha.cos(), V::from_array([alpha.sin()])))
+        UnitComplex(Sphere::new(alpha.cos(), V::from_array([alpha.sin()])))
     }
 
     fn identity_log(p: &Self) -> Option<V> {
@@ -307,7 +311,7 @@ impl<V: Euclidean> LieGroup<V> for S1<V> {
     }
 }
 
-impl<V: Euclidean> Group for S3<V> {
+impl<V: Euclidean> CMonoid for S3<V> {
     fn identity() -> Self {
         Self(Sphere::new(V::F::one(), V::zero()))
     }
@@ -324,7 +328,9 @@ impl<V: Euclidean> Group for S3<V> {
             ]),
         ))
     }
+}
 
+impl<V: Euclidean> Group for S3<V> {
     fn inverse(&self) -> Self {
         let (a, [b, c, d]) = (self.0.real, self.0.imag.to_array());
 
@@ -401,9 +407,9 @@ impl_lie_group_via_quotient!(So3<V>, S3<V>, S0<V>);
 use crate::epsilon_metric::R64;
 
 #[derive(PartialEq, Debug, Clone)]
-pub struct S1Cover(S1<Coords<R64, 1>>);
+pub struct S1Cover(UnitComplex<Coords<R64, 1>>);
 
-impl Bounded<S1<Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
+impl Bounded<UnitComplex<Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
     // Each node's domain is the open arc of radius ρ = π/6 + 0.05 about its
     // base point. Six such arcs centred at the sixth roots of unity form an
     // open good cover of S¹:
@@ -417,27 +423,29 @@ impl Bounded<S1<Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
         v.norm() - R64(std::f64::consts::PI / 6.0 + 0.05)
     }
 
-    fn new(p: S1<Coords<R64, 1>>) -> Self {
+    fn new(p: UnitComplex<Coords<R64, 1>>) -> Self {
         Self(p)
     }
 
-    fn inner(&self) -> &S1<Coords<R64, 1>> {
+    fn inner(&self) -> &UnitComplex<Coords<R64, 1>> {
         &self.0
     }
 }
 
 impl_tangent_bundle_via_bounded!(
-    S1Cover, S1<Coords<R64, 1>>, Coords<R64, 1>
+    S1Cover, UnitComplex<Coords<R64, 1>>, Coords<R64, 1>
 );
 
-impl NerveComplex<S1<Coords<R64, 1>>, Coords<R64, 1>, S1<Coords<R64, 1>>, S1Cover> for S1Cover {
+impl NerveComplex<UnitComplex<Coords<R64, 1>>, Coords<R64, 1>, UnitComplex<Coords<R64, 1>>, S1Cover>
+    for S1Cover
+{
     fn nodes() -> &'static [S1Cover] {
         use std::sync::LazyLock;
         static NODES: LazyLock<Vec<S1Cover>> = LazyLock::new(|| {
             (0..6)
                 .map(|i| {
                     let angle: R64 = R64(i.into()) * R64(std::f64::consts::TAU) / R64(6.0);
-                    S1Cover(S1(Sphere::new(angle.cos(), [angle.sin()].into())))
+                    S1Cover(UnitComplex(Sphere::new(angle.cos(), [angle.sin()].into())))
                 })
                 .collect()
         });

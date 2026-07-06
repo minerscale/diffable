@@ -1,24 +1,8 @@
 use super::{Euclidean, Point, Smooth};
 
-/// A group.
-///
-/// The space of all values of a type `G: Group` is interpreted as a group —
-/// a set equipped with an associative composition, an identity element, and
-/// inverses. This is the purely algebraic layer: `Group` carries no topology,
-/// no smoothness, and no coordinate structure. A `Group` need not be a
-/// manifold at all — that structure appears only at [`LieGroup`], which
-/// refines `Group` with an exponential map and the differential structure of
-/// a smooth manifold.
-///
-/// - **Identity**: there exists `e` with `e * g = g * e = g`
-/// - **Inverses**: every `g` has `g⁻¹` with `g * g⁻¹ = g⁻¹ * g = e`
-/// - **Associativity**: `(a * b) * c = a * (b * c)`
-///
-/// Certified by implementing this trait; verified by `test_group!`.
-pub trait Group: Point {
+pub trait CMonoid: Point {
     fn identity() -> Self;
     fn compose(&self, other: &Self) -> Self;
-    fn inverse(&self) -> Self;
 
     #[cfg(feature = "testing")]
     fn check_left_identity(&self) -> bool
@@ -37,6 +21,56 @@ pub trait Group: Point {
     }
 
     #[cfg(feature = "testing")]
+    fn check_associativity(a: Self, b: Self, c: Self) -> bool
+    where
+        Self: PartialEq,
+    {
+        a.compose(&b).compose(&c) == a.compose(&b.compose(&c))
+    }
+}
+
+#[macro_export]
+macro_rules! impl_group_via_grothendieck {
+    ($target:ty, $monoid:ty, <$param:ident $(: $bounds:path)?>) => {
+        impl<$param $(: $bounds)?> CMonoid for $target {
+            fn identity() -> Self {
+                (<$monoid>::identity(), <$monoid>::identity()).into()
+            }
+
+            fn compose(&self, other: &Self) -> Self {
+                let (a, b) = self.clone().into();
+                let (c, d) = other.clone().into();
+                (a.compose(&c), b.compose(&d)).into()
+            }
+        }
+
+        impl<$param $(: $bounds)?> Group for $target {
+            fn inverse(&self) -> Self {
+                let (a, b) = self.clone().into();
+                (b, a).into()
+            }
+        }
+    };
+}
+
+/// A group.
+///
+/// The space of all values of a type `G: Group` is interpreted as a group —
+/// a set equipped with an associative composition, an identity element, and
+/// inverses. This is the purely algebraic layer: `Group` carries no topology,
+/// no smoothness, and no coordinate structure. A `Group` need not be a
+/// manifold at all — that structure appears only at [`LieGroup`], which
+/// refines `Group` with an exponential map and the differential structure of
+/// a smooth manifold.
+///
+/// - **Identity**: there exists `e` with `e * g = g * e = g`
+/// - **Inverses**: every `g` has `g⁻¹` with `g * g⁻¹ = g⁻¹ * g = e`
+/// - **Associativity**: `(a * b) * c = a * (b * c)`
+///
+/// Certified by implementing this trait; verified by `test_group!`.
+pub trait Group: CMonoid {
+    fn inverse(&self) -> Self;
+    #[cfg(feature = "testing")]
     fn check_left_inverse(&self) -> bool
     where
         Self: PartialEq,
@@ -50,14 +84,6 @@ pub trait Group: Point {
         Self: PartialEq,
     {
         self.compose(&self.inverse()) == Self::identity()
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_associativity(a: Self, b: Self, c: Self) -> bool
-    where
-        Self: PartialEq,
-    {
-        a.compose(&b).compose(&c) == a.compose(&b.compose(&c))
     }
 }
 
@@ -92,6 +118,10 @@ pub trait Group: Point {
 /// the exponential map at the identity alone is sufficient to generate a
 /// full tangent bundle over the entire group, with no separate wrapper type
 /// needed.
+///
+/// [`Chart`]: crate::traits::Chart
+/// [`ExpMap`]: crate::traits::ExpMap
+/// [`TangentBundle`]: crate::traits::TangentBundle
 pub trait LieGroup<V: Euclidean>: Group {
     fn identity_exp(v: V) -> Self;
     fn identity_log(p: &Self) -> Option<V>;
@@ -208,13 +238,17 @@ impl<V: Euclidean, L: LieGroup<V>> Smooth<V> for L {
 #[macro_export]
 macro_rules! impl_lie_group_via_quotient {
     ($type:ty, $g:ty, $h:ty $(, $bound:path)*) => {
-        impl<V: Euclidean + $($bound +)*> Group for $type {
+        impl<V: Euclidean + $($bound +)*> CMonoid for $type {
             fn identity() -> Self {
                 <Self as crate::traits::Quotient<$g, $h, V>>::quotient_identity()
             }
             fn compose(&self, other: &Self) -> Self {
                 <Self as crate::traits::Quotient<$g, $h, V>>::quotient_compose(self, other)
             }
+        }
+
+        impl<V: Euclidean + $($bound +)*> Group for $type {
+
             fn inverse(&self) -> Self {
                 <Self as crate::traits::Quotient<$g, $h, V>>::quotient_inverse(self)
             }

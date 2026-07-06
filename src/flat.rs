@@ -1,84 +1,23 @@
-use std::{
-    marker::PhantomData,
-    ops::{Add, Neg},
-};
+use crate::discrete::Z;
+use std::marker::PhantomData;
 
 use crate::{
     impl_lie_group_via_quotient,
-    traits::{Chart, Euclidean, Group, LieGroup, Metric, Quotient, Smooth},
+    traits::{Chart, CMonoid, Euclidean, Group, LieGroup, Metric, Quotient, Smooth},
 };
 
 use num_traits::{Euclid, NumCast, One, Zero, real::Real};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct S1Quotient<V: Euclidean + From<[<V as Euclidean>::F; 1]>>(V);
+pub struct S1<V: Euclidean + From<[<V as Euclidean>::F; 1]>>(V);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Z<V: Euclidean>(pub isize, PhantomData<V>);
-
-impl<V: Euclidean> Z<V> {
-    pub fn new(v: isize) -> Self {
-        Self(v, PhantomData)
-    }
-}
-
-impl<V: Euclidean> Add for Z<V> {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self::new(self.0 + rhs.0)
-    }
-}
-
-impl<V: Euclidean> Zero for Z<V> {
-    fn zero() -> Self {
-        Self::new(0)
-    }
-
-    fn is_zero(&self) -> bool {
-        self.0 == 0
-    }
-}
-
-impl<V: Euclidean> Neg for Z<V> {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Self(-self.0, PhantomData)
-    }
-}
-
-impl<V: Euclidean> Group for Z<V> {
-    fn identity() -> Self {
-        Self::zero()
-    }
-
-    fn compose(&self, other: &Self) -> Self {
-        *self + *other
-    }
-
-    fn inverse(&self) -> Self {
-        -*self
-    }
-}
-
-impl<V: Euclidean> LieGroup<V> for Z<V> {
-    fn identity_exp(_: V) -> Self {
-        Self::zero()
-    }
-
-    fn identity_log(p: &Self) -> Option<V> {
-        if p.is_zero() { Some(V::zero()) } else { None }
-    }
-}
-
-impl<V: Euclidean + From<[V::F; 1]>> Metric<V::F> for S1Quotient<V> {
+impl<V: Euclidean + From<[V::F; 1]>> Metric<V::F> for S1<V> {
     fn distance(&self, other: &Self) -> V::F {
         self.to_local(other).unwrap().norm()
     }
 }
 
-impl<V: Euclidean + From<[<V as Euclidean>::F; 1]>> Quotient<V, Z<V>, V> for S1Quotient<V> {
+impl<V: Euclidean + From<[<V as Euclidean>::F; 1]>> Quotient<V, Z<V>, V> for S1<V> {
     fn new(g: V) -> Self {
         Self([g[0].rem_euclid(&V::F::one())].into())
     }
@@ -92,17 +31,17 @@ impl<V: Euclidean + From<[<V as Euclidean>::F; 1]>> Quotient<V, Z<V>, V> for S1Q
     }
 }
 
-impl_lie_group_via_quotient!(S1Quotient<V>, V, Z<V>, From<[<V as Euclidean>::F; 1]>);
+impl_lie_group_via_quotient!(S1<V>, V, Z<V>, From<[<V as Euclidean>::F; 1]>);
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Torus<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>>(
-    S1Quotient<I>,
-    S1Quotient<I>,
+    S1<I>,
+    S1<I>,
     PhantomData<V>,
 );
 
 impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Torus<I, V> {
-    pub fn new(a: S1Quotient<I>, b: S1Quotient<I>) -> Self {
+    pub fn new(a: S1<I>, b: S1<I>) -> Self {
         Self(a, b, PhantomData)
     }
 }
@@ -117,17 +56,21 @@ where
     }
 }
 
-impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Group
-    for Torus<I, V>
+impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>>
+    CMonoid for Torus<I, V>
 {
     fn identity() -> Self {
-        Self::new(S1Quotient::identity(), S1Quotient::identity())
+        Self::new(S1::identity(), S1::identity())
     }
 
     fn compose(&self, other: &Self) -> Self {
         Self::new(self.0.compose(&other.0), self.1.compose(&other.1))
     }
+}
 
+impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Group
+    for Torus<I, V>
+{
     fn inverse(&self) -> Self {
         Self::new(self.0.inverse(), self.1.inverse())
     }
@@ -139,12 +82,12 @@ impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F
     fn identity_exp(v: V) -> Self {
         let v0 = [v[0]].into();
         let v1 = [v[1]].into();
-        Self::new(S1Quotient::identity_exp(v0), S1Quotient::identity_exp(v1))
+        Self::new(S1::identity_exp(v0), S1::identity_exp(v1))
     }
 
     fn identity_log(p: &Self) -> Option<V> {
-        let a = S1Quotient::identity_log(&p.0)?;
-        let b = S1Quotient::identity_log(&p.1)?;
+        let a = S1::identity_log(&p.0)?;
+        let b = S1::identity_log(&p.1)?;
 
         Some([a[0], b[0]].into())
     }
@@ -154,12 +97,12 @@ impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F
 pub struct KleinBottle<
     I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>,
     V: Euclidean + From<[I::F; 2]>,
->(S1Quotient<I>, S1Quotient<I>, PhantomData<V>);
+>(S1<I>, S1<I>, PhantomData<V>);
 
 impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>>
     KleinBottle<I, V>
 {
-    pub fn new(a: S1Quotient<I>, b: S1Quotient<I>) -> Self {
+    pub fn new(a: S1<I>, b: S1<I>) -> Self {
         Self(a, b, PhantomData)
     }
 }
@@ -240,8 +183,8 @@ where
         let x_red = x_oriented.rem_euclid(&one);
 
         Self(
-            S1Quotient::new([x_red].into()),
-            S1Quotient::new([y_red].into()),
+            S1::new([x_red].into()),
+            S1::new([y_red].into()),
             PhantomData,
         )
     }

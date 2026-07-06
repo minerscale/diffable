@@ -8,12 +8,12 @@ use common::*;
 use diffable::{
     coords::Coords,
     epsilon_metric::R64,
-    hypersphere::{S0, S1, S1Cover, S3, So3, So3Cover, Sphere, Stereographic},
-    test_chart, test_exp_map, test_group, test_metric, test_quotient, test_riemannian,
+    hypersphere::{S0, S1Cover, S3, So3, So3Cover, Sphere, Stereographic, UnitComplex},
+    test_chart, test_exp_map, test_group, test_metric, test_monoid, test_quotient, test_riemannian,
     test_tangent_bundle,
     traits::{
-        Chart, ExpMap, Group, GroupPresentation, InnerProduct, LieGroup, Metric, NerveComplex,
-        Quotient, Riemannian, TangentBundle,
+        Chart, CMonoid, ExpMap, Group, GroupPresentation, InnerProduct, LieGroup, Metric,
+        NerveComplex, Quotient, Riemannian, TangentBundle,
     },
 };
 
@@ -50,7 +50,7 @@ test_riemannian!(
 );
 test_riemannian!(
     riemannian_s1,
-    S1<Coords<_, _>>,
+    UnitComplex<Coords<_, _>>,
     arb_sphere1(),
     arb_vec::<1>()
 );
@@ -78,7 +78,7 @@ test_tangent_bundle!(
 test_tangent_bundle!(
     tangent_bundle_s1,
     R64,
-    S1<Coords<_, _>>,
+    UnitComplex<Coords<_, _>>,
     arb_sphere1(),
     arb_vec1()
 );
@@ -99,7 +99,7 @@ test_tangent_bundle!(
 
 // Lie group axioms
 test_group!(lie_group_s0, S0<_>, arb_sphere0());
-test_group!(lie_group_s1, S1<_>, arb_sphere1());
+test_group!(lie_group_s1, UnitComplex<_>, arb_sphere1());
 test_group!(lie_group_s3, S3<_>, arb_sphere3());
 // ($mod_name:ident, $quotient:ty, $arb_quotient:expr, $arb_g:expr, $arb_h:expr)
 test_quotient!(
@@ -120,7 +120,7 @@ proptest! {
     #[test]
     fn s1_exp_homomorphism(v in -1.5f64..1.5f64, w in -1.5f64..1.5f64) {
         let (v, w) = (R64(v), R64(w));
-        let chart = S1::identity();
+        let chart = UnitComplex::identity();
         let ev: Coords<R64, 1> = [v].into();
         let ew: Coords<R64, 1> = [w].into();
         let evw: Coords<R64, 1> = [v + w].into();
@@ -196,7 +196,7 @@ fn dirac_belt_trick() {
 
 #[test]
 fn s1_fundamental_group() {
-    let cover = S1Cover::chart_at(&S1::identity());
+    let cover = S1Cover::chart_at(&UnitComplex::identity());
 
     let pi1 = cover.fundamental_group();
     println!("generators: {}", pi1.n_generators());

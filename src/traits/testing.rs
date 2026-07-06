@@ -155,7 +155,7 @@ macro_rules! test_tangent_bundle {
 }
 
 #[macro_export]
-macro_rules! test_group {
+macro_rules! test_monoid {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
@@ -173,6 +173,23 @@ macro_rules! test_group {
                 }
 
                 #[test]
+                fn associativity(a in $arb_point, b in $arb_point, c in $arb_point) {
+                    prop_assert!(<$point>::check_associativity(a, b, c));
+                }
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! test_group {
+    ($mod_name:ident, $point:ty, $arb_point:expr) => {
+        mod $mod_name {
+            use super::*;
+
+            test_monoid!(monoid, $point, $arb_point);
+            proptest! {
+                #[test]
                 fn left_inverse(p in $arb_point) {
                     prop_assert!(<$point>::check_left_inverse(&p));
                 }
@@ -180,11 +197,6 @@ macro_rules! test_group {
                 #[test]
                 fn right_inverse(p in $arb_point) {
                     prop_assert!(<$point>::check_right_inverse(&p));
-                }
-
-                #[test]
-                fn associativity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point>::check_associativity(a, b, c));
                 }
             }
         }

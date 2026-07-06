@@ -120,6 +120,7 @@ pub mod coords;
 pub mod hypersphere;
 pub mod traits;
 
+pub mod discrete;
 pub mod epsilon_metric;
-pub mod torus;
+pub mod flat;
 pub use epsilon_metric::{R32, R64};

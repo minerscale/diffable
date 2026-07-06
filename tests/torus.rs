@@ -6,10 +6,12 @@ mod common;
 use common::*;
 use diffable::{
     coords::Coords,
+    discrete::Z,
     epsilon_metric::R64,
-    test_chart, test_exp_map, test_group, test_quotient, test_riemannian, test_tangent_bundle,
-    torus::{KleinBottle, S1Quotient, Torus, Z},
-    traits::{Chart, ExpMap, Group, Quotient, Riemannian, TangentBundle},
+    flat::{KleinBottle, S1, Torus},
+    test_chart, test_exp_map, test_group, test_monoid, test_quotient, test_riemannian,
+    test_tangent_bundle,
+    traits::{Chart, CMonoid, ExpMap, Group, Quotient, Riemannian, TangentBundle},
 };
 use proptest::prelude::*;
 
@@ -20,20 +22,20 @@ test_tangent_bundle!(tangent_bundle_z, R64, Z<_>, arb_z(), arb_vec::<1>());
 test_tangent_bundle!(
     tangent_bundle_s1_quotient,
     R64,
-    S1Quotient<Coords<_, _>>,
+    S1<Coords<_, _>>,
     arb_s1_quotient(),
     arb_vec::<1>()
 );
 test_quotient!(
     quotient_s1,
-    S1Quotient<Coords<_, _>>,
+    S1<Coords<_, _>>,
     arb_s1_quotient(),
     arb_vec1(),
     arb_z()
 );
 test_riemannian!(
     riemannian_s1,
-    S1Quotient<Coords<_, _>>,
+    S1<Coords<_, _>>,
     arb_s1_quotient(),
     arb_vec1()
 );
@@ -71,7 +73,7 @@ test_riemannian!(
 #[test]
 fn modulo() {
     let x = R64(12.4);
-    let k: S1Quotient<Coords<R64, 1>> = S1Quotient::new([x].into());
+    let k: S1<Coords<R64, 1>> = S1::new([x].into());
 
     println!("{:?}", k.compose(&k).compose(&k));
 

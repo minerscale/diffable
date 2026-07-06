@@ -3,9 +3,10 @@
 
 use diffable::{
     coords::Coords,
+    discrete::Z,
     epsilon_metric::R64,
-    hypersphere::{S0, S1, S3, So3, Sphere},
-    torus::{S1Quotient, Z},
+    flat::S1,
+    hypersphere::{S0, S3, So3, Sphere, UnitComplex},
     traits::Quotient,
 };
 
@@ -27,10 +28,10 @@ pub fn arb_sphere0() -> impl Strategy<Value = S0<Coords<R64, 0>>> {
 
 prop_compose! {
     pub fn arb_sphere1()(angle in -std::f64::consts::PI..std::f64::consts::PI)
-        -> S1<Coords<R64, 1>>
+        -> UnitComplex<Coords<R64, 1>>
     {
         let angle = R64(angle);
-        S1(Sphere::new(angle.cos(), [angle.sin()].into()))
+        UnitComplex(Sphere::new(angle.cos(), [angle.sin()].into()))
     }
 }
 
@@ -134,6 +135,6 @@ prop_compose! {
     }
 }
 
-pub fn arb_s1_quotient() -> impl Strategy<Value = S1Quotient<Coords<R64, 1>>> {
-    arb_scalar().prop_map(|x| S1Quotient::new([x].into()))
+pub fn arb_s1_quotient() -> impl Strategy<Value = S1<Coords<R64, 1>>> {
+    arb_scalar().prop_map(|x| S1::new([x].into()))
 }
