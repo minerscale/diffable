@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use crate::{
     impl_lie_group_via_quotient,
-    traits::{Chart, CMonoid, Euclidean, Group, LieGroup, Metric, Quotient, Smooth},
+    traits::{CMonoid, Chart, Euclidean, Group, LieGroup, Metric, Quotient, Smooth},
 };
 
 use num_traits::{Euclid, NumCast, One, Zero, real::Real};
@@ -56,8 +56,8 @@ where
     }
 }
 
-impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>>
-    CMonoid for Torus<I, V>
+impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> CMonoid
+    for Torus<I, V>
 {
     fn identity() -> Self {
         Self::new(S1::identity(), S1::identity())

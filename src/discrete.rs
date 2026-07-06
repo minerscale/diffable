@@ -48,7 +48,7 @@ impl<V: Euclidean> From<(N, N)> for Z<V> {
     fn from(value: (N, N)) -> Self {
         let pos = value.0.0;
         let neg = value.1.0;
-        
+
         if pos >= neg {
             // The net result is positive, check if it fits in isize
             Self::new(isize::try_from(pos - neg).unwrap())

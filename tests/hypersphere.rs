@@ -9,11 +9,10 @@ use diffable::{
     coords::Coords,
     epsilon_metric::R64,
     hypersphere::{S0, S1Cover, S3, So3, So3Cover, Sphere, Stereographic, UnitComplex},
-    test_chart, test_exp_map, test_group, test_metric, test_monoid, test_quotient, test_riemannian,
+    test_chart, test_exp_map, test_group, test_metric, test_quotient, test_riemannian,
     test_tangent_bundle,
     traits::{
-        Chart, CMonoid, ExpMap, Group, GroupPresentation, InnerProduct, LieGroup, Metric,
-        NerveComplex, Quotient, Riemannian, TangentBundle,
+        CMonoid, Chart, ExpMap, GroupPresentation, InnerProduct, LieGroup, NerveComplex, Quotient,
     },
 };
 

@@ -11,6 +11,10 @@ macro_rules! test_euclidean {
     ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_vec:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
+            use diffable::{
+                test_group, test_inner_product, test_metric, test_riemannian, test_tangent_bundle,
+                traits::Euclidean,
+            };
 
             // inherit all TangentFibre tests
             test_tangent_bundle!(tangent_bundle, $scalar, $space, $arb_point, $arb_vec);
@@ -58,6 +62,8 @@ macro_rules! test_euclidean {
 macro_rules! test_chart {
     ($mod_name:ident, $chart:ty, $arb_point:expr) => {
         mod $mod_name {
+            use diffable::traits::Chart;
+
             use super::*;
             proptest! {
                 #[test]
@@ -77,7 +83,7 @@ macro_rules! test_exp_map {
     ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
         mod $mod_name {
             use super::*;
-            use num_traits::NumCast;
+            use diffable::{test_chart, traits::ExpMap};
 
             // inherit all Chart tests
             test_chart!(chart, $chart, $arb_point);
@@ -110,7 +116,7 @@ macro_rules! test_exp_map {
                 #[test]
                 fn geodesic_scaling(p in $arb_point, v in $arb_vec, t in 0.0f64..1.0f64) {
                     let chart = <$chart>::chart_at(&p);
-                    prop_assert!(chart.check_geodesic_scaling(v, <$scalar as NumCast>::from(t).unwrap()));
+                    prop_assert!(chart.check_geodesic_scaling(v, <$scalar as num_traits::NumCast>::from(t).unwrap()));
                 }
             }
         }
@@ -122,6 +128,8 @@ macro_rules! test_riemannian {
     ($mod_name:ident, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
         mod $mod_name {
             use super::*;
+            use diffable::traits::Riemannian;
+
             proptest! {
                 #[test]
                 fn chart_metric_compatibility(p in $arb_point, v in $arb_vec) {
@@ -139,6 +147,7 @@ macro_rules! test_tangent_bundle {
     ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
         mod $mod_name {
             use super::*;
+            use diffable::{test_exp_map, traits::TangentBundle};
 
             // inherit all ExpMap tests
             test_exp_map!(exp_map, $scalar, $chart, $arb_point, $arb_vec);
@@ -155,10 +164,12 @@ macro_rules! test_tangent_bundle {
 }
 
 #[macro_export]
-macro_rules! test_monoid {
+macro_rules! test_cmonoid {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
+            use diffable::traits::CMonoid;
+
             proptest! {
                 #[test]
                 fn left_identity(p in $arb_point) {
@@ -186,8 +197,9 @@ macro_rules! test_group {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
+            use diffable::{test_cmonoid, traits::Group};
 
-            test_monoid!(monoid, $point, $arb_point);
+            test_cmonoid!(monoid, $point, $arb_point);
             proptest! {
                 #[test]
                 fn left_inverse(p in $arb_point) {
@@ -209,6 +221,8 @@ macro_rules! test_metric {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
+            use diffable::traits::Metric;
+
             proptest! {
                 #[test]
                 fn non_negative(a in $arb_point, b in $arb_point) {
@@ -235,6 +249,7 @@ macro_rules! test_inner_product {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
+            use diffable::traits::InnerProduct;
             proptest! {
                 #[test]
                 fn symmetry(a in $arb_point, b in $arb_point) {
@@ -267,6 +282,7 @@ macro_rules! test_quotient {
     ($mod_name:ident, $quotient:ty, $arb_quotient:expr, $arb_g:expr, $arb_h:expr) => {
         mod $mod_name {
             use super::*;
+            use diffable::{test_group, traits::Quotient};
 
             // A quotient group is a Lie group — inherit all LieGroup axioms.
             test_group!(lie_group, $quotient, $arb_quotient);

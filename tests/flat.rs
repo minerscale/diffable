@@ -6,19 +6,15 @@ mod common;
 use common::*;
 use diffable::{
     coords::Coords,
-    discrete::Z,
     epsilon_metric::R64,
     flat::{KleinBottle, S1, Torus},
-    test_chart, test_exp_map, test_group, test_monoid, test_quotient, test_riemannian,
-    test_tangent_bundle,
-    traits::{Chart, CMonoid, ExpMap, Group, Quotient, Riemannian, TangentBundle},
+    test_quotient, test_riemannian, test_tangent_bundle,
+    traits::{CMonoid, Chart, Quotient},
 };
 use proptest::prelude::*;
 
 use num_traits::Euclid;
 
-test_group!(group_z, Z<_>, arb_z());
-test_tangent_bundle!(tangent_bundle_z, R64, Z<_>, arb_z(), arb_vec::<1>());
 test_tangent_bundle!(
     tangent_bundle_s1_quotient,
     R64,

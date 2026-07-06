@@ -5,16 +5,7 @@ mod common;
 
 use common::*;
 
-use diffable::{
-    coords::Coords,
-    epsilon_metric::R64,
-    test_chart, test_euclidean, test_exp_map, test_group, test_inner_product, test_metric,
-    test_monoid, test_riemannian, test_tangent_bundle,
-    traits::{
-        Chart, CMonoid, Euclidean, ExpMap, Group, InnerProduct, Metric, Riemannian,
-        TangentBundle,
-    },
-};
+use diffable::{coords::Coords, epsilon_metric::R64, test_euclidean, traits::Chart};
 
 use proptest::prelude::*;
 

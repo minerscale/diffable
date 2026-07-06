@@ -4,8 +4,8 @@ use crate::{
     coords::Coords,
     impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
     traits::{
-        Bounded, Chart, CMonoid, Euclidean, ExpMap, Group, InnerProduct, LieGroup,
-        Metric, NerveComplex, Quotient, Scalar, Smooth, TangentBundle,
+        Bounded, CMonoid, Chart, Euclidean, ExpMap, Group, InnerProduct, LieGroup, Metric,
+        NerveComplex, Quotient, Scalar, Smooth, TangentBundle,
     },
 };
 use num_traits::{NumCast, One, Zero, real::Real};
