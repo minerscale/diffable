@@ -37,9 +37,17 @@ The library is organised around a hierarchy of traits that mirror the mathematic
 
 | Trait | Meaning |
 |---|---|
-| `Group` | Associative composition with identity and inverses |
+| `Group` | Associative composition with identity and inverses, spelled with operator-agnostic named methods (`compose`, `inverse`) so it covers abelian and non-abelian groups alike |
+| `CMonoid` / `CGroup` | The commutative, `+`-notation presentation (identity `zero`) |
+| `Monoid` / `MulGroup` | The (possibly non-commutative) `*`-notation presentation (identity `one`) |
+| `Rig` / `Ring` | A type with both a compatible `+` and `*`, e.g. `Z` |
 | `LieGroup<V>` | A group with a smooth exponential map at the identity; automatically derives `Smooth` via left translation |
-| `Quotient<G, H, V>` | A quotient `G/H` by a central subgroup, inheriting Lie group structure |
+| `Quotient<G, H, V>` | A quotient `G/H` by a subgroup, inheriting Lie group structure |
+
+A concrete type reaches `Group` by pairing its `+`/`*` structure with
+`impl_group_via_add!`/`impl_group_via_mul!` — a one-line macro rather than a
+blanket impl, since `CMonoid` and `Monoid` implementors can't both
+blanket-impl the same trait without overlapping.
 
 ### Euclidean — flat space
 
@@ -72,9 +80,12 @@ Quotient<G, H, V>      (via macro)  →  Group, LieGroup<V>  →  Smooth  →  .
 |---|---|
 | `Coords<R, N>` | The canonical Euclidean space `Rⁿ` |
 | `Sphere<N, V>` | The unit hypersphere `Sⁿ` as a smooth manifold, any dimension |
-| `S0<V>`, `S1<V>`, `S3<V>` | Lie group structures on S⁰, S¹, S³ — newtypes of `Sphere` adding group operations |
+| `S0<V>`, `UnitComplex<V>`, `S3<V>` | Lie group structures on S⁰, S¹, S³ — newtypes of `Sphere` adding group operations |
 | `So3<V>` | The rotation group SO(3), the quotient S³/{±1} — a newtype of `S3` |
 | `Stereographic<V>` | Stereographic projection charts for spheres |
+| `Z<V>` | The integers, as the Grothendieck completion of the naturals `N`; also a degenerate 0-dimensional `LieGroup` |
+| `S1<V>` (`flat`) | The circle as the flat quotient `R/Z` — a more performant alternative to `UnitComplex` |
+| `Torus<I, V>`, `KleinBottle<I, V>` | Flat surfaces built from two `S1` coordinates, glued straight (a group) or with a fibre-flipping twist (not a group; the only non-orientable manifold) |
 
 The newtype layering reflects the mathematical structure: `Sphere` is the
 bare manifold (geometry only), `S3` adds the quaternion group operation,

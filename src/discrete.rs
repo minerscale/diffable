@@ -1,11 +1,13 @@
 use std::{
-    marker::PhantomData, ops::{Add, Mul, Neg},
+    marker::PhantomData,
+    ops::{Add, Mul},
 };
 
 use num_traits::{One, Zero};
 
 use crate::{
-    impl_ring_via_grothendieck, traits::{Euclidean, LieGroup},
+    impl_group_via_add, impl_ring_via_grothendieck,
+    traits::{Euclidean, LieGroup},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -43,10 +45,11 @@ impl Mul for N {
     }
 }
 
-impl_ring_via_grothendieck!(Z<V>, N, <V: Euclidean>);
+impl_ring_via_grothendieck!(Z<V>, N, V: Euclidean);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Z<V: Euclidean>(pub isize, PhantomData<V>);
+impl_group_via_add!(Z<V>, V: Euclidean);
 
 impl<V: Euclidean> Z<V> {
     pub fn new(v: isize) -> Self {

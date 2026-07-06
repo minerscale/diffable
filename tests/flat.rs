@@ -9,7 +9,7 @@ use diffable::{
     epsilon_metric::R64,
     flat::{KleinBottle, S1, Torus},
     test_quotient, test_riemannian, test_tangent_bundle,
-    traits::{Chart, Quotient},
+    traits::{Chart, Group, Quotient},
 };
 use proptest::prelude::*;
 
@@ -70,11 +70,9 @@ test_riemannian!(
 fn modulo() {
     let x = R64(12.4);
     let k: S1<Coords<R64, 1>> = S1::new([x].into());
+    let sum = k.compose(&k).compose(&k);
 
-    println!("{:?}", k + k + k);
+    println!("{:?}", sum);
 
-    assert_eq!(
-        (k + k + k).lift(),
-        [(x + x + x).rem_euclid(&R64(1.0))].into()
-    );
+    assert_eq!((sum).lift(), [(x + x + x).rem_euclid(&R64(1.0))].into());
 }

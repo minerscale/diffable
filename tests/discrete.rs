@@ -5,7 +5,10 @@ mod common;
 
 use common::*;
 use diffable::{
-    discrete::{N, Z}, epsilon_metric::R64, test_cmonoid, test_ring, test_tangent_bundle, traits::Chart,
+    discrete::{N, Z},
+    epsilon_metric::R64,
+    test_cmonoid, test_ring, test_tangent_bundle,
+    traits::Chart,
 };
 use proptest::prelude::*;
 

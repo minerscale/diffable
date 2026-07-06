@@ -41,12 +41,20 @@
 //! ### Algebra — groups and Lie groups
 //!
 //! - [`traits::Group`] — an associative composition with identity and
-//!   inverses; purely algebraic, no smoothness required
+//!   inverses, spelled with operator-agnostic named methods (`compose`,
+//!   `inverse`) rather than `Add`/`Mul`, so it covers abelian and
+//!   non-abelian groups alike; purely algebraic, no smoothness required.
+//!   [`traits::CMonoid`]/[`traits::CGroup`] (`+`, commutative) and
+//!   [`traits::Monoid`]/[`traits::MulGroup`] (`*`, not assumed commutative)
+//!   are the two operator-flavoured presentations a concrete type may use,
+//!   bridged to `Group` in one line via `impl_group_via_add!`/
+//!   `impl_group_via_mul!`; [`traits::Rig`]/[`traits::Ring`] combine both
+//!   for types with a compatible addition and multiplication
 //! - [`traits::LieGroup`] — a group with a smooth exponential map at the
 //!   identity; automatically derives `Smooth` (and therefore the full chart
 //!   bundle) via left translation
-//! - [`traits::Quotient`] — a quotient `G/H` of a Lie group by a central
-//!   subgroup, inheriting Lie group structure from the parent
+//! - [`traits::Quotient`] — a quotient `G/H` of a Lie group by a subgroup,
+//!   inheriting Lie group structure from the parent
 //!
 //! ### Euclidean — flat space
 //!
@@ -77,20 +85,34 @@
 //! Quotient<G, H, V>     (via macro)  →  Group, LieGroup<V>  →  Smooth  →  ...
 //! ```
 //!
+//! `Group` itself is reached via a one-line macro rather than a blanket
+//! impl (`CMonoid`/`Monoid` can't both blanket-impl the same trait without
+//! overlapping), so every `LieGroup` implementor pairs its `+`/`*`
+//! structure with `impl_group_via_add!`/`impl_group_via_mul!` before
+//! joining the chain above.
+//!
 //! ## Implementations
 //!
 //! - [`coords::Coords`] — the canonical Euclidean space `Rⁿ`, implemented
 //!   as a fixed-size array of scalars
 //! - [`hypersphere::Sphere`] — the unit hypersphere `Sⁿ` as a smooth
 //!   manifold with geodesic structure for any dimension
-//! - [`hypersphere::S0`], [`hypersphere::S1`], [`hypersphere::S3`] — the
-//!   Lie group structures on `S⁰` (signs under multiplication), `S¹`
-//!   (complex unit circle), and `S³` (unit quaternions), as newtypes of
-//!   `Sphere` that add group operations
+//! - [`hypersphere::S0`], [`hypersphere::UnitComplex`],
+//!   [`hypersphere::S3`] — the Lie group structures on `S⁰` (signs under
+//!   multiplication), `S¹` (unit complex numbers), and `S³` (unit
+//!   quaternions), as newtypes of `Sphere` that add group operations
 //! - [`hypersphere::So3`] — the rotation group `SO(3)` as the quotient
 //!   `S³/{±1}`, a newtype of `S3`
 //! - [`hypersphere::Stereographic`] — stereographic projection charts for
 //!   spheres, an external atlas independent of the geodesic self-charts
+//! - [`discrete::Z`] — the integers, as the Grothendieck completion of the
+//!   naturals [`discrete::N`]; also a degenerate 0-dimensional `LieGroup`
+//! - [`flat::S1`] — the circle as the flat quotient `R/Z`; a more
+//!   performant alternative model of `S¹` to `hypersphere::UnitComplex`
+//! - [`flat::Torus`], [`flat::KleinBottle`] — flat surfaces built from two
+//!   `flat::S1` coordinates, glued straight (a group) or with a
+//!   fibre-flipping twist (not a group; the library's only non-orientable
+//!   manifold)
 //!
 //! The newtype layering reflects the mathematical structure: `Sphere` is the
 //! bare manifold (geometry only), `S3` adds the quaternion group operation,

@@ -11,7 +11,9 @@ use diffable::{
     hypersphere::{S0, S1Cover, S3, So3, So3Cover, Sphere, Stereographic, UnitComplex},
     test_chart, test_exp_map, test_group, test_metric, test_quotient, test_riemannian,
     test_tangent_bundle,
-    traits::{Chart, ExpMap, GroupPresentation, InnerProduct, LieGroup, NerveComplex, Quotient},
+    traits::{
+        Chart, ExpMap, Group, GroupPresentation, InnerProduct, LieGroup, NerveComplex, Quotient,
+    },
 };
 
 use num_traits::{One, Zero};
@@ -117,19 +119,19 @@ proptest! {
     #[test]
     fn s1_exp_homomorphism(v in -1.5f64..1.5f64, w in -1.5f64..1.5f64) {
         let (v, w) = (R64(v), R64(w));
-        let chart = UnitComplex::zero();
+        let chart = UnitComplex::one();
         let ev: Coords<R64, 1> = [v].into();
         let ew: Coords<R64, 1> = [w].into();
         let evw: Coords<R64, 1> = [v + w].into();
         prop_assert!(
-            chart.to_global(ev) + chart.to_global(ew) == chart.to_global(evw)
+            chart.to_global(ev) * chart.to_global(ew) == chart.to_global(evw)
         );
     }
 
     // S^1 is abelian: composition commutes
     #[test]
     fn s1_commutativity(a in arb_sphere1(), b in arb_sphere1()) {
-        prop_assert!(a.clone() + b.clone() == b + a);
+        prop_assert!(a.clone() * b.clone() == b * a);
     }
 }
 
@@ -166,8 +168,8 @@ fn so3_equator_equality() {
 #[test]
 fn dirac_belt_trick() {
     let axis: Coords<R64, 3> = [R64::one(), R64::zero(), R64::zero()].into();
-    let su2_identity = S3::zero();
-    let so3_identity = So3::<Coords<R64, 3>>::zero();
+    let su2_identity = S3::one();
+    let so3_identity = So3::<Coords<R64, 3>>::identity();
 
     let half_period = R64(std::f64::consts::PI);
     let full_period = R64(std::f64::consts::TAU);
@@ -193,7 +195,7 @@ fn dirac_belt_trick() {
 
 #[test]
 fn s1_fundamental_group() {
-    let cover = S1Cover::chart_at(&UnitComplex::zero());
+    let cover = S1Cover::chart_at(&UnitComplex::one());
 
     let pi1 = cover.fundamental_group();
     println!("generators: {}", pi1.n_generators());
@@ -235,7 +237,7 @@ fn s1_fundamental_group() {
 
 #[test]
 fn so3_fundamental_group() {
-    let cover = So3Cover::chart_at(&So3::zero());
+    let cover = So3Cover::chart_at(&So3::identity());
 
     for i in 0..11 {
         let tv = So3::<Coords<R64, 3>>::identity_log(&So3Cover::nodes()[i].base_point());

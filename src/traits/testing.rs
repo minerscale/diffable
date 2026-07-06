@@ -123,6 +123,7 @@ macro_rules! test_exp_map {
     };
 }
 
+/// Tests that `Metric` and `ExpMap` agree: `d(p, exp_p(v)) == |log_p(exp_p(v))|`.
 #[macro_export]
 macro_rules! test_riemannian {
     ($mod_name:ident, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
@@ -163,6 +164,7 @@ macro_rules! test_tangent_bundle {
     };
 }
 
+/// Tests the `CMonoid` axioms: identity, associativity, commutativity.
 #[macro_export]
 macro_rules! test_cmonoid {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
@@ -174,41 +176,143 @@ macro_rules! test_cmonoid {
                 #[test]
                 fn left_identity(p in $arb_point) {
                     prop_assert!(
-                        <$point>::check_left_identity(&p)
+                        <$point as CMonoid>::check_left_identity(&p)
                     );
                 }
 
                 #[test]
                 fn right_identity(p in $arb_point) {
-                    prop_assert!(<$point>::check_right_identity(&p));
+                    prop_assert!(<$point as CMonoid>::check_right_identity(&p));
                 }
 
                 #[test]
                 fn associativity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point>::check_associativity(a, b, c));
+                    prop_assert!(<$point as CMonoid>::check_associativity(a, b, c));
+                }
+
+                #[test]
+                fn commutativity(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point as CMonoid>::check_commutativity(a, b));
                 }
             }
         }
     };
 }
 
+/// Tests the `Group` axioms: identity, associativity, inverses.
 #[macro_export]
 macro_rules! test_group {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{test_cmonoid, traits::Group};
+            use diffable::traits::Group;
+
+            proptest! {
+                #[test]
+                fn left_identity(p in $arb_point) {
+                    prop_assert!(
+                        <$point as Group>::check_left_identity(&p)
+                    );
+                }
+
+                #[test]
+                fn right_identity(p in $arb_point) {
+                    prop_assert!(<$point as Group>::check_right_identity(&p));
+                }
+
+                #[test]
+                fn associativity(a in $arb_point, b in $arb_point, c in $arb_point) {
+                    prop_assert!(<$point as Group>::check_associativity(a, b, c));
+                }
+
+                #[test]
+                fn left_inverse(p in $arb_point) {
+                    prop_assert!(<$point as Group>::check_left_inverse(&p));
+                }
+
+                #[test]
+                fn right_inverse(p in $arb_point) {
+                    prop_assert!(<$point as Group>::check_right_inverse(&p));
+                }
+            }
+        }
+    };
+}
+
+/// Tests the `Monoid` axioms: identity, associativity (no commutativity).
+#[macro_export]
+macro_rules! test_monoid {
+    ($mod_name:ident, $point:ty, $arb_point:expr) => {
+        mod $mod_name {
+            use super::*;
+            use diffable::traits::Monoid;
+
+            proptest! {
+                #[test]
+                fn left_identity(p in $arb_point) {
+                    prop_assert!(
+                        <$point as Monoid>::check_left_identity(&p)
+                    );
+                }
+
+                #[test]
+                fn right_identity(p in $arb_point) {
+                    prop_assert!(<$point as Monoid>::check_right_identity(&p));
+                }
+
+                #[test]
+                fn associativity(a in $arb_point, b in $arb_point, c in $arb_point) {
+                    prop_assert!(<$point as Monoid>::check_associativity(a, b, c));
+                }
+            }
+        }
+    };
+}
+
+/// Tests the `CGroup` axioms: everything `test_cmonoid!` checks, plus
+/// additive inverses.
+#[macro_export]
+macro_rules! test_cgroup {
+    ($mod_name:ident, $point:ty, $arb_point:expr) => {
+        mod $mod_name {
+            use super::*;
+            use diffable::{test_cmonoid, traits::CGroup};
 
             test_cmonoid!(monoid, $point, $arb_point);
             proptest! {
                 #[test]
                 fn left_inverse(p in $arb_point) {
-                    prop_assert!(<$point>::check_left_inverse(&p));
+                    prop_assert!(<$point as CGroup>::check_left_inverse(&p));
                 }
 
                 #[test]
                 fn right_inverse(p in $arb_point) {
-                    prop_assert!(<$point>::check_right_inverse(&p));
+                    prop_assert!(<$point as CGroup>::check_right_inverse(&p));
+                }
+            }
+        }
+    };
+}
+
+/// Tests the `MulGroup` axioms: everything `test_monoid!` checks, plus
+/// multiplicative inverses.
+#[macro_export]
+macro_rules! test_mul_group {
+    ($mod_name:ident, $point:ty, $arb_point:expr) => {
+        mod $mod_name {
+            use super::*;
+            use diffable::{test_monoid, traits::MulGroup};
+
+            test_monoid!(monoid, $point, $arb_point);
+            proptest! {
+                #[test]
+                fn left_inverse(p in $arb_point) {
+                    prop_assert!(<$point as MulGroup>::check_left_inverse(&p));
+                }
+
+                #[test]
+                fn right_inverse(p in $arb_point) {
+                    prop_assert!(<$point as MulGroup>::check_right_inverse(&p));
                 }
             }
         }
@@ -297,49 +401,33 @@ macro_rules! test_quotient {
     };
 }
 
+/// Tests the `Ring` axioms: everything `test_cgroup!` and `test_rig!` check.
 #[macro_export]
 macro_rules! test_ring {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{traits::Ring, test_rig, test_group};
+            use diffable::{test_cgroup, test_rig, traits::Ring};
 
-            test_group!(group, $point, $arb_point);
+            test_cgroup!(group, $point, $arb_point);
             test_rig!(rig, $point, $arb_point);
         }
-    }
+    };
 }
 
+/// Tests the `Rig` axioms: everything `test_cmonoid!` and `test_monoid!`
+/// check, plus distributivity and multiplicative annihilation by zero.
 #[macro_export]
 macro_rules! test_rig {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{test_cmonoid, traits::Rig};
+            use diffable::{test_cmonoid, test_monoid, traits::Rig};
 
             test_cmonoid!(cmonoid, $point, $arb_point);
+            test_monoid!(monoid, $point, $arb_point);
 
             proptest! {
-                #[test]
-                fn mul_left_identity(g in $arb_point) {
-                    prop_assert!(g.check_mul_left_identity());
-                }
-
-                #[test]
-                fn mul_right_identity(g in $arb_point) {
-                    prop_assert!(g.check_mul_right_identity());
-                }
-
-                #[test]
-                fn mul_associativity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point>::check_mul_associativity(a, b, c));
-                }
-
-                #[test]
-                fn mul_commutativity(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_mul_commutativity(a, b));
-                }
-
                 #[test]
                 fn left_distributivity(a in $arb_point, b in $arb_point, c in $arb_point) {
                     prop_assert!(<$point>::check_left_distributivity(a, b, c));
@@ -361,5 +449,5 @@ macro_rules! test_rig {
                 }
             }
         }
-    }
+    };
 }

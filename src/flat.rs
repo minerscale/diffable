@@ -1,13 +1,7 @@
-use crate::discrete::Z;
-use std::{
-    marker::PhantomData,
-    ops::{Add, Neg},
-};
+use crate::{discrete::Z, impl_lie_group_via_quotient};
+use std::marker::PhantomData;
 
-use crate::{
-    impl_lie_group_via_quotient,
-    traits::{Chart, Euclidean, LieGroup, Metric, Quotient, Smooth},
-};
+use crate::traits::{Chart, Euclidean, Group, LieGroup, Metric, Quotient, Smooth};
 
 use num_traits::{Euclid, NumCast, One, Zero, real::Real};
 
@@ -59,35 +53,19 @@ where
     }
 }
 
-impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Zero
+impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Group
     for Torus<I, V>
 {
-    fn zero() -> Self {
-        Self::new(S1::zero(), S1::zero())
+    fn identity() -> Self {
+        Self::new(S1::identity(), S1::identity())
     }
 
-    fn is_zero(&self) -> bool {
-        self.0.is_zero() && self.1.is_zero()
+    fn compose(&self, other: &Self) -> Self {
+        Self::new(self.0.compose(&other.0), self.1.compose(&other.1))
     }
-}
 
-impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Add
-    for Torus<I, V>
-{
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self {
-        Self::new(self.0 + rhs.0, self.1 + rhs.1)
-    }
-}
-
-impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Neg
-    for Torus<I, V>
-{
-    type Output = Self;
-
-    fn neg(self) -> Self {
-        Self::new(-self.0, -self.1)
+    fn inverse(&self) -> Self {
+        Self::new(self.0.inverse(), self.1.inverse())
     }
 }
 

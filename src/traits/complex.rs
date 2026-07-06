@@ -502,6 +502,19 @@ pub trait Bounded<P: Point, V: Euclidean>: TangentBundle<P, V> {
     fn inner(&self) -> &P;
 }
 
+/// Implements [`Chart`], [`ExpMap`], and [`TangentBundle`] for `$type` by
+/// delegating to `$type`'s [`Bounded::inner`] chart, restricting `to_local`
+/// to the region where [`Bounded::sdf`] is negative.
+///
+/// A `Bounded` chart is not automatically a `Chart` -- its domain is
+/// smaller than the chart it wraps -- so this macro does the one
+/// mechanical thing every `Bounded` implementor needs: reject points
+/// outside the signed-distance-field boundary, and defer everything else
+/// to the inner chart.
+///
+/// [`Chart`]: crate::traits::Chart
+/// [`ExpMap`]: crate::traits::ExpMap
+/// [`TangentBundle`]: crate::traits::TangentBundle
 #[macro_export]
 macro_rules! impl_tangent_bundle_via_bounded {
     ($type:ty, $point:ty, $v:ty) => {

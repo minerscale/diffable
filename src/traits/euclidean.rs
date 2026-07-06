@@ -1,6 +1,8 @@
 use num_traits::Zero;
 use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
+use crate::impl_group_via_add;
+
 use super::{InnerProduct, LieGroup, Scalar, TangentBundle};
 
 /// A finite-dimensional Euclidean space.
@@ -102,6 +104,8 @@ pub trait Euclidean:
         dist_sq == norm_sq
     }
 }
+
+impl_group_via_add!(V, V: Euclidean);
 
 impl<E: Euclidean> LieGroup<E> for E {
     fn identity_exp(v: E) -> Self {
