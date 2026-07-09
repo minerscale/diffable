@@ -7,9 +7,9 @@ use common::*;
 use diffable::{
     coords::Coords,
     epsilon_metric::R64,
-    flat::{KleinBottle, S1, Torus},
-    test_quotient, test_riemannian, test_tangent_bundle,
-    traits::{Chart, Group, Quotient},
+    flat::{KleinBottle, KleinBottleCover, S1, Torus, TorusCover},
+    group_presentation, test_quotient, test_riemannian, test_tangent_bundle,
+    traits::{Chart, Group, GroupPresentation, NerveComplex, Quotient},
 };
 use proptest::prelude::*;
 
@@ -75,4 +75,40 @@ fn modulo() {
     println!("{:?}", sum);
 
     assert_eq!((sum).lift(), [(x + x + x).rem_euclid(&R64(1.0))].into());
+}
+
+#[test]
+fn klein_bottle_fundamental_group() {
+    let presentation = KleinBottleCover::<Coords<R64, 1>, Coords<R64, 2>>::fundamental_group();
+
+    group_presentation!(
+        KLEIN_BOTTLE,
+        n_generators = 2,
+        relations = [[(0, false), (0, false), (1, false), (1, false)],]
+    );
+
+    assert!(
+        presentation.check_exactly_equal(&KLEIN_BOTTLE),
+        "Expected: {:?}\nActual: {:?}",
+        presentation,
+        KLEIN_BOTTLE
+    );
+}
+
+#[test]
+fn torus_fundamental_group() {
+    let presentation = TorusCover::<Coords<R64, 1>, Coords<R64, 2>>::fundamental_group();
+
+    group_presentation!(
+        TORUS,
+        n_generators = 2,
+        relations = [[(0, false), (1, false), (0, true), (1, true)],]
+    );
+
+    assert!(
+        presentation.check_exactly_equal(&TORUS),
+        "Expected: {:?}\nActual: {:?}",
+        presentation,
+        TORUS
+    );
 }

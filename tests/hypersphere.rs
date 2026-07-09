@@ -8,11 +8,13 @@ use common::*;
 use diffable::{
     coords::Coords,
     epsilon_metric::R64,
+    group_presentation,
     hypersphere::{S0, S1Cover, S3, So3, So3Cover, Sphere, Stereographic, UnitComplex},
     test_chart, test_exp_map, test_group, test_metric, test_quotient, test_riemannian,
     test_tangent_bundle,
     traits::{
-        Chart, ExpMap, Group, GroupPresentation, InnerProduct, LieGroup, NerveComplex, Quotient,
+        Chart, ExpMap, Group, GroupPresentation, InnerProduct, LieGroup, NerveComplex, Nodes,
+        Quotient,
     },
 };
 
@@ -195,121 +197,34 @@ fn dirac_belt_trick() {
 
 #[test]
 fn s1_fundamental_group() {
-    let cover = S1Cover::chart_at(&UnitComplex::one());
+    let presentation = S1Cover::fundamental_group();
 
-    let pi1 = cover.fundamental_group();
-    println!("generators: {}", pi1.n_generators());
-    for (i, rel) in pi1.relations().into_iter().enumerate() {
-        println!("relation {}: {:?}", i, rel);
-    }
+    group_presentation!(S1, n_generators = 1, relations = []);
 
-    for i in 0..S1Cover::nodes().len() {
-        let neighbors: Vec<_> = S1Cover::get_neighbors(i).collect();
-        println!(
-            "node {}: {} neighbors {:?}",
-            i,
-            neighbors.len(),
-            neighbors.iter().collect::<Vec<_>>()
-        );
-    }
-
-    // debug: check what neighbours each node sees
-    for i in 0..S1Cover::nodes().len() {
-        let neighbors: Vec<_> = S1Cover::get_neighbors(i).collect();
-        println!(
-            "node {}: {:?} -> {} neighbors",
-            i,
-            S1Cover::nodes()[i],
-            neighbors.len()
-        );
-    }
-
-    let pi1 = cover.fundamental_group();
-    println!(
-        "generators: {}, relations: {}",
-        pi1.n_generators(),
-        pi1.relations().into_iter().count()
+    assert!(
+        presentation.check_exactly_equal(&S1),
+        "Expected: {:?}\nActual: {:?}",
+        presentation,
+        S1
     );
-
-    assert_eq!(pi1.n_generators(), 1);
-    assert_eq!(pi1.relations().into_iter().count(), 0);
 }
 
 #[test]
 fn so3_fundamental_group() {
-    let cover = So3Cover::chart_at(&So3::identity());
+    let presentation = So3Cover::fundamental_group();
 
-    for i in 0..11 {
-        let tv = So3::<Coords<R64, 3>>::identity_log(&So3Cover::nodes()[i].base_point());
-        println!("node {}: {:?}", i, tv);
-    }
+    group_presentation!(
+        SO3,
+        n_generators = 1,
+        relations = [[(0, false), (0, false)],]
+    );
 
-    let pi1 = cover.fundamental_group();
-
-    let n = pi1.n_generators();
-    let relations: Vec<_> = pi1.relations().into_iter().collect();
-
-    println!("f := FreeGroup({});", n);
-    println!("x := List([1..{}], i -> GeneratorsOfGroup(f)[i]);;", n);
-    print!("rels := [");
-
-    for (i, &rel) in relations.iter().enumerate() {
-        if i > 0 {
-            print!(",");
-        }
-        print!("\n  ");
-
-        let word: Vec<(usize, bool)> = rel.clone().into_iter().collect();
-        if word.is_empty() {
-            print!("x[1]*x[1]^-1"); // identity relation
-        } else {
-            for (j, &(gens, inv)) in word.iter().enumerate() {
-                if j > 0 {
-                    print!("*");
-                }
-                if inv {
-                    print!("x[{}]^-1", gens + 1);
-                } else {
-                    print!("x[{}]", gens + 1);
-                }
-            }
-        }
-    }
-
-    println!("\n];;");
-    println!("G := f/rels;;");
-    println!("Size(G);");
-
-    let nodes = So3Cover::nodes();
-    for i in 0..11 {
-        for j in (i + 1)..11 {
-            if let Some(d) = nodes[i].local_distance(&nodes[j].base_point()) {
-                println!("dist {}-{}: {:.6}", i, j, d);
-            }
-        }
-    }
-
-    for i in 0..So3Cover::nodes().len() {
-        let neighbors: Vec<_> = So3Cover::get_neighbors(i).collect();
-        println!(
-            "node {}: {} neighbors {:?}",
-            i,
-            neighbors.len(),
-            neighbors.iter().collect::<Vec<_>>()
-        );
-    }
-
-    let pi1 = cover.fundamental_group();
-    println!("generators: {}", pi1.n_generators());
-    for (i, rel) in pi1.relations().into_iter().enumerate() {
-        println!("relation {}: {:?}", i, rel);
-    }
-
-    assert_eq!(pi1.n_generators(), 1);
-    let relations: Vec<_> = pi1.relations().into_iter().collect();
-    assert_eq!(relations.len(), 1);
-    let expected = vec![(0usize, false), (0usize, false)];
-    assert!(relations[0].clone().into_iter().eq(expected.into_iter()));
+    assert!(
+        presentation.check_exactly_equal(&SO3),
+        "Expected: {:?}\nActual: {:?}",
+        presentation,
+        SO3
+    );
 }
 
 #[test]

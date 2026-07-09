@@ -11,7 +11,7 @@ macro_rules! test_euclidean {
     ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_vec:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{
+            use $crate::{
                 test_group, test_inner_product, test_metric, test_riemannian, test_tangent_bundle,
                 traits::Euclidean,
             };
@@ -62,7 +62,7 @@ macro_rules! test_euclidean {
 macro_rules! test_chart {
     ($mod_name:ident, $chart:ty, $arb_point:expr) => {
         mod $mod_name {
-            use diffable::traits::Chart;
+            use $crate::traits::Chart;
 
             use super::*;
             proptest! {
@@ -83,7 +83,7 @@ macro_rules! test_exp_map {
     ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{test_chart, traits::ExpMap};
+            use $crate::{test_chart, traits::ExpMap};
 
             // inherit all Chart tests
             test_chart!(chart, $chart, $arb_point);
@@ -129,7 +129,7 @@ macro_rules! test_riemannian {
     ($mod_name:ident, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::traits::Riemannian;
+            use $crate::traits::Riemannian;
 
             proptest! {
                 #[test]
@@ -148,7 +148,7 @@ macro_rules! test_tangent_bundle {
     ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{test_exp_map, traits::TangentBundle};
+            use $crate::{test_exp_map, traits::TangentBundle};
 
             // inherit all ExpMap tests
             test_exp_map!(exp_map, $scalar, $chart, $arb_point, $arb_vec);
@@ -170,7 +170,7 @@ macro_rules! test_cmonoid {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::traits::CMonoid;
+            use $crate::traits::CMonoid;
 
             proptest! {
                 #[test]
@@ -205,7 +205,7 @@ macro_rules! test_group {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::traits::Group;
+            use $crate::traits::Group;
 
             proptest! {
                 #[test]
@@ -245,7 +245,7 @@ macro_rules! test_monoid {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::traits::Monoid;
+            use $crate::traits::Monoid;
 
             proptest! {
                 #[test]
@@ -276,7 +276,7 @@ macro_rules! test_cgroup {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{test_cmonoid, traits::CGroup};
+            use $crate::{test_cmonoid, traits::CGroup};
 
             test_cmonoid!(monoid, $point, $arb_point);
             proptest! {
@@ -301,7 +301,7 @@ macro_rules! test_mul_group {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{test_monoid, traits::MulGroup};
+            use $crate::{test_monoid, traits::MulGroup};
 
             test_monoid!(monoid, $point, $arb_point);
             proptest! {
@@ -325,7 +325,7 @@ macro_rules! test_metric {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::traits::Metric;
+            use $crate::traits::Metric;
 
             proptest! {
                 #[test]
@@ -353,7 +353,7 @@ macro_rules! test_inner_product {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::traits::InnerProduct;
+            use $crate::traits::InnerProduct;
             proptest! {
                 #[test]
                 fn symmetry(a in $arb_point, b in $arb_point) {
@@ -386,7 +386,7 @@ macro_rules! test_quotient {
     ($mod_name:ident, $quotient:ty, $arb_quotient:expr, $arb_g:expr, $arb_h:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{test_group, traits::Quotient};
+            use $crate::{test_group, traits::Quotient};
 
             // A quotient group is a Lie group — inherit all LieGroup axioms.
             test_group!(lie_group, $quotient, $arb_quotient);
@@ -407,7 +407,7 @@ macro_rules! test_ring {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{test_cgroup, test_rig, traits::Ring};
+            use $crate::{test_cgroup, test_rig, traits::Ring};
 
             test_cgroup!(group, $point, $arb_point);
             test_rig!(rig, $point, $arb_point);
@@ -422,7 +422,7 @@ macro_rules! test_rig {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use diffable::{test_cmonoid, test_monoid, traits::Rig};
+            use $crate::{test_cmonoid, test_monoid, traits::Rig};
 
             test_cmonoid!(cmonoid, $point, $arb_point);
             test_monoid!(monoid, $point, $arb_point);

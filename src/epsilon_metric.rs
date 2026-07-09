@@ -86,5 +86,15 @@ macro_rules! define_epsilon_metric {
     };
 }
 
-define_epsilon_metric!(R64, f64, 1e-12, "A tolerance-comparison `f64`, treating values within `1e-12` as equal.");
-define_epsilon_metric!(R32, f32, 1e-5, "A tolerance-comparison `f32`, treating values within `1e-5` as equal.");
+define_epsilon_metric!(
+    R64,
+    f64,
+    1e-12,
+    "A tolerance-comparison `f64`, treating values within `1e-12` as equal."
+);
+define_epsilon_metric!(
+    R32,
+    f32,
+    1e-5,
+    "A tolerance-comparison `f32`, treating values within `1e-5` as equal."
+);

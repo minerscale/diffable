@@ -4,8 +4,8 @@ use crate::{
     coords::Coords,
     impl_group_via_mul, impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
     traits::{
-        Bounded, Chart, Euclidean, ExpMap, InnerProduct, LieGroup, Metric, NerveComplex,
-        Quotient, Scalar, Smooth, TangentBundle,
+        Bounded, BuildNodes, Chart, Euclidean, ExpMap, InnerProduct, LieGroup, Metric,
+        NerveComplex, Quotient, Scalar, Smooth, TangentBundle,
     },
 };
 use num_traits::{Inv, NumCast, One, Zero, real::Real};
@@ -463,35 +463,38 @@ impl Bounded<UnitComplex<Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
     fn sdf(&self, v: &Coords<R64, 1>) -> R64 {
         v.norm() - R64(std::f64::consts::PI / 6.0 + 0.05)
     }
+}
 
-    fn new(p: UnitComplex<Coords<R64, 1>>) -> Self {
-        Self(p)
+impl From<UnitComplex<Coords<R64, 1>>> for S1Cover {
+    fn from(value: UnitComplex<Coords<R64, 1>>) -> Self {
+        Self(value)
     }
+}
 
-    fn inner(&self) -> &UnitComplex<Coords<R64, 1>> {
+impl AsRef<UnitComplex<Coords<R64, 1>>> for S1Cover {
+    fn as_ref(&self) -> &UnitComplex<Coords<R64, 1>> {
         &self.0
     }
 }
 
 impl_tangent_bundle_via_bounded!(
-    S1Cover, UnitComplex<Coords<R64, 1>>, Coords<R64, 1>
+    S1Cover, UnitComplex<Coords<R64, 1>>, Coords<R64, 1>,
 );
+
+impl BuildNodes<S1Cover> for S1Cover {
+    fn build_nodes() -> Vec<Self> {
+        (0..6)
+            .map(|i| {
+                let angle: R64 = R64(i.into()) * R64(std::f64::consts::TAU) / R64(6.0);
+                S1Cover(UnitComplex(Sphere::new(angle.cos(), [angle.sin()].into())))
+            })
+            .collect()
+    }
+}
 
 impl NerveComplex<UnitComplex<Coords<R64, 1>>, Coords<R64, 1>, UnitComplex<Coords<R64, 1>>, S1Cover>
     for S1Cover
 {
-    fn nodes() -> &'static [S1Cover] {
-        use std::sync::LazyLock;
-        static NODES: LazyLock<Vec<S1Cover>> = LazyLock::new(|| {
-            (0..6)
-                .map(|i| {
-                    let angle: R64 = R64(i.into()) * R64(std::f64::consts::TAU) / R64(6.0);
-                    S1Cover(UnitComplex(Sphere::new(angle.cos(), [angle.sin()].into())))
-                })
-                .collect()
-        });
-        &NODES
-    }
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -556,93 +559,95 @@ impl Bounded<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {
     fn sdf(&self, v: &Coords<R64, 3>) -> R64 {
         v.norm() - R64(0.42)
     }
+}
 
-    fn new(p: So3<Coords<R64, 3>>) -> Self {
-        Self(p)
+impl From<So3<Coords<R64, 3>>> for So3Cover {
+    fn from(value: So3<Coords<R64, 3>>) -> Self {
+        Self(value)
     }
+}
 
-    fn inner(&self) -> &So3<Coords<R64, 3>> {
+impl AsRef<So3<Coords<R64, 3>>> for So3Cover {
+    fn as_ref(&self) -> &So3<Coords<R64, 3>> {
         &self.0
     }
 }
 
-impl NerveComplex<So3<Coords<R64, 3>>, Coords<R64, 3>, So3<Coords<R64, 3>>, So3Cover> for So3Cover {
-    fn nodes() -> &'static [So3Cover] {
-        use std::sync::LazyLock;
-        static NODES: LazyLock<Vec<So3Cover>> = LazyLock::new(|| {
-            // The 120 icosians: vertices of the 600-cell on S³.
-            let phi = (1.0 + 5f64.sqrt()) / 2.0;
-            let mut quats: Vec<[f64; 4]> = Vec::new();
+impl BuildNodes<Self> for So3Cover {
+    fn build_nodes() -> Vec<Self> {
+        // The 120 icosians: vertices of the 600-cell on S³.
+        let phi = (1.0 + 5f64.sqrt()) / 2.0;
+        let mut quats: Vec<[f64; 4]> = Vec::new();
 
-            // 8 unit quaternions: ±1, ±i, ±j, ±k
-            for i in 0..4 {
-                for s in [-1.0, 1.0] {
-                    let mut q = [0.0; 4];
-                    q[i] = s;
-                    quats.push(q);
-                }
+        // 8 unit quaternions: ±1, ±i, ±j, ±k
+        for i in 0..4 {
+            for s in [-1.0, 1.0] {
+                let mut q = [0.0; 4];
+                q[i] = s;
+                quats.push(q);
             }
-            // 16: (±1 ± i ± j ± k)/2
-            for a in [-0.5, 0.5] {
-                for b in [-0.5, 0.5] {
-                    for c in [-0.5, 0.5] {
-                        for d in [-0.5, 0.5] {
-                            quats.push([a, b, c, d]);
-                        }
+        }
+        // 16: (±1 ± i ± j ± k)/2
+        for a in [-0.5, 0.5] {
+            for b in [-0.5, 0.5] {
+                for c in [-0.5, 0.5] {
+                    for d in [-0.5, 0.5] {
+                        quats.push([a, b, c, d]);
                     }
                 }
             }
-            // 96: all even permutations of (±φ, ±1, ±1/φ, 0)/2
-            let even_perms: [[usize; 4]; 12] = [
-                [0, 1, 2, 3],
-                [0, 2, 3, 1],
-                [0, 3, 1, 2],
-                [1, 0, 3, 2],
-                [1, 2, 0, 3],
-                [1, 3, 2, 0],
-                [2, 0, 1, 3],
-                [2, 1, 3, 0],
-                [2, 3, 0, 1],
-                [3, 0, 2, 1],
-                [3, 1, 0, 2],
-                [3, 2, 1, 0],
-            ];
-            let base = [phi / 2.0, 0.5, 1.0 / (2.0 * phi), 0.0];
-            for p in even_perms {
-                for s0 in [-1.0, 1.0] {
-                    for s1 in [-1.0, 1.0] {
-                        for s2 in [-1.0, 1.0] {
-                            let vals = [s0 * base[0], s1 * base[1], s2 * base[2], base[3]];
-                            let mut q = [0.0; 4];
-                            for i in 0..4 {
-                                q[p[i]] = vals[i];
-                            }
-                            quats.push(q);
+        }
+        // 96: all even permutations of (±φ, ±1, ±1/φ, 0)/2
+        let even_perms: [[usize; 4]; 12] = [
+            [0, 1, 2, 3],
+            [0, 2, 3, 1],
+            [0, 3, 1, 2],
+            [1, 0, 3, 2],
+            [1, 2, 0, 3],
+            [1, 3, 2, 0],
+            [2, 0, 1, 3],
+            [2, 1, 3, 0],
+            [2, 3, 0, 1],
+            [3, 0, 2, 1],
+            [3, 1, 0, 2],
+            [3, 2, 1, 0],
+        ];
+        let base = [phi / 2.0, 0.5, 1.0 / (2.0 * phi), 0.0];
+        for p in even_perms {
+            for s0 in [-1.0, 1.0] {
+                for s1 in [-1.0, 1.0] {
+                    for s2 in [-1.0, 1.0] {
+                        let vals = [s0 * base[0], s1 * base[1], s2 * base[2], base[3]];
+                        let mut q = [0.0; 4];
+                        for i in 0..4 {
+                            q[p[i]] = vals[i];
                         }
+                        quats.push(q);
                     }
                 }
             }
-            debug_assert_eq!(quats.len(), 120);
+        }
+        debug_assert_eq!(quats.len(), 120);
 
-            // Quotient by ±1: canonicalise the sign (first non-zero
-            // coordinate positive) and deduplicate, leaving one
-            // representative per rotation — 60 in total.
-            let mut seen = std::collections::HashSet::new();
-            let mut nodes = Vec::new();
-            for mut q in quats {
-                if let Some(c) = q.iter().find(|c| c.abs() > 1e-9)
-                    && *c < 0.0
-                {
-                    q = q.map(|x| -x);
-                }
-                if seen.insert(q.map(|c| (c * 1e6).round() as i64)) {
-                    let [w, x, y, z] = q.map(R64);
-                    nodes.push(So3Cover(So3::new(S3(Sphere::new(w, [x, y, z].into())))));
-                }
+        // Quotient by ±1: canonicalise the sign (first non-zero
+        // coordinate positive) and deduplicate, leaving one
+        // representative per rotation — 60 in total.
+        let mut seen = std::collections::HashSet::new();
+        let mut nodes = Vec::new();
+        for mut q in quats {
+            if let Some(c) = q.iter().find(|c| c.abs() > 1e-9)
+                && *c < 0.0
+            {
+                q = q.map(|x| -x);
             }
-            debug_assert_eq!(nodes.len(), 60);
-            nodes
-        });
-        &NODES
+            if seen.insert(q.map(|c| (c * 1e6).round() as i64)) {
+                let [w, x, y, z] = q.map(R64);
+                nodes.push(So3Cover(So3::new(S3(Sphere::new(w, [x, y, z].into())))));
+            }
+        }
+        debug_assert_eq!(nodes.len(), 60);
+        nodes
     }
 }
+
+impl NerveComplex<So3<Coords<R64, 3>>, Coords<R64, 3>, So3<Coords<R64, 3>>, So3Cover> for So3Cover {}

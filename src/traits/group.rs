@@ -277,7 +277,6 @@ macro_rules! impl_ring_via_grothendieck {
     }
 }
 
-
 /// A commutative semiring ("rig" -- a **r**ing without negat**i**on).
 ///
 /// The space of all values of a type `R: Rig` is interpreted as a
