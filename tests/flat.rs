@@ -7,10 +7,11 @@ use common::*;
 use diffable::{
     coords::Coords,
     epsilon_metric::R64,
-    flat::{KleinBottle, KleinBottleCover, S1, Torus, TorusCover},
+    flat::{KleinBottle, KleinBottleCover, MyopicTorusCover, S1, Torus, TorusCover},
     group_presentation, test_quotient, test_riemannian, test_tangent_bundle,
-    traits::{Chart, GroupPresentation, NerveComplex},
+    traits::{Chart, GroupPresentation, InnerProduct, NerveComplex},
 };
+
 use proptest::prelude::*;
 
 test_tangent_bundle!(
@@ -98,4 +99,29 @@ fn torus_fundamental_group() {
         presentation,
         TORUS
     );
+}
+
+proptest! {
+    #[test]
+    fn myopic_torus_geodesic(
+        p in (arb_s1_quotient_f64(), arb_s1_quotient_f64()).prop_map(
+            |(a, b)| Torus::<Coords<f64, 1>, Coords<f64, 2>>::new(a, b)
+        ),
+        q in (arb_s1_quotient_f64(), arb_s1_quotient_f64()).prop_map(
+            |(a, b)| Torus::<Coords<f64, 1>, Coords<f64, 2>>::new(a, b)
+        )) {
+
+        let expected_distance = p.to_local(&q).unwrap().norm();
+        let path = MyopicTorusCover::<Coords<f64, 1>, Coords<f64, 2>>::geodesic_path(&p, &q);
+
+        
+        match path {
+            Some(diffable::traits::Geodesic::Local { path: _, length }) => {
+                prop_assert_eq!(R64(length), R64(expected_distance))
+            }
+
+            _ => {println!("jeff: {:?}", path);
+                panic!()}
+        }
+    }
 }

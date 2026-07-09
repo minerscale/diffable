@@ -450,7 +450,7 @@ use crate::epsilon_metric::R64;
 #[derive(PartialEq, Debug, Clone)]
 pub struct S1Cover(UnitComplex<Coords<R64, 1>>);
 
-impl Bounded<UnitComplex<Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
+impl Bounded<UnitComplex<Coords<R64, 1>>, UnitComplex<Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
     // Each node's domain is the open arc of radius ρ = π/6 + 0.05 about its
     // base point. Six such arcs centred at the sixth roots of unity form an
     // open good cover of S¹:
@@ -478,7 +478,7 @@ impl AsRef<UnitComplex<Coords<R64, 1>>> for S1Cover {
 }
 
 impl_tangent_bundle_via_bounded!(
-    S1Cover, UnitComplex<Coords<R64, 1>>, Coords<R64, 1>,
+    S1Cover, UnitComplex<Coords<R64, 1>>, UnitComplex<Coords<R64, 1>>, Coords<R64, 1>,
 );
 
 impl BuildNodes<S1Cover> for S1Cover {
@@ -551,7 +551,7 @@ impl TangentBundle<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {}
 /// by identifying antipodes. By the nerve theorem the nerve is homotopy
 /// equivalent to SO(3), and π₁ computed from its 2-skeleton is
 /// ⟨x | x²⟩ ≅ Z/2Z.
-impl Bounded<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {
+impl Bounded<So3<Coords<R64, 3>>, So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {
     // Open geodesic ball of radius 0.42 about the base point.
     // In an exponential chart the geodesic distance from the base point is
     // exactly the coordinate norm, so the ball's true signed distance field

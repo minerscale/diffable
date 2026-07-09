@@ -103,27 +103,39 @@ impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct KleinBottle<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
->(S1<I>, S1<I>, PhantomData<V>);
+pub trait ICompatible<V: Euclidean + From<[Self::F; 2]>>:
+    Euclidean<F: From<V::F>> + From<[Self::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync
+{
+}
+pub trait VCompatible<I: Euclidean<F: From<Self::F>> + From<[I::F; 1]> + From<[Self::F; 1]>>:
+    Euclidean + From<[I::F; 2]> + 'static + Send + Sync
+{
+}
 
 impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
-> KleinBottle<I, V>
+    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync,
+    V: Euclidean + From<[I::F; 2]> + 'static + Send + Sync,
+> ICompatible<V> for I
 {
+}
+
+impl<
+    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync,
+    V: Euclidean + From<[I::F; 2]> + 'static + Send + Sync,
+> VCompatible<I> for V
+{
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct KleinBottle<I: ICompatible<V>, V: VCompatible<I>>(S1<I>, S1<I>, PhantomData<V>);
+
+impl<I: ICompatible<V>, V: VCompatible<I>> KleinBottle<I, V> {
     pub fn new(a: S1<I>, b: S1<I>) -> Self {
         Self(a, b, PhantomData)
     }
 }
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
-> Smooth<V> for KleinBottle<I, V>
-{
+impl<I: ICompatible<V>, V: VCompatible<I>> Smooth<V> for KleinBottle<I, V> {
     fn exp(&self, v: V) -> Self {
         let (x, y) = self.coords();
         let vx: I::F = v[0].into();
@@ -163,11 +175,7 @@ impl<
     }
 }
 
-impl<I, V> KleinBottle<I, V>
-where
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
-{
+impl<I: ICompatible<V>, V: VCompatible<I>> KleinBottle<I, V> {
     /// Reduce a cover point (x, y) ∈ ℝ² to the fundamental domain via
     /// Γ = ⟨A, B⟩, A: (x,y) ↦ (x+1, y), B: (x,y) ↦ (−x, y+1).
     ///
@@ -201,37 +209,22 @@ where
     }
 }
 
-impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Metric<I::F>
-    for KleinBottle<I, V>
-where
-    I::F: From<V::F>,
-{
+impl<I: ICompatible<V>, V: VCompatible<I>> Metric<I::F> for KleinBottle<I, V> {
     fn distance(&self, other: &Self) -> I::F {
         self.to_local(other).unwrap().norm().into()
     }
 }
 
 #[derive(Debug)]
-pub struct TorusCover<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
->(Torus<I, V>);
+pub struct TorusCover<I: ICompatible<V>, V: VCompatible<I>>(Torus<I, V>);
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
-> From<Torus<I, V>> for TorusCover<I, V>
-{
+impl<I: ICompatible<V>, V: VCompatible<I>> From<Torus<I, V>> for TorusCover<I, V> {
     fn from(value: Torus<I, V>) -> Self {
         Self(value)
     }
 }
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
-> AsRef<Torus<I, V>> for TorusCover<I, V>
-{
+impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<Torus<I, V>> for TorusCover<I, V> {
     fn as_ref(&self) -> &Torus<I, V> {
         &self.0
     }
@@ -239,10 +232,8 @@ impl<
 
 const S: usize = 4;
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
-> Bounded<Torus<I, V>, V> for TorusCover<I, V>
+impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
+    for TorusCover<I, V>
 {
     fn sdf(&self, v: &V) -> <V as Euclidean>::F {
         let to = |x| <V::F as NumCast>::from(x).unwrap();
@@ -253,15 +244,13 @@ impl<
 impl_tangent_bundle_via_bounded!(
     TorusCover<I, V>,
     Torus<I, V>,
+    Torus<I, V>,
     V,
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>
+    I: ICompatible<V>,
+V: VCompatible<I>
 );
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync,
-    V: Euclidean + From<[I::F; 2]> + 'static + Send + Sync,
-> BuildNodes<TorusCover<I, V>> for TorusCover<I, V>
-{
+impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<TorusCover<I, V>> for TorusCover<I, V> {
     fn build_nodes() -> Vec<Self> {
         let to = |x| <I::F as NumCast>::from(x).unwrap();
         let s = to(S);
@@ -288,35 +277,22 @@ impl<
 }
 
 #[derive(Debug)]
-pub struct KleinBottleCover<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
->(KleinBottle<I, V>);
+pub struct KleinBottleCover<I: ICompatible<V>, V: VCompatible<I>>(KleinBottle<I, V>);
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
-> From<KleinBottle<I, V>> for KleinBottleCover<I, V>
-{
+impl<I: ICompatible<V>, V: VCompatible<I>> From<KleinBottle<I, V>> for KleinBottleCover<I, V> {
     fn from(value: KleinBottle<I, V>) -> Self {
         Self(value)
     }
 }
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
-> AsRef<KleinBottle<I, V>> for KleinBottleCover<I, V>
-{
+impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<KleinBottle<I, V>> for KleinBottleCover<I, V> {
     fn as_ref(&self) -> &KleinBottle<I, V> {
         &self.0
     }
 }
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>,
-    V: Euclidean + From<[I::F; 2]>,
-> Bounded<KleinBottle<I, V>, V> for KleinBottleCover<I, V>
+impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<KleinBottle<I, V>, KleinBottle<I, V>, V>
+    for KleinBottleCover<I, V>
 {
     fn sdf(&self, v: &V) -> <V as Euclidean>::F {
         let to = |x| <V::F as NumCast>::from(x).unwrap();
@@ -327,14 +303,13 @@ impl<
 impl_tangent_bundle_via_bounded!(
     KleinBottleCover<I, V>,
     KleinBottle<I, V>,
+    KleinBottle<I, V>,
     V,
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>
+    I: ICompatible<V>, V: VCompatible<I>
 );
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync,
-    V: Euclidean + From<[I::F; 2]> + 'static + Send + Sync,
-> BuildNodes<KleinBottleCover<I, V>> for KleinBottleCover<I, V>
+impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<KleinBottleCover<I, V>>
+    for KleinBottleCover<I, V>
 {
     fn build_nodes() -> Vec<Self> {
         let to = |x| <I::F as NumCast>::from(x).unwrap();
@@ -354,10 +329,110 @@ impl<
     }
 }
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + Send + Sync + 'static,
-    V: Euclidean + From<[I::F; 2]> + Send + Sync + 'static,
-> NerveComplex<KleinBottle<I, V>, V, KleinBottle<I, V>, KleinBottleCover<I, V>>
+impl<I: ICompatible<V>, V: VCompatible<I>>
+    NerveComplex<KleinBottle<I, V>, V, KleinBottle<I, V>, KleinBottleCover<I, V>>
     for KleinBottleCover<I, V>
+{
+}
+
+#[derive(Debug, Clone)]
+pub struct MyopicTorus<I: ICompatible<V>, V: VCompatible<I>>(pub Torus<I, V>);
+
+impl<I: ICompatible<V>, V: VCompatible<I>> MyopicTorus<I, V> {
+    fn s() -> usize {
+        8
+    }
+
+    fn radius() -> V::F {
+        // 2/s, quite a lot larger than the lattice spacing.
+        (V::F::one() + V::F::one()) / <V::F as NumCast>::from(Self::s()).unwrap()
+    }
+}
+
+impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<Torus<I, V>> for MyopicTorus<I, V> {
+    fn as_ref(&self) -> &Torus<I, V> {
+        &self.0
+    }
+}
+
+impl<I: ICompatible<V>, V: VCompatible<I>> From<Torus<I, V>> for MyopicTorus<I, V> {
+    fn from(value: Torus<I, V>) -> Self {
+        Self(value)
+    }
+}
+
+impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
+    for MyopicTorus<I, V>
+{
+    fn sdf(&self, v: &V) -> <V as Euclidean>::F {
+        v.norm() - Self::radius()
+    }
+}
+
+impl_tangent_bundle_via_bounded!(
+    MyopicTorus<I, V>,
+    Torus<I, V>,
+    Torus<I, V>,
+    V,
+    I: ICompatible<V>, V: VCompatible<I>
+);
+
+#[derive(Debug, Clone)]
+pub struct MyopicTorusCover<I: ICompatible<V>, V: VCompatible<I>>(MyopicTorus<I, V>);
+
+impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<MyopicTorus<I, V>> for MyopicTorusCover<I, V> {
+    fn as_ref(&self) -> &MyopicTorus<I, V> {
+        &self.0
+    }
+}
+
+impl<I: ICompatible<V>, V: VCompatible<I>> From<MyopicTorus<I, V>> for MyopicTorusCover<I, V> {
+    fn from(value: MyopicTorus<I, V>) -> Self {
+        Self(value)
+    }
+}
+
+impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<MyopicTorus<I, V>, Torus<I, V>, V>
+    for MyopicTorusCover<I, V>
+{
+    fn sdf(&self, v: &V) -> <V as Euclidean>::F {
+        let to = |x| <V::F as NumCast>::from(x).unwrap();
+        v.norm() - (to(2).sqrt() + to(2)) / to(4 * MyopicTorus::<I, V>::s())
+    }
+}
+
+impl_tangent_bundle_via_bounded!(
+    MyopicTorusCover<I, V>,
+    MyopicTorus<I, V>,
+    Torus<I, V>,
+    V,
+    I: ICompatible<V>, V: VCompatible<I>
+);
+
+impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<MyopicTorusCover<I, V>>
+    for MyopicTorusCover<I, V>
+{
+    fn build_nodes() -> Vec<Self> {
+        let to = |x| <I::F as NumCast>::from(x).unwrap();
+        let s_usize = MyopicTorus::<I, V>::s();
+        let s = to(s_usize);
+        let offset = to(1) / (to(2) * s);
+
+        (0..s_usize)
+            .flat_map(|y| (0..s_usize).map(move |x| (x, y)))
+            .map(|(x, y)| {
+                MyopicTorus(Torus::new(
+                    S1([offset + to(x) / s].into()),
+                    S1([offset + to(y) / s].into()),
+                ))
+                .into()
+            })
+            .collect()
+    }
+}
+
+impl<I: ICompatible<V>, V: VCompatible<I>>
+    NerveComplex<Torus<I, V>, V, MyopicTorus<I, V>, MyopicTorusCover<I, V>>
+    for MyopicTorusCover<I, V>
 {
 }

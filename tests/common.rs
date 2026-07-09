@@ -135,6 +135,18 @@ prop_compose! {
     }
 }
 
+prop_compose! {
+pub fn arb_scalar_f64()(
+        x in -10.0f64..10.0f64,
+    ) -> f64 {
+        x
+    }
+}
+
 pub fn arb_s1_quotient() -> impl Strategy<Value = S1<Coords<R64, 1>>> {
     arb_scalar().prop_map(|x| S1::new([x].into()))
+}
+
+pub fn arb_s1_quotient_f64() -> impl Strategy<Value = S1<Coords<f64, 1>>> {
+    arb_scalar_f64().prop_map(|x| S1::new([x].into()))
 }
