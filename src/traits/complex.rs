@@ -183,9 +183,9 @@ mod nodes_cache {
     use std::sync::{Mutex, OnceLock};
 
     fn registry() -> &'static Mutex<HashMap<(TypeId, TypeId), &'static (dyn Any + Send + Sync)>> {
-        static REGISTRY: OnceLock<
-            Mutex<HashMap<(TypeId, TypeId), &'static (dyn Any + Send + Sync)>>,
-        > = OnceLock::new();
+        type Registry =
+            OnceLock<Mutex<HashMap<(TypeId, TypeId), &'static (dyn Any + Send + Sync)>>>;
+        static REGISTRY: Registry = OnceLock::new();
         REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
@@ -210,7 +210,7 @@ mod nodes_cache {
     pub fn get_or_build<Caller: 'static + ?Sized, B: 'static + Send + Sync>(
         build: impl FnOnce() -> Vec<B>,
     ) -> &'static [B] {
-        *slot_for::<Caller, B>().get_or_init(|| Box::leak(build().into_boxed_slice()))
+        slot_for::<Caller, B>().get_or_init(|| Box::leak(build().into_boxed_slice()))
     }
 }
 
@@ -490,11 +490,11 @@ pub trait NerveComplex<
         fn reduce_word(word: Vec<(usize, bool)>) -> Vec<(usize, bool)> {
             let mut reduced: Vec<(usize, bool)> = Vec::new();
             for letter in word {
-                if let Some(&last) = reduced.last() {
-                    if last == (letter.0, !letter.1) {
-                        reduced.pop();
-                        continue;
-                    }
+                if let Some(&last) = reduced.last()
+                    && last == (letter.0, !letter.1)
+                {
+                    reduced.pop();
+                    continue;
                 }
                 reduced.push(letter);
             }
@@ -624,7 +624,8 @@ pub trait NerveComplex<
             rels.sort_by_key(|w| w.len());
 
             // find a relator in which some generator occurs exactly once
-            let mut action: Option<(usize, Vec<(usize, bool)>, usize)> = None;
+            type Action = Option<(usize, Vec<(usize, bool)>, usize)>;
+            let mut action: Action = None;
             'search: for (ri, r) in rels.iter().enumerate() {
                 let mut counts = std::collections::HashMap::new();
                 for &(g, _) in r {

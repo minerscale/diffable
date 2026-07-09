@@ -124,7 +124,7 @@ impl<const N: usize, V: Euclidean> Smooth<V> for Sphere<N, V> {
         let sinc = sinc_from(alpha, sin_a, eps);
 
         // transport the identity-frame point to self's frame
-        self.from_identity(cos_a, v * sinc)
+        self.transport_from_identity(cos_a, v * sinc)
     }
 
     fn log(&self, other: &Self) -> Option<V> {
@@ -132,7 +132,7 @@ impl<const N: usize, V: Euclidean> Smooth<V> for Sphere<N, V> {
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
 
         // transport `other` into the +e0 identity frame
-        let p = self.to_identity(other.real, other.imag);
+        let p = self.transport_to_identity(other.real, other.imag);
 
         // identity-frame log: invert (cos α, v · sinc α)
         if (p.real + one).abs() < eps {
@@ -204,7 +204,7 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
     }
 
     // self-frame → +e0 identity frame  (used by log)
-    fn to_identity(&self, x_real: V::F, x_imag: V) -> Self {
+    fn transport_to_identity(&self, x_real: V::F, x_imag: V) -> Self {
         let s = self.far_pole_sign();
         let (r, im) = self.reflect(s, x_real, x_imag); // self → s·e0
         if s < V::F::zero() {
@@ -215,7 +215,7 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
     }
 
     // +e0 identity frame → self-frame  (used by exp): inverse of to_identity
-    fn from_identity(&self, x_real: V::F, x_imag: V) -> Self {
+    fn transport_from_identity(&self, x_real: V::F, x_imag: V) -> Self {
         let s = self.far_pole_sign();
         // inverse: apply F first (if s=-1), then H
         let (x_real, x_imag) = if s < V::F::zero() {

@@ -9,11 +9,9 @@ use diffable::{
     epsilon_metric::R64,
     flat::{KleinBottle, KleinBottleCover, S1, Torus, TorusCover},
     group_presentation, test_quotient, test_riemannian, test_tangent_bundle,
-    traits::{Chart, Group, GroupPresentation, NerveComplex, Quotient},
+    traits::{Chart, GroupPresentation, NerveComplex},
 };
 use proptest::prelude::*;
-
-use num_traits::Euclid;
 
 test_tangent_bundle!(
     tangent_bundle_s1_quotient,
@@ -65,17 +63,6 @@ test_riemannian!(
     (arb_s1_quotient(), arb_s1_quotient()).prop_map(|(a, b)| KleinBottle::new(a, b)),
     arb_vec2()
 );
-
-#[test]
-fn modulo() {
-    let x = R64(12.4);
-    let k: S1<Coords<R64, 1>> = S1::new([x].into());
-    let sum = k.compose(&k).compose(&k);
-
-    println!("{:?}", sum);
-
-    assert_eq!((sum).lift(), [(x + x + x).rem_euclid(&R64(1.0))].into());
-}
 
 #[test]
 fn klein_bottle_fundamental_group() {

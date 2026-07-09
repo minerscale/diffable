@@ -57,12 +57,12 @@ impl<V: Euclidean> Z<V> {
     }
 }
 
-impl<V: Euclidean> Into<(N, N)> for Z<V> {
-    fn into(self) -> (N, N) {
-        if self.0 < 0 {
-            (N::zero(), N(isize::try_into(-self.0).unwrap()))
+impl<V: Euclidean> From<Z<V>> for (N, N) {
+    fn from(val: Z<V>) -> Self {
+        if val.0 < 0 {
+            (N::zero(), N(isize::try_into(-val.0).unwrap()))
         } else {
-            (N(isize::try_into(self.0).unwrap()), N::zero())
+            (N(isize::try_into(val.0).unwrap()), N::zero())
         }
     }
 }

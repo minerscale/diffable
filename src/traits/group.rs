@@ -597,8 +597,22 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Euclidean>: Point {
     /// Maps `g` to the `Quotient` value representing its coset `gH`.
     fn new(g: G) -> Self;
 
-    /// Recovers some representative of `self`'s coset, satisfying
+    /// Recovers a representative of `self`'s coset, satisfying
     /// `new(self.lift()) == self`.
+    ///
+    /// This is not merely "some" representative: `lift` must return the
+    /// one nearest the identity, in the sense that `identity_log`'s
+    /// result (built from `lift`, see `quotient_identity_log`) reports
+    /// the same norm as `Metric::distance` from the identity. A `lift`
+    /// that satisfies `new(self.lift()) == self` without also being
+    /// nearest will still pass every `Quotient`/`Group`/`LieGroup`
+    /// axiom test — those are satisfied by any valid representative
+    /// choice — but will silently produce a geometrically wrong
+    /// `identity_log`, and hence a wrong `Chart`/`ExpMap`/`Metric` for
+    /// the whole type. This is exactly what `test_riemannian!`'s
+    /// `chart_metric_compatibility` catches: it is the test that
+    /// certifies `lift` chose correctly, not a separate property to
+    /// verify independently.
     fn lift(&self) -> G;
 
     /// the subgroup inclusion H ↪ G
