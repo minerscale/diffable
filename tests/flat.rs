@@ -7,9 +7,9 @@ use common::*;
 use diffable::{
     coords::Coords,
     epsilon_metric::R64,
-    flat::{KleinBottle, KleinBottleCover, MyopicTorusCover, S1, Torus, TorusCover},
+    flat::{KleinBottle, KleinBottleCover, MyopicTorus, MyopicTorusCover, S1, Torus, TorusCover},
     group_presentation, test_quotient, test_riemannian, test_tangent_bundle,
-    traits::{Chart, GroupPresentation, InnerProduct, NerveComplex},
+    traits::{Chart, GroupPresentation, InnerProduct, NerveComplex, NerveComplexParameters, Nodes},
 };
 
 use proptest::prelude::*;
@@ -101,6 +101,29 @@ fn torus_fundamental_group() {
     );
 }
 
+#[test]
+fn myopic_torus_cover_invariants() {
+    type T = MyopicTorus<Coords<f64, 1>, Coords<f64, 2>>;
+    type Cover = MyopicTorusCover<Coords<f64, 1>, Coords<f64, 2>>;
+    let s = T::s() as f64;
+    let h = 1.0 / s; // lattice spacing
+    let delta_s = 2f64.sqrt() / (2.0 * s); // covering radius
+    let rho = (2f64.sqrt() + 2.0) / (4.0 * s); // node radius, from `sdf`
+    let big_r = 2.0 / s; // myopia radius
+
+    assert!(
+        2.0 * rho < big_r,
+        "2ρ < R: adjacent base points must see each other"
+    );
+    assert!(delta_s < rho, "δ_s < ρ: the cover must actually cover");
+    assert!(h < big_r, "adjacent base points within myopia radius");
+
+    // `covering_radius()` inverts `C = (1+κ)·2δ_s`. If they disagree, `C` was
+    // hardcoded from a different `S` — the bug that cost 512 geodesic flows.
+    let recovered = Cover::covering_radius().unwrap();
+    assert_eq!(R64(recovered), R64(delta_s));
+}
+
 proptest! {
     #[test]
     fn myopic_torus_geodesic(
@@ -111,17 +134,24 @@ proptest! {
             |(a, b)| Torus::<Coords<f64, 1>, Coords<f64, 2>>::new(a, b)
         )) {
 
-        let expected_distance = p.to_local(&q).unwrap().norm();
-        let path = MyopicTorusCover::<Coords<f64, 1>, Coords<f64, 2>>::geodesic_path(&p, &q);
+        type Cover = MyopicTorusCover::<Coords<f64, 1>, Coords<f64, 2>>;
 
-        
-        match path {
-            Some(diffable::traits::Geodesic::Local { path: _, length }) => {
-                prop_assert_eq!(R64(length), R64(expected_distance))
+        let n = Cover::nodes().len();
+        for i in 0..n {
+            let ns: Vec<_> = Cover::get_neighbors(i).collect();
+            println!("node {i}: degree {}", ns.len());
+            for j in &ns {
+                assert!(Cover::edge_weight(i, *j).is_some(), "{i}-{j} invisible");
             }
-
-            _ => {println!("jeff: {:?}", path);
-                panic!()}
         }
+
+        let expected_distance = p.to_local(&q).unwrap().norm();
+        let Some(diffable::traits::Geodesic {path: _, length, certificate}) =
+            Cover::geodesic_path(&p, &q) else {
+                panic!("no geodesic found")
+            };
+
+        prop_assert!(certificate.is_global(), "not certified as global minimum {certificate:?}");
+        prop_assert_eq!(R64(length), R64(expected_distance));
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     discrete::Z,
     impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
-    traits::{Bounded, BuildNodes, NerveComplex},
+    traits::{Bounded, BuildNodes, NerveComplexParameters},
 };
 use std::marker::PhantomData;
 
@@ -103,25 +103,25 @@ impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F
     }
 }
 
-pub trait ICompatible<V: Euclidean + From<[Self::F; 2]>>:
+pub trait ICompatible<V: Euclidean<F: Send + Sync> + From<[Self::F; 2]>>:
     Euclidean<F: From<V::F>> + From<[Self::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync
 {
 }
 pub trait VCompatible<I: Euclidean<F: From<Self::F>> + From<[I::F; 1]> + From<[Self::F; 1]>>:
-    Euclidean + From<[I::F; 2]> + 'static + Send + Sync
+    Euclidean<F: Send + Sync> + From<[I::F; 2]> + 'static + Send + Sync
 {
 }
 
 impl<
     I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync,
-    V: Euclidean + From<[I::F; 2]> + 'static + Send + Sync,
+    V: Euclidean<F: Send + Sync> + From<[I::F; 2]> + 'static + Send + Sync,
 > ICompatible<V> for I
 {
 }
 
 impl<
     I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync,
-    V: Euclidean + From<[I::F; 2]> + 'static + Send + Sync,
+    V: Euclidean<F: Send + Sync> + From<[I::F; 2]> + 'static + Send + Sync,
 > VCompatible<I> for V
 {
 }
@@ -269,10 +269,8 @@ impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<TorusCover<I, V>> for Toru
     }
 }
 
-impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + Send + Sync + 'static,
-    V: Euclidean + From<[I::F; 2]> + Send + Sync + 'static,
-> NerveComplex<Torus<I, V>, V, Torus<I, V>, TorusCover<I, V>> for TorusCover<I, V>
+impl<I: ICompatible<V>, V: VCompatible<I>>
+    NerveComplexParameters<Torus<I, V>, V, Torus<I, V>, TorusCover<I, V>> for TorusCover<I, V>
 {
 }
 
@@ -330,7 +328,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<KleinBottleCover<I, V>>
 }
 
 impl<I: ICompatible<V>, V: VCompatible<I>>
-    NerveComplex<KleinBottle<I, V>, V, KleinBottle<I, V>, KleinBottleCover<I, V>>
+    NerveComplexParameters<KleinBottle<I, V>, V, KleinBottle<I, V>, KleinBottleCover<I, V>>
     for KleinBottleCover<I, V>
 {
 }
@@ -339,7 +337,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>>
 pub struct MyopicTorus<I: ICompatible<V>, V: VCompatible<I>>(pub Torus<I, V>);
 
 impl<I: ICompatible<V>, V: VCompatible<I>> MyopicTorus<I, V> {
-    fn s() -> usize {
+    pub fn s() -> usize {
         8
     }
 
@@ -432,7 +430,16 @@ impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<MyopicTorusCover<I, V>>
 }
 
 impl<I: ICompatible<V>, V: VCompatible<I>>
-    NerveComplex<Torus<I, V>, V, MyopicTorus<I, V>, MyopicTorusCover<I, V>>
+    NerveComplexParameters<Torus<I, V>, V, MyopicTorus<I, V>, MyopicTorusCover<I, V>>
     for MyopicTorusCover<I, V>
 {
+    fn overestimation_bound() -> Option<(V::F, V::F)> {
+        let to = |x| <V::F as NumCast>::from(x).unwrap();
+        let s = to(MyopicTorus::<I, V>::s());
+        // κ: king-graph worst case at 22.5°, √(4 − 2√2). Scale-free.
+        let kappa = (to(4) - to(2) * to(2).sqrt()).sqrt();
+        // C = (1+κ)·2δ_s, with δ_s = √2/(2S) the lattice half-diagonal.
+        let delta_s = to(2).sqrt() / (to(2) * s);
+        Some((kappa, (V::F::one() + kappa) * to(2) * delta_s))
+    }
 }

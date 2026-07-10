@@ -5,7 +5,7 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
     traits::{
         Bounded, BuildNodes, Chart, Euclidean, ExpMap, InnerProduct, LieGroup, Metric,
-        NerveComplex, Quotient, Scalar, Smooth, TangentBundle,
+        NerveComplexParameters, Quotient, Scalar, Smooth, TangentBundle,
     },
 };
 use num_traits::{Inv, NumCast, One, Zero, real::Real};
@@ -492,8 +492,13 @@ impl BuildNodes<S1Cover> for S1Cover {
     }
 }
 
-impl NerveComplex<UnitComplex<Coords<R64, 1>>, Coords<R64, 1>, UnitComplex<Coords<R64, 1>>, S1Cover>
-    for S1Cover
+impl
+    NerveComplexParameters<
+        UnitComplex<Coords<R64, 1>>,
+        Coords<R64, 1>,
+        UnitComplex<Coords<R64, 1>>,
+        S1Cover,
+    > for S1Cover
 {
 }
 
@@ -650,4 +655,7 @@ impl BuildNodes<Self> for So3Cover {
     }
 }
 
-impl NerveComplex<So3<Coords<R64, 3>>, Coords<R64, 3>, So3<Coords<R64, 3>>, So3Cover> for So3Cover {}
+impl NerveComplexParameters<So3<Coords<R64, 3>>, Coords<R64, 3>, So3<Coords<R64, 3>>, So3Cover>
+    for So3Cover
+{
+}
