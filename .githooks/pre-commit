@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if ! cargo readme 2>/dev/null | diff -q - readme.md >/dev/null 2>&1; then
+    echo "error: readme.md is out of sync with lib.rs doc comment." >&2
+    echo "       run: cargo readme > readme.md && git add readme.md" >&2
+    exit 1
+fi

@@ -5,6 +5,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [lib]
+path = "src/lib.rs"
 name = "diffable"
 doctest = false
 

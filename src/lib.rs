@@ -11,25 +11,42 @@
 //! The library is organised around a hierarchy of traits that mirror
 //! the mathematical structure of differential geometry:
 //!
-//! ### Foundation — sets, distances, inner products
+//! ### Foundation — sets, intervals, scalar products
+//!
+//! These come in matched **definite / indefinite** pairs: the indefinite
+//! member is the base, and the definite member refines it by adding
+//! positive-definiteness (and the metric-space structure that definiteness
+//! makes available).
 //!
 //! - [`traits::Point`] — an element of a carrier set; no topology, no
 //!   smoothness, just the ability to hold and duplicate a value
 //! - [`traits::Scalar`] — a real-number type for use as a coordinate field;
 //!   see its doc comment for the library's stance on approximate equality
-//! - [`traits::Metric`] — a distance function `d: M × M → R`, independent
-//!   of any coordinate structure
-//! - [`traits::InnerProduct`] — a bilinear inner product inducing a norm
-//!   and metric
+//! - [`traits::Interval`] — a *signed* squared interval `s²: M × M → R`
+//!   (negative timelike, zero null, positive spacelike); the pseudo-metric
+//!   base, claiming no metric-space axioms
+//! - [`traits::Metric`] — a distance function `d: M × M → R` satisfying the
+//!   metric-space axioms; the definite refinement, bridged into `Interval`
+//!   by `s² = d²`. Independent of any coordinate structure
+//! - [`traits::Bilinear`] — a symmetric bilinear scalar product `⟨·,·⟩` of
+//!   *arbitrary signature*, with a signed `norm_squared` but **no** norm or
+//!   distance; the Minkowski-capable base
+//! - [`traits::InnerProduct`] — a *positive-definite* `Bilinear` form,
+//!   inducing a genuine norm and (via `Metric`) a distance; the definite
+//!   refinement
 //!
 //! ### Charts — local coordinate structure
 //!
 //! - [`traits::Chart`] — a coordinate chart mapping points of a manifold to
-//!   a Euclidean coordinate space and back
+//!   a flat (pseudo-)Euclidean coordinate space and back
 //! - [`traits::ExpMap`] — a chart whose coordinate lines are geodesics and
-//!   whose coordinate distances are arc lengths
+//!   whose coordinate distances are (signed) arc lengths
 //! - [`traits::TangentBundle`] — a family of `ExpMap` charts, one centred
 //!   at each point of the manifold; the tangent bundle `TM`
+//! - [`traits::PseudoRiemannian`] — certifies that the exponential map and
+//!   the tangent-space scalar product agree: the geodesic interval equals
+//!   `Q(v) = ⟨v,v⟩`. Signature-agnostic; reduces to the usual Riemannian
+//!   `d(p, exp_p v) = ‖v‖` in the definite case
 //!
 //! ### Smooth structure — self-charting manifolds
 //!
@@ -56,11 +73,16 @@
 //! - [`traits::Quotient`] — a quotient `G/H` of a Lie group by a subgroup,
 //!   inheriting Lie group structure from the parent
 //!
-//! ### Euclidean — flat space
+//! ### (Pseudo-)Euclidean — flat space
 //!
-//! - [`traits::Euclidean`] — the canonical flat space `Rⁿ`; simultaneously
-//!   an inner-product space, its own tangent bundle, and an additive Lie
-//!   group, with all three structures coinciding trivially
+//! - [`traits::PseudoEuclidean`] — flat coordinate space `Rⁿ` with a
+//!   [`traits::Bilinear`] scalar product of arbitrary signature (Minkowski
+//!   included); its own tangent bundle and an additive Lie group. The
+//!   indefinite base, carrying no norm or distance
+//! - [`traits::Euclidean`] — the positive-definite refinement: the canonical
+//!   flat space `Rⁿ` that is simultaneously an inner-product space, its own
+//!   tangent bundle, and an additive Lie group, with all three structures
+//!   coinciding trivially
 //!
 //! ### Global topology — covers, nerves, fundamental groups
 //!
@@ -81,7 +103,7 @@
 //! ```text
 //! Smooth<V>             →  Chart<Self, V>, ExpMap<Self, V>, TangentBundle<Self, V>
 //! LieGroup<V>           →  Smooth<V>  →  Chart, ExpMap, TangentBundle
-//! Euclidean             →  Group, LieGroup<Self>  →  Smooth<Self>  →  Chart, ExpMap, TangentBundle
+//! PseudoEuclidean       →  Group, LieGroup<Self>  →  Smooth<Self>  →  Chart, ExpMap, TangentBundle
 //! Quotient<G, H, V>     (via macro)  →  Group, LieGroup<V>  →  Smooth  →  ...
 //! ```
 //!
@@ -93,8 +115,12 @@
 //!
 //! ## Implementations
 //!
-//! - [`coords::Coords`] — the canonical Euclidean space `Rⁿ`, implemented
-//!   as a fixed-size array of scalars
+//! - [`coords::Coords`] — the canonical flat (pseudo-)Euclidean space
+//!   `R^(N−M, M)`, a fixed-size array of scalars parameterised by a signature
+//!   `M` (the count of negative/timelike directions). The default `M = 0` is
+//!   ordinary Euclidean `Rⁿ` (with a norm and metric); `M > 0` is indefinite
+//!   (`Coords<R, 4, 1>` is Minkowski spacetime), carrying only a `Bilinear`
+//!   scalar product
 //! - [`hypersphere::Sphere`] — the unit hypersphere `Sⁿ` as a smooth
 //!   manifold with geodesic structure for any dimension
 //! - [`hypersphere::S0`], [`hypersphere::UnitComplex`],
