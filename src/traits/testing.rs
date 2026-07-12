@@ -5,23 +5,21 @@
 // manifold, just invoke the relevant macro with appropriate generators.
 // ---------------------------------------------------------------------------
 
-/// Tests that a space claiming to be a euclidean space is a euclidean space
+/// Tests that a space claiming to be a pseudo-Euclidean space is a pseudo-Euclidean space
 #[macro_export]
-macro_rules! test_euclidean {
+macro_rules! test_pseudo_euclidean {
     ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_vec:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
             use $crate::{
-                test_group, test_inner_product, test_metric, test_riemannian, test_tangent_bundle,
-                traits::Euclidean,
+                test_group, test_interval, test_pseudo_riemannian,
+                test_tangent_bundle, traits::PseudoEuclidean,
             };
 
-            // inherit all TangentFibre tests
             test_tangent_bundle!(tangent_bundle, $scalar, $space, $arb_point, $arb_vec);
-            test_metric!(metric, $space, $arb_vec);
-            test_inner_product!(inner_product, $space, $arb_point, $arb_scalar);
+            test_interval!(metric, $space, $arb_vec);
             test_group!(group, $space, $arb_vec);
-            test_riemannian!(riemannian, $space, $arb_point, $arb_vec);
+            test_pseudo_riemannian!(riemannian, $space, $arb_point, $arb_vec);
 
             proptest! {
                 #[test]
@@ -46,7 +44,32 @@ macro_rules! test_euclidean {
                 ) {
                     prop_assert!(<$space>::check_global_geodesic_scaling(&p, v, t));
                 }
+            }
+        }
+    };
+}
 
+/// Tests that a space claiming to be a euclidean space is a euclidean space
+#[macro_export]
+macro_rules! test_euclidean {
+    ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_vec:expr, $arb_scalar:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::{test_pseudo_euclidean, test_inner_product, test_metric, traits::Euclidean};
+
+            test_pseudo_euclidean!(
+                pseudo_euclidean,
+                $scalar,
+                $space,
+                $arb_point,
+                $arb_vec,
+                $arb_scalar
+            );
+
+            test_inner_product!(inner_product, $space, $arb_point, $arb_scalar);
+            test_metric!(metric, $space, $arb_point);
+
+            proptest! {
                 #[test]
                 fn pythagorean(a in $arb_point, b in $arb_point) {
                     prop_assert!(<$space>::check_pythagorean(&a, &b));
@@ -125,15 +148,15 @@ macro_rules! test_exp_map {
 
 /// Tests that `Metric` and `ExpMap` agree: `d(p, exp_p(v)) == |log_p(exp_p(v))|`.
 #[macro_export]
-macro_rules! test_riemannian {
+macro_rules! test_pseudo_riemannian {
     ($mod_name:ident, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::traits::Riemannian;
+            use $crate::traits::PseudoRiemannian;
 
             proptest! {
                 #[test]
-                fn chart_metric_compatibility(p in $arb_point, v in $arb_vec) {
+                fn chart_interval_compatibility(p in $arb_point, v in $arb_vec) {
                     let chart = <$chart>::chart_at(&p);
                     prop_assert!(chart.check_isometry(v));
                 }
@@ -347,17 +370,40 @@ macro_rules! test_metric {
     };
 }
 
-/// Tests the InnerProduct axioms: symmetry, bilinearity, positive-definiteness.
+/// Tests the Interval axioms: Symmetry and self-interval is zero.
 #[macro_export]
-macro_rules! test_inner_product {
+macro_rules! test_interval {
+    ($mod_name:ident, $point:ty, $arb_point:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::traits::Interval;
+
+            proptest! {
+                #[test]
+                fn interval_symmetry(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_interval_symmetry(a, b));
+                }
+
+                #[test]
+                fn self_interval_zero(p in $arb_point) {
+                    prop_assert!(<$point>::check_self_interval_zero(p))
+                }
+            }
+        }
+    };
+}
+
+/// Tests the Bilinear axioms: symmetry and bilinearity.
+#[macro_export]
+macro_rules! test_bilinear {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::traits::InnerProduct;
+            use $crate::traits::Bilinear;
             proptest! {
                 #[test]
                 fn symmetry(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_inner_product_symmetry(a, b));
+                    prop_assert!(<$point>::check_symmetry(a, b));
                 }
 
                 #[test]
@@ -369,7 +415,24 @@ macro_rules! test_inner_product {
                 fn scalar_linearity(a in $arb_point, c in $arb_point, k in $arb_scalar) {
                     prop_assert!(<$point>::check_scalar_linearity(a, c, k));
                 }
+            }
+        }
+    };
+}
 
+
+/// Tests the InnerProduct axioms: symmetry, bilinearity, positive-definiteness.
+#[macro_export]
+macro_rules! test_inner_product {
+    ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::traits::InnerProduct;
+            use $crate::test_bilinear;
+
+            test_bilinear!(bilinear, $point, $arb_point, $arb_scalar);
+
+            proptest! {
                 #[test]
                 fn positive_definite(a in $arb_point) {
                     prop_assert!(<$point>::check_positive_definite(a));

@@ -8,7 +8,7 @@ use diffable::{
     coords::Coords,
     epsilon_metric::R64,
     flat::{KleinBottle, KleinBottleCover, MyopicTorus, MyopicTorusCover, S1, Torus, TorusCover},
-    group_presentation, test_quotient, test_riemannian, test_tangent_bundle,
+    group_presentation, test_pseudo_riemannian, test_quotient, test_tangent_bundle,
     traits::{Chart, GroupPresentation, InnerProduct, NerveComplex, NerveComplexParameters, Nodes},
 };
 
@@ -28,7 +28,7 @@ test_quotient!(
     arb_vec1(),
     arb_z()
 );
-test_riemannian!(
+test_pseudo_riemannian!(
     riemannian_s1,
     S1<Coords<_, _>>,
     arb_s1_quotient(),
@@ -43,7 +43,7 @@ test_tangent_bundle!(
     (arb_s1_quotient(), arb_s1_quotient()).prop_map(|(a, b)| Torus::new(a, b)),
     arb_vec2()
 );
-test_riemannian!(
+test_pseudo_riemannian!(
     riemannian_torus,
     Torus<Coords<R64, 1>, Coords<R64, 2>>,
     (arb_s1_quotient(), arb_s1_quotient()).prop_map(|(a, b)| Torus::new(a, b)),
@@ -58,7 +58,7 @@ test_tangent_bundle!(
     arb_vec2()
 );
 // ($mod_name:ident, $chart:ty, $arb_point:expr, $arb_vec:expr)
-test_riemannian!(
+test_pseudo_riemannian!(
     riemannian_klein_bottle,
     KleinBottle<Coords<R64, 1>, Coords<R64, 2>>,
     (arb_s1_quotient(), arb_s1_quotient()).prop_map(|(a, b)| KleinBottle::new(a, b)),

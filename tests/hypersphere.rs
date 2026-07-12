@@ -10,7 +10,7 @@ use diffable::{
     epsilon_metric::R64,
     group_presentation,
     hypersphere::{S0, S1Cover, S3, So3, So3Cover, Sphere, Stereographic, UnitComplex},
-    test_chart, test_exp_map, test_group, test_metric, test_quotient, test_riemannian,
+    test_chart, test_exp_map, test_group, test_metric, test_pseudo_riemannian, test_quotient,
     test_tangent_bundle,
     traits::{
         Chart, ExpMap, Group, GroupPresentation, InnerProduct, LieGroup, NerveComplex,
@@ -38,24 +38,24 @@ test_metric!(metric_sphere2, Sphere<_, _>, arb_sphere2());
 test_metric!(metric_sphere3, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0));
 
 // Metric + ExpMap compatibility
-test_riemannian!(riemannian_sphere0, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0), arb_vec::<0>());
-test_riemannian!(riemannian_sphere1, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0), arb_vec::<1>());
-test_riemannian!(riemannian_sphere2, Sphere<_, _>, arb_sphere2(), arb_vec::<2>());
-test_riemannian!(riemannian_sphere3, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0), arb_vec::<3>());
+test_pseudo_riemannian!(riemannian_sphere0, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0), arb_vec::<0>());
+test_pseudo_riemannian!(riemannian_sphere1, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0), arb_vec::<1>());
+test_pseudo_riemannian!(riemannian_sphere2, Sphere<_, _>, arb_sphere2(), arb_vec::<2>());
+test_pseudo_riemannian!(riemannian_sphere3, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0), arb_vec::<3>());
 
-test_riemannian!(
+test_pseudo_riemannian!(
     riemannian_s0,
     S0<Coords<_, _>>,
     arb_sphere0(),
     arb_vec::<0>()
 );
-test_riemannian!(
+test_pseudo_riemannian!(
     riemannian_s1,
     UnitComplex<Coords<_, _>>,
     arb_sphere1(),
     arb_vec::<1>()
 );
-test_riemannian!(
+test_pseudo_riemannian!(
     riemannian_s3,
     S3<Coords<_, _>>,
     arb_sphere3(),

@@ -1,9 +1,8 @@
 use num_traits::Zero;
 use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
-use crate::impl_group_via_add;
-
 use super::{InnerProduct, LieGroup, Scalar, TangentBundle};
+use crate::{impl_group_via_add, traits::Bilinear};
 
 /// A finite-dimensional Euclidean space.
 ///
@@ -29,8 +28,36 @@ use super::{InnerProduct, LieGroup, Scalar, TangentBundle};
 /// # Implementing
 /// Use the `test_euclidean!` macro to verify that your implementation
 /// satisfies the Euclidean axioms.
-pub trait Euclidean:
-    InnerProduct<Self::F>
+pub trait Euclidean: PseudoEuclidean + InnerProduct<Self::F> {
+    // Pythagorean theorem: d(a, b)² == |a - b|²
+    #[cfg(feature = "testing")]
+    fn check_pythagorean(a: &Self, b: &Self) -> bool
+    where
+        Self: Sub<Output = Self> + Clone,
+    {
+        let dist_sq = a.distance(b);
+        let dist_sq = dist_sq * dist_sq;
+        let diff = a.clone() - b.clone();
+        let norm_sq = diff.norm_squared();
+        dist_sq == norm_sq
+    }
+}
+
+/// A finite-dimensional pseudo-Euclidean space.
+///
+/// # Flatness
+/// Unlike a general Riemannian manifold, a Pseudo-Euclidean space is flat: geodesics
+/// are straight lines, parallel transport is path-independent, and the
+/// exponential map is a global isomorphism rather than merely a local one.
+/// These properties are verified by the `check_*` methods inherited from
+/// `TangentBundle` and by the additional checks in `check_global_chart`,
+/// `check_global_geodesic_scaling`, `check_translation_invariance`, and `check_pythagorean`.
+///
+/// # Implementing
+/// Use the `test_euclidean!` macro to verify that your implementation
+/// satisfies the Euclidean axioms.
+pub trait PseudoEuclidean:
+    Bilinear<Self::F>
     + TangentBundle<Self, Self>
     + Add<Output = Self>
     + Sub<Output = Self>
@@ -63,15 +90,20 @@ pub trait Euclidean:
         chart.to_local(q).is_some()
     }
 
-    // Translation invariance: d(a + c, b + c) == d(a, b)
+    // Translation invariance: Q((a+c) - (b+c)) == Q(a - b),
+    // where Q(v) = ⟨v,v⟩ is the (signed) quadratic form.
+    //
+    // Stated on norm_squared rather than a distance, since a pseudo-Euclidean
+    // space has no metric: the difference is the same vector either way
+    // ((a+c) - (b+c) = a - b), so the form agrees exactly.
     #[cfg(feature = "testing")]
     fn check_translation_invariance(a: &Self, b: &Self, c: &Self) -> bool
     where
-        Self: Add<Output = Self> + Clone,
+        Self: Add<Output = Self> + Sub<Output = Self> + Clone,
     {
-        let dist_ab = a.distance(b);
-        let dist_translated = (a.clone() + c.clone()).distance(&(b.clone() + c.clone()));
-        dist_ab == dist_translated
+        let diff = a.clone() - b.clone();
+        let diff_translated = (a.clone() + c.clone()) - (b.clone() + c.clone());
+        diff.norm_squared() == diff_translated.norm_squared()
     }
 
     // Geodesic scaling holds globally (infinite injectivity radius):
@@ -90,24 +122,11 @@ pub trait Euclidean:
             _ => false,
         }
     }
-
-    // Pythagorean theorem: d(a, b)² == |a - b|²
-    #[cfg(feature = "testing")]
-    fn check_pythagorean(a: &Self, b: &Self) -> bool
-    where
-        Self: Sub<Output = Self> + Clone,
-    {
-        let dist_sq = a.distance(b);
-        let dist_sq = dist_sq * dist_sq;
-        let diff = a.clone() - b.clone();
-        let norm_sq = diff.norm_squared();
-        dist_sq == norm_sq
-    }
 }
 
-impl_group_via_add!(V, V: Euclidean);
+impl_group_via_add!(V, V: PseudoEuclidean);
 
-impl<E: Euclidean> LieGroup<E> for E {
+impl<E: PseudoEuclidean> LieGroup<E> for E {
     fn identity_exp(v: E) -> Self {
         v
     }

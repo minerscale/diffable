@@ -2,8 +2,7 @@
 use std::ops::{Add, Mul};
 
 #[cfg(feature = "testing")]
-use num_traits::Zero;
-use num_traits::{Euclid, real::Real};
+use num_traits::{Euclid, Zero, real::Real};
 
 /// An element of the carrier set of a manifold, group, or metric space.
 ///
@@ -118,34 +117,77 @@ pub trait Metric<R: Real>: Point {
     }
 }
 
-/// An inner product structure on a manifold.
-///
-/// The space of all values of a type `P: InnerProduct<R>` is interpreted
-/// as an inner product space — a vector space equipped with a bilinear,
-/// symmetric, positive-definite pairing `⟨·,·⟩: P × P → R`.
-///
-/// An inner product induces a norm, `|v| = sqrt(⟨v,v⟩)`, and that norm in
-/// turn induces a metric, `d(a, b) = |a - b|` — which is why `InnerProduct`
-/// is a refinement of [`Metric`] rather than an independent trait. `norm`
-/// and `norm_squared` are provided as default methods derived purely from
-/// `dot`.
-///
-/// Not every `Metric` is an `InnerProduct` — the sphere's geodesic distance,
-/// for instance, is a perfectly good metric that does not arise from any
-/// inner product, since the sphere is not a vector space.
-pub trait InnerProduct<R: Real>: Metric<R> {
-    fn dot(&self, other: &Self) -> R;
+/// A signed interval on a manifold — the pseudo-Riemannian analogue of
+/// [`Metric`]. Where `Metric` returns a non-negative distance, `Interval`
+/// returns the *signed* squared interval s²(a,b): negative timelike,
+/// zero null, positive spacelike (or your sign convention). No metric-space
+/// axioms are claimed — this is not a distance, it is the value of the
+/// line element between two points along the connecting geodesic.
+pub trait Interval<R: Real>: Point {
+    /// Signed squared interval between self and other. Sign carries causal
+    /// character; magnitude is (proper distance)² or −(proper time)².
+    fn interval_squared(&self, other: &Self) -> R;
 
-    fn norm(&self) -> R {
-        self.norm_squared().sqrt()
+    #[cfg(feature = "testing")]
+    fn check_interval_symmetry(a: Self, b: Self) -> bool {
+        a.interval_squared(&b) == b.interval_squared(&a)
     }
 
+    #[cfg(feature = "testing")]
+    fn check_self_interval_zero(a: Self) -> bool {
+        a.interval_squared(&a) == R::zero()
+    }
+}
+
+// A metric space is, in particular, an all-spacelike interval space:
+// the signed squared interval is just distance². This is a *bridge*, not
+// a refinement — Metric and Interval are independent structures that
+// coincide only in the definite case.
+impl<R: Real, T: Metric<R>> Interval<R> for T {
+    fn interval_squared(&self, other: &Self) -> R {
+        let d = self.distance(other);
+        d * d   // ≥ 0: all separations spacelike in a Riemannian manifold
+    }
+}
+
+/// A symmetric bilinear form on a vector space.
+///
+/// The space of all values of a type `P: Bilinear<R>` is interpreted as a
+/// vector space equipped with a symmetric bilinear pairing
+/// `⟨·,·⟩: P × P → R`. **No definiteness is assumed**: the induced quadratic
+/// form `Q(v) = ⟨v,v⟩` may be positive, negative, or zero for `v ≠ 0`. This is
+/// the structure of a pseudo-Euclidean (e.g. Minkowski) space as well as a
+/// Euclidean one.
+///
+/// Because the form may be indefinite, `Bilinear` provides **no norm and no
+/// distance**: `⟨v,v⟩` can be negative, so `sqrt(⟨v,v⟩)` need not be real, and
+/// the induced "distance" fails the metric-space axioms (null vectors give
+/// distinct points at separation zero; the triangle inequality reverses on
+/// timelike triples). A norm and a [`Metric`] arise only once definiteness is
+/// added — see [`InnerProduct`], which refines this trait with
+/// positive-definiteness and is therefore the only branch that induces a
+/// metric space.
+///
+/// `norm_squared` is provided as `⟨v,v⟩` and is **signed** — it is the value
+/// of the quadratic form, not the square of a norm. Callers on indefinite
+/// spaces should inspect its sign (causal character) rather than take its
+/// square root.
+///
+/// The three certified invariants — symmetry, additivity, and scalar
+/// linearity of the pairing — are signature-agnostic and hold in the
+/// indefinite case exactly as in the definite one.
+pub trait Bilinear<R: Real>: Point {
+    fn dot(&self, other: &Self) -> R;
+
+    /// The quadratic form `Q(v) = ⟨v,v⟩`. **Signed**: may be negative on an
+    /// indefinite space. This is *not* the square of a norm — do not `sqrt`
+    /// it without first handling the sign (see causal character).
     fn norm_squared(&self) -> R {
         self.dot(self)
     }
 
     #[cfg(feature = "testing")]
-    fn check_inner_product_symmetry(a: Self, b: Self) -> bool {
+    fn check_symmetry(a: Self, b: Self) -> bool {
         a.dot(&b) == b.dot(&a)
     }
 
@@ -167,6 +209,29 @@ pub trait InnerProduct<R: Real>: Metric<R> {
         let lhs = (a.clone() * k).dot(&c);
         let rhs = k * a.dot(&c);
         lhs == rhs
+    }
+}
+
+/// An inner product structure on a vector space.
+///
+/// Refines [`Bilinear`] with **positive-definiteness**: `⟨v,v⟩ > 0` for all
+/// `v ≠ 0`. This is exactly the property that makes the induced quantities
+/// well-behaved — `norm(v) = sqrt(⟨v,v⟩)` is real and non-negative, and
+/// `d(a,b) = ‖a - b‖` satisfies the metric-space axioms — which is why
+/// `InnerProduct` is a refinement of [`Metric`], whereas the bare
+/// [`Bilinear`] base is not.
+///
+/// Not every [`Metric`] is an `InnerProduct` — the sphere's geodesic distance
+/// is a metric not arising from any inner product, since the sphere is not a
+/// vector space. And not every [`Bilinear`] form is an `InnerProduct` — a
+/// Minkowski scalar product is bilinear and symmetric but indefinite, so it
+/// induces no metric at all.
+pub trait InnerProduct<R: Real>: Bilinear<R> + Metric<R> {
+    /// The norm `‖v‖ = sqrt(⟨v,v⟩)`. Well-defined and real because the form
+    /// is positive-definite. On an indefinite [`Bilinear`] space this would
+    /// not be real — which is why it lives here, not on the base.
+    fn norm(&self) -> R {
+        self.norm_squared().sqrt()
     }
 
     #[cfg(feature = "testing")]

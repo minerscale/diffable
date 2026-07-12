@@ -1,6 +1,6 @@
 use std::ops::Neg;
 
-use super::{Euclidean, Point, Smooth};
+use super::{Point, PseudoEuclidean, Smooth};
 use num_traits::{Inv, One, Zero};
 
 /// A commutative monoid, in additive notation.
@@ -423,7 +423,7 @@ macro_rules! impl_group_via_mul {
 /// # Why `compose`/`inverse`/`identity`, not `Mul`/`Neg`/`Add`
 /// `Group` deliberately has no operator-trait bound and no commutativity
 /// requirement, so that it can describe both abelian groups (this crate's
-/// [`Euclidean`] spaces, [`Z`](crate::discrete::Z), [`S1`](crate::flat::S1))
+/// [`PseudoEuclidean`] spaces, [`Z`](crate::discrete::Z), [`S1`](crate::flat::S1))
 /// and non-abelian ones (`SO(3)`, unit quaternions) uniformly. Real groups
 /// split into two genuinely different notations depending on whether they
 /// commute — `+` for abelian, `*` otherwise — and a single trait cannot
@@ -440,7 +440,7 @@ macro_rules! impl_group_via_mul {
 /// no type implements both flavours at once, so the two bridges are
 /// supplied as macros invoked per concrete type instead.
 ///
-/// [`Euclidean`]: crate::traits::Euclidean
+/// [`PseudoEuclidean`]: crate::traits::PseudoEuclidean
 /// [`impl_group_via_add`]: crate::impl_group_via_add
 /// [`impl_group_via_mul`]: crate::impl_group_via_mul
 pub trait Group: Point {
@@ -493,7 +493,7 @@ pub trait Group: Point {
 ///
 /// The space of all values of a type `G: LieGroup<V>` is interpreted as
 /// a Lie group — a manifold that is also a group, where the group operations
-/// are smooth maps. `V` is the Euclidean space coordinatising the group's
+/// are smooth maps. `V` is the (pseudo) Euclidean space coordinatising the group's
 /// tangent space at the identity.
 ///
 /// # Group axioms
@@ -524,13 +524,13 @@ pub trait Group: Point {
 /// [`Chart`]: crate::traits::Chart
 /// [`ExpMap`]: crate::traits::ExpMap
 /// [`TangentBundle`]: crate::traits::TangentBundle
-pub trait LieGroup<V: Euclidean>: Group {
+pub trait LieGroup<V: PseudoEuclidean>: Group {
     fn identity_exp(v: V) -> Self;
     fn identity_log(p: &Self) -> Option<V>;
 }
 
 // left translation
-impl<V: Euclidean, L: LieGroup<V>> Smooth<V> for L {
+impl<V: PseudoEuclidean, L: LieGroup<V>> Smooth<V> for L {
     fn exp(&self, coord: V) -> Self {
         let translated = Self::identity_exp(coord);
         self.compose(&translated)
@@ -593,7 +593,7 @@ impl<V: Euclidean, L: LieGroup<V>> Smooth<V> for L {
 /// because `-1` commutes with everything (it is, after all, just a scalar
 /// multiple of the identity), which is what makes `S³/{±1} → SO(3)` and
 /// `(R\{0}, ×)/{±1} → (R⁺, ×)` both legitimate instances of this trait.
-pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Euclidean>: Point {
+pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: PseudoEuclidean>: Point {
     /// Maps `g` to the `Quotient` value representing its coset `gH`.
     fn new(g: G) -> Self;
 

@@ -358,7 +358,7 @@ impl GroupPresentation for StaticGroupPresentation {
 }
 
 // -------------------------------------------------------------------
-// static_presentation!(NAME, n_generators = N, relations = [
+// group_presentation!(NAME, n_generators = N, relations = [
 //     [(gen, inverted), ...],
 //     ...
 // ]);
@@ -2435,7 +2435,7 @@ macro_rules! impl_tangent_bundle_via_bounded {
         impl<$($generics)*> Chart<$manifold, $v> for $chart {
             fn to_local(&self, p: &$manifold) -> Option<$v> {
                 <$ambient as Chart<$manifold, $v>>::to_local(self.as_ref(), p)
-                    .filter(|v| self.sdf(v) < <$v as $crate::traits::Euclidean>::F::zero())
+                    .filter(|v| self.sdf(v) < <$v as $crate::traits::PseudoEuclidean>::F::zero())
             }
             fn to_global(&self, c: $v) -> $manifold {
                 <$ambient as Chart<$manifold, $v>>::to_global(self.as_ref(), c)
