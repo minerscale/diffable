@@ -1,8 +1,8 @@
 use std::collections::{BinaryHeap, HashMap};
 
-use num_traits::{NumCast, One, ToPrimitive, Zero, real::Real};
+use num_traits::{NumCast, One, ToPrimitive, Zero, real::Real as _};
 
-use super::{Euclidean, Point, TangentBundle};
+use super::{Euclidean, Point, Real, TangentBundle};
 
 /// A presentation of a group by generators and relations.
 ///
@@ -2435,7 +2435,7 @@ macro_rules! impl_tangent_bundle_via_bounded {
         impl<$($generics)*> Chart<$manifold, $v> for $chart {
             fn to_local(&self, p: &$manifold) -> Option<$v> {
                 <$ambient as Chart<$manifold, $v>>::to_local(self.as_ref(), p)
-                    .filter(|v| self.sdf(v) < <$v as $crate::traits::PseudoEuclidean>::F::zero())
+                    .filter(|v| self.sdf(v) < <$v as $crate::traits::Quadratic>::F::zero())
             }
             fn to_global(&self, c: $v) -> $manifold {
                 <$ambient as Chart<$manifold, $v>>::to_global(self.as_ref(), c)

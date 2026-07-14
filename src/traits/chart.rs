@@ -1,6 +1,6 @@
-use crate::traits::{Euclidean, Interval};
+use crate::traits::{CGroup, DivRing, Euclidean, Interval, Real};
 
-use super::{Point, PseudoEuclidean};
+use super::{Point, Quadratic};
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
@@ -15,7 +15,7 @@ use num_traits::{One, Zero};
 ///
 /// `to_local` and `to_global` are the coordinate maps, with `to_local`
 /// returning `None` at the singularities of the chart.
-pub trait Chart<P: Point, V: PseudoEuclidean>: Sized {
+pub trait Chart<P: Point, V: Quadratic>: Sized {
     fn to_local(&self, point: &P) -> Option<V>;
     fn to_global(&self, coord: V) -> P;
     fn chart_at(p: &P) -> Self;
@@ -47,7 +47,7 @@ pub trait Chart<P: Point, V: PseudoEuclidean>: Sized {
 /// that distances from the origin equal arc lengths along those geodesics.
 ///
 /// Additionally, you certify that Self::chart_at(&self.base_point()) == self
-pub trait ExpMap<P: Point, V: PseudoEuclidean>: Chart<P, V> {
+pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
     fn base_point(&self) -> P {
         self.to_global(V::zero())
     }
@@ -151,7 +151,7 @@ pub trait ExpMap<P: Point, V: PseudoEuclidean>: Chart<P, V> {
 /// statement `d(p, exp_p v) = ‖v‖`, recovered by taking `√Q`.
 ///
 /// Verified by `test_pseudo_riemannian!`.
-pub trait PseudoRiemannian<V: PseudoEuclidean>: ExpMap<Self, V> + Interval<V::F> {
+pub trait PseudoRiemannian<V: Quadratic<F: Real>>: ExpMap<Self, V> + Interval<V::F> {
     #[cfg(feature = "testing")]
     fn check_isometry(&self, v: V) -> bool {
         let global = self.to_global(v);
@@ -163,12 +163,13 @@ pub trait PseudoRiemannian<V: PseudoEuclidean>: ExpMap<Self, V> + Interval<V::F>
             Some(u) => u,
             None => return true, // outside restricted log domain — skip
         };
-        let s2 = self.base_point().interval_squared(&global);
-        s2 == local.norm_squared()   // signed interval vs re-logged tangent form
+        let s = self.base_point().interval(&global);
+
+        s * s == local.norm_squared().into() // signed interval vs re-logged tangent form
     }
 }
 
-impl<V: PseudoEuclidean, E: ExpMap<Self, V> + Interval<V::F>> PseudoRiemannian<V> for E {}
+impl<V: Quadratic<F: Real>, E: ExpMap<Self, V> + Interval<V::F>> PseudoRiemannian<V> for E {}
 
 /// A tangent bundle structure on a manifold.
 ///
@@ -186,7 +187,7 @@ impl<V: PseudoEuclidean, E: ExpMap<Self, V> + Interval<V::F>> PseudoRiemannian<V
 /// bare [`Chart`] or [`ExpMap`].
 ///
 /// Use the `test_tangent_bundle!` macro to verify this invariant.
-pub trait TangentBundle<P: Point, V: PseudoEuclidean>: ExpMap<P, V> {
+pub trait TangentBundle<P: Point, V: Quadratic>: ExpMap<P, V> {
     fn sectional_curvature(&self, v: V, w: V, epsilon: V::F) -> Option<V::F> {
         // Denominator: signed Gram determinant of the 2-plane span(v, w).
         //   G = Q(v)·Q(w) − ⟨v,w⟩²
@@ -195,7 +196,7 @@ pub trait TangentBundle<P: Point, V: PseudoEuclidean>: ExpMap<P, V> {
         let qv = v.norm_squared();
         let qw = w.norm_squared();
         let vw = v.dot(&w);
-        let gram = qv * qw - vw * vw;
+        let gram = (qv * qw).sub(&(vw * vw));
         if gram == V::F::zero() {
             return None;
         }
@@ -213,9 +214,9 @@ pub trait TangentBundle<P: Point, V: PseudoEuclidean>: ExpMap<P, V> {
         let q_delta = delta.norm_squared();
         let eps2 = epsilon * epsilon;
         let three = V::F::one() + V::F::one() + V::F::one();
-        let numerator = three * (eps2 * qw - q_delta) / (eps2 * eps2);
+        let numerator = three * ((eps2 * qw).sub(&q_delta)).div(eps2 * eps2);
 
-        Some(numerator / gram)
+        Some(numerator.div(gram))
     }
 
     fn max_sectional_curvature(&self, epsilon: V::F) -> Option<V::F>
@@ -262,7 +263,7 @@ pub trait TangentBundle<P: Point, V: PseudoEuclidean>: ExpMap<P, V> {
 /// [`ExpMap<Self, V>`]: crate::traits::ExpMap
 /// [`TangentBundle<Self, V>`]: crate::traits::TangentBundle
 /// [`LieGroup`]: crate::traits::LieGroup
-pub trait Smooth<V: PseudoEuclidean>: Point {
+pub trait Smooth<V: Quadratic>: Point {
     /// The exponential map at `self`: sends a tangent vector `v` to the
     /// point reached by following the geodesic from `self` in direction
     /// `v` for unit time.
@@ -274,7 +275,7 @@ pub trait Smooth<V: PseudoEuclidean>: Point {
     fn log(&self, other: &Self) -> Option<V>;
 }
 
-impl<V: PseudoEuclidean, S: Smooth<V>> Chart<Self, V> for S {
+impl<V: Quadratic, S: Smooth<V>> Chart<Self, V> for S {
     fn to_local(&self, point: &Self) -> Option<V> {
         self.log(point)
     }
@@ -288,11 +289,11 @@ impl<V: PseudoEuclidean, S: Smooth<V>> Chart<Self, V> for S {
     }
 }
 
-impl<V: PseudoEuclidean, L: Smooth<V>> ExpMap<Self, V> for L {
+impl<V: Quadratic, L: Smooth<V>> ExpMap<Self, V> for L {
     // optimisation
     fn base_point(&self) -> Self {
         self.clone()
     }
 }
 
-impl<V: PseudoEuclidean, L: Smooth<V>> TangentBundle<Self, V> for L {}
+impl<V: Quadratic, L: Smooth<V>> TangentBundle<Self, V> for L {}

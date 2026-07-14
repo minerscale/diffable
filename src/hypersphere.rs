@@ -1,14 +1,16 @@
 use std::{marker::PhantomData, ops::Mul};
 
 use crate::{
+    complex::Complex,
     coords::Coords,
     impl_group_via_mul, impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
     traits::{
-        Bounded, BuildNodes, Chart, Euclidean, ExpMap, InnerProduct, LieGroup, Metric,
-        NerveComplexParameters, Quotient, Scalar, Smooth, TangentBundle,
+        Bounded, BuildNodes, Chart, Euclidean, ExpMap, InnerProduct, Interval, LieGroup, Metric,
+        NerveComplexParameters, Quotient, Real, Smooth, TangentBundle,
     },
 };
-use num_traits::{Inv, NumCast, One, Zero, real::Real};
+
+use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Sphere<const N: usize, V: Euclidean> {
@@ -152,7 +154,7 @@ impl<const N: usize, V: Euclidean> Smooth<V> for Sphere<N, V> {
 /// The two-term approximation `1 − α²/6` is used for `α < eps`; its
 /// error there is the dropped `α⁴/120` term (~8×10⁻¹⁵ at eps = 1e-3),
 /// far below the R64 tolerance.
-fn sinc_from<F: Scalar>(alpha: F, sin_a: F, eps: F) -> F {
+fn sinc_from<F: Real>(alpha: F, sin_a: F, eps: F) -> F {
     let one = F::one();
     if alpha < eps {
         let six = (one + one) * (one + one + one);
@@ -172,7 +174,7 @@ fn sinc_from<F: Scalar>(alpha: F, sin_a: F, eps: F) -> F {
 /// approximation `1 + α²/6` is used for `α < eps`; its error there is the
 /// dropped `7α⁴/360` term (~2×10⁻¹⁴ at eps = 1e-3), below the R64
 /// tolerance.
-fn sinc_recip<F: Scalar>(alpha: F, eps: F) -> F {
+fn sinc_recip<F: Real>(alpha: F, eps: F) -> F {
     let one = F::one();
     if alpha < eps {
         let six = (one + one) * (one + one + one);
@@ -240,23 +242,26 @@ impl_group_via_mul!(UnitComplex<V>, V: Euclidean);
 pub struct S3<V: Euclidean>(pub Sphere<3, V>);
 impl_group_via_mul!(S3<V>, V: Euclidean);
 
-impl<V: Euclidean> Metric<V::F> for S0<V> {
-    fn distance(&self, other: &Self) -> V::F {
-        self.0.distance(&other.0)
+impl<V: Euclidean> Interval<V::F> for S0<V> {
+    fn interval(&self, other: &Self) -> Complex<V::F> {
+        self.0.interval(&other.0)
     }
 }
+impl<V: Euclidean> Metric<V::F> for S0<V> {}
 
-impl<V: Euclidean> Metric<V::F> for UnitComplex<V> {
-    fn distance(&self, other: &Self) -> V::F {
-        self.0.distance(&other.0)
+impl<V: Euclidean> Interval<V::F> for UnitComplex<V> {
+    fn interval(&self, other: &Self) -> Complex<V::F> {
+        self.0.interval(&other.0)
     }
 }
+impl<V: Euclidean> Metric<V::F> for UnitComplex<V> {}
 
-impl<V: Euclidean> Metric<V::F> for S3<V> {
-    fn distance(&self, other: &Self) -> V::F {
-        self.0.distance(&other.0)
+impl<V: Euclidean> Interval<V::F> for S3<V> {
+    fn interval(&self, other: &Self) -> Complex<V::F> {
+        self.0.interval(&other.0)
     }
 }
+impl<V: Euclidean> Metric<V::F> for S3<V> {}
 
 impl<V: Euclidean> One for S0<V> {
     fn one() -> Self {
@@ -402,8 +407,8 @@ impl<V: Euclidean> LieGroup<V> for S3<V> {
     }
 }
 
-impl<const N: usize, V: Euclidean> Metric<V::F> for Sphere<N, V> {
-    fn distance(&self, other: &Self) -> V::F {
+impl<const N: usize, V: Euclidean> Interval<V::F> for Sphere<N, V> {
+    fn interval(&self, other: &Self) -> Complex<V::F> {
         // ambient inner product of two unit vectors = cos(geodesic distance)
         let cos_d = self.real * other.real + self.imag.dot(&other.imag);
         // the perpendicular component gives sin(geodesic distance):
@@ -412,9 +417,10 @@ impl<const N: usize, V: Euclidean> Metric<V::F> for Sphere<N, V> {
         let w_imag = other.imag - self.imag * cos_d;
         let sin_d = (w_real * w_real + w_imag.norm_squared()).sqrt();
         // θ = atan2(sin, cos), stable everywhere including antipode (θ=π)
-        V::F::atan2(sin_d, cos_d)
+        V::F::atan2(sin_d, cos_d).into()
     }
 }
+impl<const N: usize, V: Euclidean> Metric<V::F> for Sphere<N, V> {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct So3<V: Euclidean>(S3<V>);

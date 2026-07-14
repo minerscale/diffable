@@ -1,8 +1,11 @@
 use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, Neg, Sub};
 
-use num_traits::{ConstZero, Zero, real::Real};
+use num_traits::{ConstZero, Zero};
 
-use crate::traits::{Bilinear, Euclidean, InnerProduct, Metric, PseudoEuclidean, Scalar};
+use crate::{
+    complex::Complex,
+    traits::{Bilinear, Euclidean, Field, Interval, Metric, Quadratic, Real},
+};
 
 /// The canonical model of flat pseudo-Euclidean coordinate space `R^(N−M, M)`.
 ///
@@ -27,7 +30,7 @@ use crate::traits::{Bilinear, Euclidean, InnerProduct, Metric, PseudoEuclidean, 
 /// # Trait scoping
 /// The definite (`M = 0`) case implements [`InnerProduct`], [`Metric`], and
 /// [`Euclidean`]; the general case implements [`Bilinear`] and
-/// [`PseudoEuclidean`]. Operations requiring positive-definiteness — `norm`,
+/// [`Quadratic`]. Operations requiring positive-definiteness — `norm`,
 /// `distance`, sectional-curvature maxima — are therefore available only at
 /// `M = 0`, enforced by the trait bounds rather than by runtime checks.
 ///
@@ -35,13 +38,13 @@ use crate::traits::{Bilinear, Euclidean, InnerProduct, Metric, PseudoEuclidean, 
 /// [`InnerProduct`]: crate::traits::InnerProduct
 /// [`Metric`]: crate::traits::Metric
 /// [`Euclidean`]: crate::traits::Euclidean
-/// [`PseudoEuclidean`]: crate::traits::PseudoEuclidean
+/// [`Quadratic`]: crate::traits::Quadratic
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Coords<R: Real, const N: usize, const M: usize = 0>([R; N]);
+pub struct Coords<F: Field, const N: usize, const M: usize = 0>([F; N]);
 
-impl<R: Real, const N: usize, const M: usize> Zero for Coords<R, N, M> {
+impl<F: Field, const N: usize, const M: usize> Zero for Coords<F, N, M> {
     fn zero() -> Self {
-        [R::zero(); N].into()
+        [F::zero(); N].into()
     }
 
     fn is_zero(&self) -> bool {
@@ -49,55 +52,59 @@ impl<R: Real, const N: usize, const M: usize> Zero for Coords<R, N, M> {
     }
 }
 
-impl<R: Real + ConstZero, const N: usize, const M: usize> ConstZero for Coords<R, N, M> {
-    const ZERO: Self = Self([R::ZERO; N]);
+impl<F: Field + ConstZero, const N: usize, const M: usize> ConstZero for Coords<F, N, M> {
+    const ZERO: Self = Self([F::ZERO; N]);
 }
 
-impl<R: Real, const N: usize, const M: usize> Deref for Coords<R, N, M> {
-    type Target = [R; N];
+impl<F: Field, const N: usize, const M: usize> Deref for Coords<F, N, M> {
+    type Target = [F; N];
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<R: Real, const N: usize, const M: usize> DerefMut for Coords<R, N, M> {
+impl<F: Field, const N: usize, const M: usize> DerefMut for Coords<F, N, M> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<R: Real, const N: usize, const M: usize> From<[R; N]> for Coords<R, N, M> {
-    fn from(arr: [R; N]) -> Self {
+impl<F: Field, const N: usize, const M: usize> From<[F; N]> for Coords<F, N, M> {
+    fn from(arr: [F; N]) -> Self {
         Self(arr)
     }
 }
 
-impl<R: Real, const N: usize, const M: usize> From<Coords<R, N, M>> for [R; N] {
-    fn from(c: Coords<R, N, M>) -> Self {
+impl<F: Field, const N: usize, const M: usize> From<Coords<F, N, M>> for [F; N] {
+    fn from(c: Coords<F, N, M>) -> Self {
         c.0
     }
 }
 
-impl<R: Real, const N: usize, const M: usize> Index<usize> for Coords<R, N, M> {
-    type Output = R;
+impl<F: Field, const N: usize, const M: usize> Index<usize> for Coords<F, N, M> {
+    type Output = F;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
     }
 }
 
-impl<R: Real, const N: usize, const M: usize> IndexMut<usize> for Coords<R, N, M> {
+impl<F: Field, const N: usize, const M: usize> IndexMut<usize> for Coords<F, N, M> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-fn array_zip_map<A, B, C, const N: usize>(a: [A; N], b: [B; N], f: fn(&A, &B) -> C) -> [C; N] {
+pub(crate) fn array_zip_map<A, B, C, const N: usize>(
+    a: [A; N],
+    b: [B; N],
+    f: fn(&A, &B) -> C,
+) -> [C; N] {
     std::array::from_fn(|i| f(&a[i], &b[i]))
 }
 
-impl<R: Real, const N: usize, const M: usize> Add for Coords<R, N, M> {
+impl<F: Field, const N: usize, const M: usize> Add for Coords<F, N, M> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -105,23 +112,23 @@ impl<R: Real, const N: usize, const M: usize> Add for Coords<R, N, M> {
     }
 }
 
-impl<R: Real, const N: usize, const M: usize> Sub for Coords<R, N, M> {
+impl<F: Field, const N: usize, const M: usize> Sub for Coords<F, N, M> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        array_zip_map(*self, *rhs, |&a, &b| a - b).into()
+        array_zip_map(*self, *rhs, |&a, &b| a.sub(&b)).into()
     }
 }
 
-impl<R: Real, const N: usize, const M: usize> Mul<R> for Coords<R, N, M> {
+impl<F: Field, const N: usize, const M: usize> Mul<F> for Coords<F, N, M> {
     type Output = Self;
 
-    fn mul(self, rhs: R) -> Self::Output {
+    fn mul(self, rhs: F) -> Self::Output {
         self.map(|x| x * rhs).into()
     }
 }
 
-impl<R: Real, const N: usize, const M: usize> Neg for Coords<R, N, M> {
+impl<F: Field, const N: usize, const M: usize> Neg for Coords<F, N, M> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -129,24 +136,27 @@ impl<R: Real, const N: usize, const M: usize> Neg for Coords<R, N, M> {
     }
 }
 
-impl<R: Real, const N: usize, const M: usize> Bilinear<R> for Coords<R, N, M> {
-    fn dot(&self, other: &Self) -> R {
+impl<F: Field, const N: usize, const M: usize> Bilinear<F> for Coords<F, N, M> {
+    fn dot(&self, other: &Self) -> F {
         self.iter()
             .zip(other.iter())
             .enumerate()
-            .fold(
-                R::zero(),
-                |acc, (m, (&a, &b))| if m < M { acc - a * b } else { acc + a * b },
-            )
+            .fold(F::zero(), |acc, (m, (&a, &b))| {
+                if m < M {
+                    acc.sub(&(a * b))
+                } else {
+                    acc + a * b
+                }
+            })
     }
 }
 
-impl<R: Scalar, const N: usize, const M: usize> PseudoEuclidean for Coords<R, N, M> {
-    type F = R;
+impl<F: Field, const N: usize, const M: usize> Quadratic for Coords<F, N, M> {
+    type F = F;
     const N: usize = N;
 
     type Iter<'a>
-        = std::slice::Iter<'a, R>
+        = std::slice::Iter<'a, F>
     where
         Self: 'a;
 
@@ -154,7 +164,7 @@ impl<R: Scalar, const N: usize, const M: usize> PseudoEuclidean for Coords<R, N,
         self.0.iter()
     }
 
-    fn from_array<const K: usize>(s: [R; K]) -> Self {
+    fn from_array<const K: usize>(s: [F; K]) -> Self {
         const { assert!(K == N) };
         std::array::from_fn(|i| s[i]).into()
     }
@@ -164,14 +174,19 @@ impl<R: Scalar, const N: usize, const M: usize> PseudoEuclidean for Coords<R, N,
     }
 }
 
-impl<R: Real, const N: usize> Metric<R> for Coords<R, N, 0> {
-    fn distance(&self, other: &Self) -> R {
-        self.iter()
-            .zip(other.iter())
-            .fold(R::zero(), |acc, (&a, &b)| acc + (b - a) * (b - a))
-            .sqrt()
+impl<R: Field + Real, const N: usize, const M: usize> Interval<R> for Coords<R, N, M> {
+    fn interval(&self, other: &Self) -> Complex<R> {
+        let displacement = *self - *other;
+
+        Complex::real_sqrt(displacement.dot(&displacement))
     }
 }
 
-impl<R: Real, const N: usize> InnerProduct<R> for Coords<R, N, 0> {}
-impl<R: Scalar, const N: usize> Euclidean for Coords<R, N, 0> {}
+impl<R: Field + Real, const N: usize> Metric<R> for Coords<R, N, 0> {
+    fn distance(&self, other: &Self) -> R {
+        let displacement = *self - *other;
+        displacement.dot(&displacement).sqrt()
+    }
+}
+
+impl<R: Field + Real, const N: usize> Euclidean for Coords<R, N, 0> {}

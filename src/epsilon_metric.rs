@@ -1,6 +1,8 @@
 use num_derive::{Float, FromPrimitive, Num, NumCast, NumOps, One, Signed, ToPrimitive, Zero};
-use num_traits::Euclid;
+use num_traits::{Euclid, Float, Inv};
 use std::ops::Neg;
+
+use crate::traits::NonZero;
 
 // This newtype over floating points identifies point which are close to each other,
 // This allows the library to pretend that all numbers it uses are actually real numbers.
@@ -81,6 +83,14 @@ macro_rules! define_epsilon_metric {
         impl std::fmt::Display for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", self.0)
+            }
+        }
+
+        impl Inv for NonZero<$name> {
+            type Output = Self;
+
+            fn inv(self) -> Self {
+                Self::new_unchecked(self.0.recip())
             }
         }
     };

@@ -8,18 +8,18 @@
 /// Tests that a space claiming to be a pseudo-Euclidean space is a pseudo-Euclidean space
 #[macro_export]
 macro_rules! test_pseudo_euclidean {
-    ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_vec:expr, $arb_scalar:expr) => {
+    ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
             use $crate::{
-                test_group, test_interval, test_pseudo_riemannian,
-                test_tangent_bundle, traits::PseudoEuclidean,
+                test_group, test_interval, test_pseudo_riemannian, test_tangent_bundle,
+                traits::Quadratic,
             };
 
-            test_tangent_bundle!(tangent_bundle, $scalar, $space, $arb_point, $arb_vec);
-            test_interval!(metric, $space, $arb_vec);
-            test_group!(group, $space, $arb_vec);
-            test_pseudo_riemannian!(riemannian, $space, $arb_point, $arb_vec);
+            test_tangent_bundle!(tangent_bundle, $scalar, $space, $arb_point, $arb_point);
+            test_interval!(interval, $space, $arb_point);
+            test_group!(group, $space, $arb_point);
+            test_pseudo_riemannian!(riemannian, $space, $arb_point, $arb_point);
 
             proptest! {
                 #[test]
@@ -39,7 +39,7 @@ macro_rules! test_pseudo_euclidean {
                 #[test]
                 fn global_geodesic_scaling(
                     p in $arb_point,
-                    v in $arb_vec,
+                    v in $arb_point,
                     t in $arb_scalar, // unbounded t, flat space has no injectivity radius
                 ) {
                     prop_assert!(<$space>::check_global_geodesic_scaling(&p, v, t));
@@ -52,19 +52,14 @@ macro_rules! test_pseudo_euclidean {
 /// Tests that a space claiming to be a euclidean space is a euclidean space
 #[macro_export]
 macro_rules! test_euclidean {
-    ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_vec:expr, $arb_scalar:expr) => {
+    ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_pseudo_euclidean, test_inner_product, test_metric, traits::Euclidean};
+            use $crate::{
+                test_inner_product, test_metric, test_pseudo_euclidean, traits::Euclidean,
+            };
 
-            test_pseudo_euclidean!(
-                pseudo_euclidean,
-                $scalar,
-                $space,
-                $arb_point,
-                $arb_vec,
-                $arb_scalar
-            );
+            test_pseudo_euclidean!(pseudo_euclidean, $scalar, $space, $arb_point, $arb_scalar);
 
             test_inner_product!(inner_product, $space, $arb_point, $arb_scalar);
             test_metric!(metric, $space, $arb_point);
@@ -106,7 +101,7 @@ macro_rules! test_exp_map {
     ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_chart, traits::ExpMap};
+            use $crate::{test_chart, traits::{ExpMap, Chart}};
 
             // inherit all Chart tests
             test_chart!(chart, $chart, $arb_point);
@@ -152,7 +147,7 @@ macro_rules! test_pseudo_riemannian {
     ($mod_name:ident, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::traits::PseudoRiemannian;
+            use $crate::traits::{Chart, PseudoRiemannian};
 
             proptest! {
                 #[test]
@@ -420,15 +415,14 @@ macro_rules! test_bilinear {
     };
 }
 
-
 /// Tests the InnerProduct axioms: symmetry, bilinearity, positive-definiteness.
 #[macro_export]
 macro_rules! test_inner_product {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::traits::InnerProduct;
             use $crate::test_bilinear;
+            use $crate::traits::InnerProduct;
 
             test_bilinear!(bilinear, $point, $arb_point, $arb_scalar);
 
@@ -458,6 +452,47 @@ macro_rules! test_quotient {
                 #[test]
                 fn new_respects_coset(g in $arb_g, h in $arb_h) {
                     prop_assert!(<$quotient>::check_new_respects_coset(g, h));
+                }
+            }
+        }
+    };
+}
+
+/// Tests the `DivRing` axioms: that the Inverse is properly implemented.
+#[macro_export]
+macro_rules! test_div_ring {
+    ($mod_name:ident, $point:ty, $arb_point:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::{
+                test_mul_group, test_ring,
+                traits::{DivRing, NonZero},
+            };
+
+            test_ring!(ring, $point, $arb_point);
+            test_mul_group!(
+                mul_group,
+                NonZero<$point>,
+                $arb_point.prop_filter_map("was zero", |x| NonZero::new(x))
+            );
+        }
+    };
+}
+
+/// Tests the `Field` axioms: that we have a commutative division ring.
+#[macro_export]
+macro_rules! test_field {
+    ($mod_name:ident, $point:ty, $arb_point:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::{test_div_ring, traits::Field};
+
+            test_div_ring!(div_ring, $point, $arb_point);
+
+            proptest! {
+                #[test]
+                fn commutativity(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_commutativity(a, b));
                 }
             }
         }

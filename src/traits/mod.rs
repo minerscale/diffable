@@ -1,14 +1,14 @@
 mod chart;
-mod complex;
 mod euclidean;
 mod foundation;
 mod group;
+mod simplicial;
 
 pub use chart::*;
-pub use complex::*;
 pub use euclidean::*;
 pub use foundation::*;
 pub use group::*;
+pub use simplicial::*;
 
 #[cfg(feature = "testing")]
 pub mod testing;

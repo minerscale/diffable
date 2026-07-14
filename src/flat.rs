@@ -1,24 +1,25 @@
 use crate::{
+    complex::Complex,
     discrete::Z,
     impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
-    traits::{Bounded, BuildNodes, NerveComplexParameters, PseudoEuclidean},
+    traits::{Bounded, BuildNodes, Interval, NerveComplexParameters, Quadratic},
 };
 use std::marker::PhantomData;
 
-use crate::traits::{Chart, Euclidean, Group, LieGroup, Metric, Quotient, Smooth};
+use crate::traits::{Chart, Euclidean, Group, LieGroup, Quotient, Real, Smooth};
 
-use num_traits::{Euclid, NumCast, One, Zero, real::Real};
+use num_traits::{Euclid, NumCast, One, Zero, real::Real as _};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct S1<V: Euclidean + From<[<V as PseudoEuclidean>::F; 1]>>(V);
+pub struct S1<V: Euclidean + From<[<V as Quadratic>::F; 1]>>(V);
 
-impl<V: Euclidean + From<[V::F; 1]>> Metric<V::F> for S1<V> {
-    fn distance(&self, other: &Self) -> V::F {
-        self.to_local(other).unwrap().norm()
+impl<V: Euclidean<F: Real> + From<[V::F; 1]>> Interval<V::F> for S1<V> {
+    fn interval(&self, other: &Self) -> Complex<V::F> {
+        self.to_local(other).unwrap().norm().into()
     }
 }
 
-impl<V: Euclidean + From<[<V as PseudoEuclidean>::F; 1]>> Quotient<V, Z<V>, V> for S1<V> {
+impl<V: Euclidean<F: Real> + From<[<V as Quadratic>::F; 1]>> Quotient<V, Z<V>, V> for S1<V> {
     fn new(g: V) -> Self {
         let one = V::F::one();
         let mut d = g[0].rem_euclid(&one);
@@ -45,7 +46,7 @@ impl<V: Euclidean + From<[<V as PseudoEuclidean>::F; 1]>> Quotient<V, Z<V>, V> f
     }
 }
 
-impl_lie_group_via_quotient!(S1<V>, V, Z<V>, From<[<V as PseudoEuclidean>::F; 1]>);
+impl_lie_group_via_quotient!(S1<V>, V, Z<V>, From<[<V as Quadratic>::F; 1]>);
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Torus<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>>(
@@ -54,25 +55,22 @@ pub struct Torus<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean 
     PhantomData<V>,
 );
 
-impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Torus<I, V> {
+impl<I: ICompatible<V>, V: VCompatible<I>> Torus<I, V> {
     pub fn new(a: S1<I>, b: S1<I>) -> Self {
         Self(a, b, PhantomData)
     }
 }
 
-impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Metric<I::F>
-    for Torus<I, V>
+impl<I: ICompatible<V>, V: VCompatible<I>> Interval<I::F> for Torus<I, V>
 where
     I::F: From<V::F>,
 {
-    fn distance(&self, other: &Self) -> I::F {
-        self.to_local(other).unwrap().norm().into()
+    fn interval(&self, other: &Self) -> Complex<I::F> {
+        <I::F as From<V::F>>::from(self.to_local(other).unwrap().norm()).into()
     }
 }
 
-impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> Group
-    for Torus<I, V>
-{
+impl<I: ICompatible<V>, V: VCompatible<I>> Group for Torus<I, V> {
     fn identity() -> Self {
         Self::new(S1::identity(), S1::identity())
     }
@@ -86,9 +84,7 @@ impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F
     }
 }
 
-impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>> LieGroup<V>
-    for Torus<I, V>
-{
+impl<I: ICompatible<V>, V: VCompatible<I>> LieGroup<V> for Torus<I, V> {
     fn identity_exp(v: V) -> Self {
         let v0 = [v[0]].into();
         let v1 = [v[1]].into();
@@ -103,25 +99,25 @@ impl<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F
     }
 }
 
-pub trait ICompatible<V: Euclidean<F: Send + Sync> + From<[Self::F; 2]>>:
-    Euclidean<F: From<V::F>> + From<[Self::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync
+pub trait ICompatible<V: Euclidean<F: Real + Send + Sync> + From<[Self::F; 2]>>:
+    Euclidean<F: Real + From<V::F>> + From<[Self::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync
 {
 }
-pub trait VCompatible<I: Euclidean<F: From<Self::F>> + From<[I::F; 1]> + From<[Self::F; 1]>>:
-    Euclidean<F: Send + Sync> + From<[I::F; 2]> + 'static + Send + Sync
+pub trait VCompatible<I: Euclidean<F: Real + From<Self::F>> + From<[I::F; 1]> + From<[Self::F; 1]>>:
+    Euclidean<F: Real + Send + Sync> + From<[I::F; 2]> + 'static + Send + Sync
 {
 }
 
 impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync,
-    V: Euclidean<F: Send + Sync> + From<[I::F; 2]> + 'static + Send + Sync,
+    I: Euclidean<F: Real + From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync,
+    V: Euclidean<F: Real + Send + Sync> + From<[I::F; 2]> + 'static + Send + Sync,
 > ICompatible<V> for I
 {
 }
 
 impl<
-    I: Euclidean<F: From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync,
-    V: Euclidean<F: Send + Sync> + From<[I::F; 2]> + 'static + Send + Sync,
+    I: Euclidean<F: Real + From<V::F>> + From<[I::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync,
+    V: Euclidean<F: Real + Send + Sync> + From<[I::F; 2]> + 'static + Send + Sync,
 > VCompatible<I> for V
 {
 }
@@ -209,9 +205,9 @@ impl<I: ICompatible<V>, V: VCompatible<I>> KleinBottle<I, V> {
     }
 }
 
-impl<I: ICompatible<V>, V: VCompatible<I>> Metric<I::F> for KleinBottle<I, V> {
-    fn distance(&self, other: &Self) -> I::F {
-        self.to_local(other).unwrap().norm().into()
+impl<I: ICompatible<V>, V: VCompatible<I>> Interval<I::F> for KleinBottle<I, V> {
+    fn interval(&self, other: &Self) -> Complex<I::F> {
+        <I::F as From<V::F>>::from(self.to_local(other).unwrap().norm()).into()
     }
 }
 
@@ -235,7 +231,7 @@ const S: usize = 4;
 impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
     for TorusCover<I, V>
 {
-    fn sdf(&self, v: &V) -> <V as PseudoEuclidean>::F {
+    fn sdf(&self, v: &V) -> <V as Quadratic>::F {
         let to = |x| <V::F as NumCast>::from(x).unwrap();
         v.norm() - (to(2).sqrt() + to(2)) / to(4 * S)
     }
@@ -292,7 +288,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<KleinBottle<I, V>> for KleinBot
 impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<KleinBottle<I, V>, KleinBottle<I, V>, V>
     for KleinBottleCover<I, V>
 {
-    fn sdf(&self, v: &V) -> <V as PseudoEuclidean>::F {
+    fn sdf(&self, v: &V) -> <V as Quadratic>::F {
         let to = |x| <V::F as NumCast>::from(x).unwrap();
         v.norm() - (to(2).sqrt() + to(2)) / to(4 * S)
     }
@@ -362,7 +358,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>> From<Torus<I, V>> for MyopicTorus<I, 
 impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
     for MyopicTorus<I, V>
 {
-    fn sdf(&self, v: &V) -> <V as PseudoEuclidean>::F {
+    fn sdf(&self, v: &V) -> <V as Quadratic>::F {
         v.norm() - Self::radius()
     }
 }
@@ -393,7 +389,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>> From<MyopicTorus<I, V>> for MyopicTor
 impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<MyopicTorus<I, V>, Torus<I, V>, V>
     for MyopicTorusCover<I, V>
 {
-    fn sdf(&self, v: &V) -> <V as PseudoEuclidean>::F {
+    fn sdf(&self, v: &V) -> <V as Quadratic>::F {
         let to = |x| <V::F as NumCast>::from(x).unwrap();
         v.norm() - (to(2).sqrt() + to(2)) / to(4 * MyopicTorus::<I, V>::s())
     }

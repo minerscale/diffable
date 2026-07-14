@@ -75,7 +75,7 @@
 //!
 //! ### (Pseudo-)Euclidean — flat space
 //!
-//! - [`traits::PseudoEuclidean`] — flat coordinate space `Rⁿ` with a
+//! - [`traits::Quadratic`] — flat coordinate space `Rⁿ` with a
 //!   [`traits::Bilinear`] scalar product of arbitrary signature (Minkowski
 //!   included); its own tangent bundle and an additive Lie group. The
 //!   indefinite base, carrying no norm or distance
@@ -103,7 +103,7 @@
 //! ```text
 //! Smooth<V>             →  Chart<Self, V>, ExpMap<Self, V>, TangentBundle<Self, V>
 //! LieGroup<V>           →  Smooth<V>  →  Chart, ExpMap, TangentBundle
-//! PseudoEuclidean       →  Group, LieGroup<Self>  →  Smooth<Self>  →  Chart, ExpMap, TangentBundle
+//! Quadratic/Euclidean   →  Group, LieGroup<Self>  →  Smooth<Self>  →  Chart, ExpMap, TangentBundle
 //! Quotient<G, H, V>     (via macro)  →  Group, LieGroup<V>  →  Smooth  →  ...
 //! ```
 //!
@@ -168,7 +168,9 @@ pub mod coords;
 pub mod hypersphere;
 pub mod traits;
 
+pub mod complex;
 pub mod discrete;
 pub mod epsilon_metric;
 pub mod flat;
+pub mod spacetime;
 pub use epsilon_metric::{R32, R64};

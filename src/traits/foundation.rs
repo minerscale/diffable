@@ -2,7 +2,13 @@
 use std::ops::{Add, Mul};
 
 #[cfg(feature = "testing")]
-use num_traits::{Euclid, Zero, real::Real};
+use num_traits::Zero;
+
+use crate::{
+    complex::Complex,
+    traits::{Field, InvolutiveField, NonZero},
+};
+use num_traits::{Euclid, Inv};
 
 /// An element of the carrier set of a manifold, group, or metric space.
 ///
@@ -72,9 +78,12 @@ impl<T: Clone> Point for T {}
 ///
 /// [`R64`]: crate::epsilon_metric::R64
 /// [`R32`]: crate::epsilon_metric::R32
-pub trait Scalar: Real + Euclid + std::fmt::Debug {}
+pub trait RealNum: num_traits::real::Real + Euclid + std::fmt::Debug {}
+impl<R: num_traits::real::Real + Euclid + std::fmt::Debug> RealNum for R {}
+impl<R: RealNum> Field for R where NonZero<R>: Inv<Output = NonZero<R>> {}
 
-impl<R: Real + Euclid + std::fmt::Debug> Scalar for R {}
+pub trait Real: RealNum + Field {}
+impl<R: RealNum + Field> Real for R {}
 
 /// A notion of distance on a manifold.
 ///
@@ -98,8 +107,12 @@ impl<R: Real + Euclid + std::fmt::Debug> Scalar for R {}
 ///
 /// [`Chart`]: crate::traits::Chart
 /// [`Euclidean`]: crate::traits::Euclidean
-pub trait Metric<R: Real>: Point {
-    fn distance(&self, other: &Self) -> R;
+pub trait Metric<R: Real>: Interval<R> {
+    fn distance(&self, other: &Self) -> R {
+        let [a, _] = self.interval(other).into();
+
+        a
+    }
 
     #[cfg(feature = "testing")]
     fn check_self_distance_zero(a: Self) -> bool {
@@ -124,29 +137,18 @@ pub trait Metric<R: Real>: Point {
 /// axioms are claimed — this is not a distance, it is the value of the
 /// line element between two points along the connecting geodesic.
 pub trait Interval<R: Real>: Point {
-    /// Signed squared interval between self and other. Sign carries causal
-    /// character; magnitude is (proper distance)² or −(proper time)².
-    fn interval_squared(&self, other: &Self) -> R;
+    /// Interval between self and other. Real or imaginary
+    /// carries causal character.
+    fn interval(&self, other: &Self) -> Complex<R>;
 
     #[cfg(feature = "testing")]
     fn check_interval_symmetry(a: Self, b: Self) -> bool {
-        a.interval_squared(&b) == b.interval_squared(&a)
+        a.interval(&b) == b.interval(&a)
     }
 
     #[cfg(feature = "testing")]
     fn check_self_interval_zero(a: Self) -> bool {
-        a.interval_squared(&a) == R::zero()
-    }
-}
-
-// A metric space is, in particular, an all-spacelike interval space:
-// the signed squared interval is just distance². This is a *bridge*, not
-// a refinement — Metric and Interval are independent structures that
-// coincide only in the definite case.
-impl<R: Real, T: Metric<R>> Interval<R> for T {
-    fn interval_squared(&self, other: &Self) -> R {
-        let d = self.distance(other);
-        d * d   // ≥ 0: all separations spacelike in a Riemannian manifold
+        a.interval(&a) == Complex::zero()
     }
 }
 
@@ -176,13 +178,13 @@ impl<R: Real, T: Metric<R>> Interval<R> for T {
 /// The three certified invariants — symmetry, additivity, and scalar
 /// linearity of the pairing — are signature-agnostic and hold in the
 /// indefinite case exactly as in the definite one.
-pub trait Bilinear<R: Real>: Point {
-    fn dot(&self, other: &Self) -> R;
+pub trait Bilinear<F: Field>: Point {
+    fn dot(&self, other: &Self) -> F;
 
     /// The quadratic form `Q(v) = ⟨v,v⟩`. **Signed**: may be negative on an
     /// indefinite space. This is *not* the square of a norm — do not `sqrt`
     /// it without first handling the sign (see causal character).
-    fn norm_squared(&self) -> R {
+    fn norm_squared(&self) -> F {
         self.dot(self)
     }
 
@@ -202,13 +204,20 @@ pub trait Bilinear<R: Real>: Point {
     }
 
     #[cfg(feature = "testing")]
-    fn check_scalar_linearity(a: Self, c: Self, k: R) -> bool
+    fn check_scalar_linearity(a: Self, c: Self, k: F) -> bool
     where
-        Self: Mul<R, Output = Self> + Clone,
+        Self: Mul<F, Output = Self> + Clone,
     {
         let lhs = (a.clone() * k).dot(&c);
         let rhs = k * a.dot(&c);
         lhs == rhs
+    }
+}
+
+pub trait Sesquilinear<F: InvolutiveField>: Point {
+    fn dot(&self, other: &Self) -> F;
+    fn self_dot(&self) -> F::Fixed {
+        self.dot(self).to_fixed()
     }
 }
 
@@ -242,3 +251,5 @@ pub trait InnerProduct<R: Real>: Bilinear<R> + Metric<R> {
         a == Self::zero() || a.norm() > R::zero()
     }
 }
+
+impl<R: Real, P: Bilinear<R> + Metric<R>> InnerProduct<R> for P {}

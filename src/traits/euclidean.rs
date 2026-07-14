@@ -1,8 +1,8 @@
 use num_traits::Zero;
 use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
-use super::{InnerProduct, LieGroup, Scalar, TangentBundle};
-use crate::{impl_group_via_add, traits::Bilinear};
+use super::{Bilinear, Field, InnerProduct, LieGroup, Real, TangentBundle};
+use crate::{impl_group_via_add, traits::Sesquilinear};
 
 /// A finite-dimensional Euclidean space.
 ///
@@ -12,10 +12,10 @@ use crate::{impl_group_via_add, traits::Bilinear};
 /// which local coordinate charts take their values, and in which tangent
 /// vectors live.
 ///
-/// `Euclidean` is the **definite refinement** of [`PseudoEuclidean`]: it is a
-/// pseudo-Euclidean space (signature `(N, 0)`) that additionally carries an
-/// [`InnerProduct`] — a positive-definite pairing inducing a genuine `norm`
-/// and a [`Metric`]. Where the pseudo-Euclidean base has only a signed
+/// `Euclidean` is the **definite real-valued refinement** of [`Quadratic`]:
+/// it is a pseudo-Euclidean space (signature `(N, 0)`) that additionally
+/// carries an [`InnerProduct`] — a positive-definite pairing inducing a genuine
+/// `norm` and a [`Metric`]. Where the pseudo-Euclidean base has only a signed
 /// [`Bilinear`] scalar product, a Euclidean space has all the metric-space
 /// structure on top, because definiteness is exactly what makes
 /// `sqrt(⟨v,v⟩)` real and the induced distance a metric.
@@ -30,20 +30,20 @@ use crate::{impl_group_via_add, traits::Bilinear};
 /// are straight lines, parallel transport is path-independent, and the
 /// exponential map is a global isomorphism rather than merely a local one.
 /// These properties are verified by the `check_*` methods inherited from
-/// [`TangentBundle`] and [`PseudoEuclidean`] (`check_global_chart`,
+/// [`TangentBundle`] and [`Quadratic`] (`check_global_chart`,
 /// `check_global_geodesic_scaling`, `check_translation_invariance`), together
 /// with the definite-only `check_pythagorean` below.
 ///
 /// # Implementing
 /// Use the `test_euclidean!` macro to verify that your implementation
 /// satisfies the Euclidean axioms. (For an indefinite space, implement only
-/// [`PseudoEuclidean`] and use `test_pseudo_euclidean!` instead.)
+/// [`Quadratic`] and use `test_pseudo_euclidean!` instead.)
 ///
 /// [`Bilinear`]: crate::traits::Bilinear
 /// [`InnerProduct`]: crate::traits::InnerProduct
 /// [`Metric`]: crate::traits::Metric
 /// [`TangentBundle`]: crate::traits::TangentBundle
-pub trait Euclidean: PseudoEuclidean + InnerProduct<Self::F> {
+pub trait Euclidean: Quadratic<F: Real> + InnerProduct<Self::F> {
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
     fn check_pythagorean(a: &Self, b: &Self) -> bool
@@ -58,10 +58,12 @@ pub trait Euclidean: PseudoEuclidean + InnerProduct<Self::F> {
     }
 }
 
+//pub trait Sesquilinear
+
 /// A finite-dimensional pseudo-Euclidean space.
 ///
-/// The space of all values of a type `V: PseudoEuclidean` is interpreted as
-/// flat coordinate space `R^N` (`N := V::N`, `R := V::F`) equipped with a
+/// The space of all values of a type `V: Quadratic` is interpreted as
+/// flat coordinate space `F^N` (`N := V::N`, `F := V::F`) equipped with a
 /// symmetric [`Bilinear`] scalar product of *arbitrary signature*. The form
 /// may be indefinite: a vector's quadratic form `⟨v,v⟩` (its `norm_squared`)
 /// can be positive, negative, or zero. Minkowski spacetime is the archetype.
@@ -97,7 +99,7 @@ pub trait Euclidean: PseudoEuclidean + InnerProduct<Self::F> {
 /// [`Metric`]: crate::traits::Metric
 /// [`TangentBundle`]: crate::traits::TangentBundle
 /// [`PseudoRiemannian`]: crate::traits::PseudoRiemannian
-pub trait PseudoEuclidean:
+pub trait Quadratic:
     Bilinear<Self::F>
     + TangentBundle<Self, Self>
     + Add<Output = Self>
@@ -110,7 +112,7 @@ pub trait PseudoEuclidean:
     + Copy
     + std::fmt::Debug
 {
-    type F: Scalar;
+    type F: Field;
     const N: usize;
 
     type Iter<'a>: Iterator<Item = &'a Self::F>
@@ -165,9 +167,47 @@ pub trait PseudoEuclidean:
     }
 }
 
-impl_group_via_add!(V, V: PseudoEuclidean);
+pub trait InvolutiveField: Field {
+    // Mathematically: The Fixed Field (F^σ) where σ(x) = x
+    type Fixed: Field;
+    fn conj(&self) -> Self;
+    fn norm_squared(self) -> Self::Fixed {
+        Self::to_fixed(self * self.conj())
+    }
 
-impl<E: PseudoEuclidean> LieGroup<E> for E {
+    // Forces a proof that a self-adjoint element can safely drop down
+    // into the invariant sub-field.
+    fn to_fixed(self) -> Self::Fixed;
+    fn from_fixed(x: Self::Fixed) -> Self;
+}
+
+impl<R: Real> InvolutiveField for R {
+    type Fixed = R;
+
+    fn conj(&self) -> Self {
+        *self
+    }
+
+    fn to_fixed(self) -> Self::Fixed {
+        self
+    }
+
+    fn from_fixed(x: Self::Fixed) -> Self {
+        x
+    }
+}
+
+impl<F: InvolutiveField, V: Quadratic<F = F>> Sesquilinear<F> for V {
+    fn dot(&self, rhs: &Self) -> F {
+        self.iter()
+            .zip(rhs.iter())
+            .fold(F::zero(), |acc, (&a, &b)| acc + a * b.conj())
+    }
+}
+
+impl_group_via_add!(V, V: Quadratic);
+
+impl<E: Quadratic> LieGroup<E> for E {
     fn identity_exp(v: E) -> Self {
         v
     }

@@ -1,7 +1,7 @@
-use std::ops::Neg;
-
-use super::{Point, PseudoEuclidean, Smooth};
 use num_traits::{Inv, One, Zero};
+use std::ops::{Mul, Neg};
+
+use super::{Point, Quadratic, Smooth};
 
 /// A commutative monoid, in additive notation.
 ///
@@ -121,6 +121,10 @@ impl<M: Point + One> Monoid for M {}
 /// [`impl_group_via_add`]: crate::impl_group_via_add
 /// [`impl_group_via_mul`]: crate::impl_group_via_mul
 pub trait CGroup: CMonoid + Neg<Output = Self> {
+    fn sub(&self, rhs: &Self) -> Self {
+        self.clone().add(rhs.clone().neg())
+    }
+
     #[cfg(feature = "testing")]
     fn check_left_inverse(&self) -> bool
     where
@@ -329,6 +333,61 @@ pub trait Rig: CMonoid + Monoid {
 
 impl<R: CMonoid + One> Rig for R {}
 
+/// A newtype which certifies the value is non-zero
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NonZero<T: Zero>(pub T);
+
+impl<T: Zero> NonZero<T> {
+    pub fn new(value: T) -> Option<Self> {
+        if !value.is_zero() {
+            Some(Self(value))
+        } else {
+            None
+        }
+    }
+
+    pub fn new_unchecked(value: T) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: Zero + One> Mul<Self> for NonZero<T> {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self(self.0 * rhs.0)
+    }
+}
+
+impl<T: Zero + One> One for NonZero<T> {
+    fn one() -> Self {
+        Self(T::one())
+    }
+}
+
+impl<T: Zero + One + Inv<Output = T>> Inv for NonZero<T> {
+    type Output = Self;
+
+    fn inv(self) -> Self::Output {
+        Self(self.0.inv())
+    }
+}
+
+impl<T: Zero + One + Clone> Group for NonZero<T>
+where
+    NonZero<T>: Inv<Output = Self>,
+{
+    fn identity() -> Self {
+        <Self as num_traits::One>::one()
+    }
+    fn compose(&self, other: &Self) -> Self {
+        self.clone() * other.clone()
+    }
+    fn inverse(&self) -> Self {
+        <Self as num_traits::Inv>::inv(self.clone())
+    }
+}
+
 /// A ring.
 ///
 /// The space of all values of a type `R: Ring` is interpreted as a ring: a
@@ -343,8 +402,40 @@ impl<R: CMonoid + One> Rig for R {}
 /// on `CGroup`, not [`MulGroup`]: requiring multiplicative inverses would
 /// make ordinary rings like `Z` unable to implement it.
 pub trait Ring: CGroup + Rig {}
-
 impl<R: CGroup + Rig> Ring for R {}
+
+/// A division ring.
+///
+/// A ring whose nonzero elements have inverses.
+pub trait DivRing: Ring {
+    fn div(self, rhs: Self) -> Self {
+        self * Self::Mul::from(NonZero::new(rhs).expect("division by zero"))
+            .inv()
+            .into()
+            .0
+    }
+
+    type Mul: MulGroup + From<NonZero<Self>> + Into<NonZero<Self>>;
+}
+impl<R: Ring> DivRing for R
+where
+    NonZero<Self>: MulGroup,
+{
+    type Mul = NonZero<Self>;
+}
+
+/// A field.
+///
+/// A division ring whose multiplication is abelian.
+pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
+    #[cfg(feature = "testing")]
+    fn check_commutativity(a: Self, b: Self) -> bool
+    where
+        Self: PartialEq,
+    {
+        a.clone() * b.clone() == b * a
+    }
+}
 
 /// A (possibly non-abelian) group, in multiplicative notation.
 ///
@@ -423,7 +514,7 @@ macro_rules! impl_group_via_mul {
 /// # Why `compose`/`inverse`/`identity`, not `Mul`/`Neg`/`Add`
 /// `Group` deliberately has no operator-trait bound and no commutativity
 /// requirement, so that it can describe both abelian groups (this crate's
-/// [`PseudoEuclidean`] spaces, [`Z`](crate::discrete::Z), [`S1`](crate::flat::S1))
+/// [`Quadratic`] spaces, [`Z`](crate::discrete::Z), [`S1`](crate::flat::S1))
 /// and non-abelian ones (`SO(3)`, unit quaternions) uniformly. Real groups
 /// split into two genuinely different notations depending on whether they
 /// commute — `+` for abelian, `*` otherwise — and a single trait cannot
@@ -440,7 +531,7 @@ macro_rules! impl_group_via_mul {
 /// no type implements both flavours at once, so the two bridges are
 /// supplied as macros invoked per concrete type instead.
 ///
-/// [`PseudoEuclidean`]: crate::traits::PseudoEuclidean
+/// [`Quadratic`]: crate::traits::Quadratic
 /// [`impl_group_via_add`]: crate::impl_group_via_add
 /// [`impl_group_via_mul`]: crate::impl_group_via_mul
 pub trait Group: Point {
@@ -524,13 +615,13 @@ pub trait Group: Point {
 /// [`Chart`]: crate::traits::Chart
 /// [`ExpMap`]: crate::traits::ExpMap
 /// [`TangentBundle`]: crate::traits::TangentBundle
-pub trait LieGroup<V: PseudoEuclidean>: Group {
+pub trait LieGroup<V: Quadratic>: Group {
     fn identity_exp(v: V) -> Self;
     fn identity_log(p: &Self) -> Option<V>;
 }
 
 // left translation
-impl<V: PseudoEuclidean, L: LieGroup<V>> Smooth<V> for L {
+impl<V: Quadratic, L: LieGroup<V>> Smooth<V> for L {
     fn exp(&self, coord: V) -> Self {
         let translated = Self::identity_exp(coord);
         self.compose(&translated)
@@ -593,7 +684,7 @@ impl<V: PseudoEuclidean, L: LieGroup<V>> Smooth<V> for L {
 /// because `-1` commutes with everything (it is, after all, just a scalar
 /// multiple of the identity), which is what makes `S³/{±1} → SO(3)` and
 /// `(R\{0}, ×)/{±1} → (R⁺, ×)` both legitimate instances of this trait.
-pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: PseudoEuclidean>: Point {
+pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Quadratic>: Point {
     /// Maps `g` to the `Quotient` value representing its coset `gH`.
     fn new(g: G) -> Self;
 
@@ -669,7 +760,7 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: PseudoEuclidean>: Point {
 #[macro_export]
 macro_rules! impl_lie_group_via_quotient {
     ($type:ty, $g:ty, $h:ty $(, $bound:path)*) => {
-        impl<V: $crate::traits::Euclidean + $($bound +)*> $crate::traits::Group for $type {
+        impl<V: $crate::traits::Euclidean<F: Real> + $($bound +)*> $crate::traits::Group for $type {
             fn identity() -> Self {
                 <Self as $crate::traits::Quotient<$g, $h, V>>::quotient_identity()
             }
@@ -681,7 +772,7 @@ macro_rules! impl_lie_group_via_quotient {
             }
         }
 
-        impl<V: $crate::traits::Euclidean + $($bound +)*> $crate::traits::LieGroup<V> for $type {
+        impl<V: $crate::traits::Euclidean<F: Real> + $($bound +)*> $crate::traits::LieGroup<V> for $type {
             fn identity_exp(v: V) -> Self {
                 <Self as $crate::traits::Quotient<$g, $h, V>>::quotient_identity_exp(v)
             }
