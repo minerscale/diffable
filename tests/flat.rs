@@ -142,7 +142,6 @@ proptest! {
         let n = Cover::nodes().len();
         for i in 0..n {
             let ns: Vec<_> = Cover::get_neighbors(i).collect();
-            println!("node {i}: degree {}", ns.len());
             for j in &ns {
                 assert!(Cover::edge_weight(i, *j).is_some(), "{i}-{j} invisible");
             }

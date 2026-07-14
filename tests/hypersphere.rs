@@ -301,7 +301,6 @@ fn so3_check_graph_structure() {
         }
     }
 
-    println!("edges: {}, triangles: {}", edges.len(), triangles.len());
     assert_eq!(edges.len(), 360);
     assert_eq!(triangles.len(), 600);
 }

@@ -575,7 +575,7 @@ pub struct Basin<P, F> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GeodesicCertificate {
+pub struct GeodesicCertificate<F> {
     /// An `overestimation_bound` was asserted. Without one, the ceiling is
     /// `graph_opt` and exactly one basin is inspected. Fix: assert a bound.
     pub bound_asserted: bool,
@@ -585,10 +585,10 @@ pub struct GeodesicCertificate {
     /// Every candidate examined straightened. A failure here is the rescue
     /// budget running out — `2ρ` reaching for the injectivity radius.
     /// Fix: raise `max_rescues`.
-    pub straightening_result: StraighteningResult,
+    pub straightening_result: StraighteningResult<F>,
 }
 
-impl GeodesicCertificate {
+impl<F> GeodesicCertificate<F> {
     pub fn is_global(&self) -> bool {
         self.bound_asserted
             && self.search_exhaustive
@@ -598,16 +598,16 @@ impl GeodesicCertificate {
 
 #[derive(Debug, Clone)]
 pub struct Geodesic<P, F> {
-    pub path: Vec<P>,
+    pub path: Option<Vec<P>>,
     pub length: F,
-    pub certificate: GeodesicCertificate,
+    pub certificate: GeodesicCertificate<F>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum StraighteningResult {
+pub enum StraighteningResult<F> {
     Success,
     Stalled(usize),
-    ArithmeticFloor,
+    ArithmeticFloor(F),
     NotConverged,
     NotConnected,
     MaxRescues,
@@ -1584,7 +1584,7 @@ pub trait NerveComplex<
     }
 
     /// One Gauss–Seidel sweep. Returns `(worst kink, lagged length)`.
-    fn relax_sweep(pts: &mut [P]) -> Result<(V::F, V::F), StraighteningResult> {
+    fn relax_sweep(pts: &mut [P]) -> Result<(V::F, V::F), StraighteningResult<V::F>> {
         if pts.len() < 3 {
             let len = Self::polyline_length(pts).ok_or(StraighteningResult::NotConnected)?;
             return Ok((V::F::zero(), len));
@@ -1670,12 +1670,14 @@ pub trait NerveComplex<
     /// geodesic, a positional residual `τ` costs `O(τ²/h)` in length — so
     /// driving the kink to `√ε·h` buys length correct to `ε·h`, full machine
     /// precision, with no extrapolation and no model of the spectrum.
-    fn relax_to_convergence(pts: &mut Vec<P>) -> Result<V::F, StraighteningResult> {
+    fn relax_to_convergence(pts: &mut Vec<P>) -> Result<V::F, StraighteningResult<V::F>> {
         let eps = V::F::epsilon();
         let iters = Self::max_straightening_iterations(pts.len());
         let segments = scalar::<V::F>(pts.len().saturating_sub(1).max(1));
 
         let mut prev = Self::polyline_length(pts).ok_or(StraighteningResult::NotConnected)?;
+
+        let length = |pts| Self::polyline_length(pts).ok_or(StraighteningResult::<V::F>::NotConnected);
 
         let mut converged = false;
         for _ in 0..iters {
@@ -1695,7 +1697,10 @@ pub trait NerveComplex<
             // `d` is noise of magnitude `~ε·len` and random sign, so a one-ulp test
             // is a coin flip that keeps the loop alive until the iteration cap.
             if !(eps * len * scalar(16) < (prev - len).abs()) {
-                return Err(StraighteningResult::ArithmeticFloor);
+                return Err(match length(pts) {
+                    Ok(x) => StraighteningResult::ArithmeticFloor(x),
+                    Err(e) => e,
+                });
             }
             prev = len;
         }
@@ -1705,7 +1710,7 @@ pub trait NerveComplex<
         }
         // The returned length is always `polyline_length` of an actual polyline:
         // exact hops along a converged geodesic. The lagged sum never escapes.
-        Self::polyline_length(pts).ok_or(StraighteningResult::NotConnected)
+        length(pts)
     }
 
     /// Relax a polyline to the geodesic at the bottom of its basin, and return
@@ -1735,24 +1740,22 @@ pub trait NerveComplex<
     /// Gauss–Seidel needs `O(n²)` sweeps of `O(n)` work, so keeping `n` at the
     /// hop count of the edge-path — rather than eight times it — is worth two
     /// orders of magnitude, and costs nothing in exactness.
-    fn straighten(mut pts: Vec<P>) -> Result<(Vec<P>, V::F), StraighteningResult> {
+    fn straighten(mut pts: Vec<P>) -> Result<(Vec<P>, V::F), StraighteningResult<V::F>> {
         let mut rescues = 0;
         let length = loop {
             match Self::relax_to_convergence(&mut pts) {
                 Ok(len) => break len,
-                Err(i) => {
+                Err(StraighteningResult::Stalled(x)) => {
                     rescues += 1;
                     if rescues > Self::max_rescues() {
                         return Err(StraighteningResult::MaxRescues);
                     }
                     pts = Self::rescue(
                         pts,
-                        match i {
-                            StraighteningResult::Stalled(x) => x,
-                            e => Err(e)?,
-                        },
+                        x,
                     );
                 }
+                Err(e) => return Err(e)
             }
         };
         Ok((pts, length))
@@ -1774,25 +1777,6 @@ pub trait NerveComplex<
                 (node.sdf(&v) < V::F::zero()).then(|| (i, v.norm()))
             })
             .collect()
-    }
-
-    /// Relative tolerance at which two converged geodesics are declared to be
-    /// the same basin.
-    ///
-    /// Basins are separated by index-1 saddles, so their minimizers' lengths
-    /// typically differ by far more than this. The exception is symmetry: a
-    /// bump placed symmetrically between `p` and `q` yields two distinct
-    /// geodesics of *identical* length. Merging those is harmless for
-    /// [`Self::geodesic_distance`] — they are equally good answers — but
-    /// [`Self::basins`] will report one where there are two. If you need the
-    /// paths rather than the distance, compare vertices, not lengths.
-    ///
-    /// `√ε` rather than `ε`: the converged lengths of two edge-paths in the
-    /// same basin agree only to the accuracy of the flow, and length is
-    /// stationary at a geodesic, so vertex error `√ε` gives length error `ε`.
-    /// Discriminating at `ε` would split one basin into many.
-    fn basin_tolerance() -> V::F {
-        V::F::epsilon().sqrt()
     }
 
     /// The covering radius `δ_s`, recovered from the asserted bound.
@@ -1942,7 +1926,7 @@ pub trait NerveComplex<
     /// edge-path of graph length `≤ (1+e)·len(γ)`. An unreached basin's shortest
     /// edge-path has graph length `≥ f`, so `len(γ) ≥ f/(1+e)`. Once
     /// `f > (1+e)·best`, no unreached basin can beat `best`.
-    fn basins(p: &P, q: &P) -> Option<(Vec<Basin<P, V::F>>, bool, StraighteningResult)> {
+    fn basins(p: &P, q: &P) -> Option<(Result<Basin<P, V::F>, V::F>, bool, StraighteningResult<V::F>)> {
         /// Frontier entry. `tip` indexes the prefix arena; `key` indexes the
         /// key table. Both are `u32`, so an entry is copyable and a push
         /// allocates nothing.
@@ -2130,8 +2114,8 @@ pub trait NerveComplex<
         // `O(basins)` completions, so scan the flat list.
         let mut completed: Vec<ArcPoly<P, V::F>> = Vec::new();
 
-        let mut basins: Vec<Basin<P, V::F>> = Vec::new();
-        let mut best: Option<V::F> = None;
+        //let mut basins: Vec<Basin<P, V::F>> = Vec::new();
+        let mut best: Option<Result<Basin<P, V::F>, V::F>> = None;
         let mut straighten_result = StraighteningResult::Success;
         let mut straightened = 0usize;
         let mut exhaustive = true;
@@ -2142,12 +2126,11 @@ pub trait NerveComplex<
         // minimality would need `Riemannian`, and we decline to require it.
         if let Some(v) = T::chart_at(p).to_local(q) {
             let length = v.norm();
-            best = Some(length);
-            basins.push(Basin {
+            best = Some(Ok(Basin {
                 path: vec![p.clone(), q.clone()],
                 length,
                 witness: Vec::new(),
-            });
+            }));
         }
 
         let mut heap: BinaryHeap<Entry<V::F>> = BinaryHeap::new();
@@ -2175,7 +2158,12 @@ pub trait NerveComplex<
             // `f` is nondecreasing across pops and lower-bounds any completion of this
             // prefix, so once it clears the ceiling no unreached basin can beat `best`.
             let ceiling = match best {
-                Some(b) => {
+                Some(ref b) => {
+                    let b = match b {
+                        Ok(b) => b.length,
+                        Err(len) => *len,
+                    };
+
                     let dynamic = b * kappa * fudge + c;
                     if dynamic < static_budget {
                         dynamic
@@ -2231,23 +2219,39 @@ pub trait NerveComplex<
                 // free warm start: `straighten` merely finishes it.
                 let start = smoothed.as_ref().map_or(raw, |ap| ap.pts.clone());
 
+                let set_best = |best: &mut Option<Result<Basin<P, V::F>, V::F>>, v: Result<Basin<P, V::F>, V::F>| {
+                    let length = match v {
+                        Ok(ref b) => b.length,
+                        Err(len) => len,
+                    };
+
+                    match best {
+                        Some(Ok(b)) => if length < b.length {
+                            *best = Some(v)
+                        },
+                        // use le because all else equal, we'd like an explicit path
+                        Some(Err(blen)) => if length <= *blen {
+                            *best = Some(v)
+                        },
+                        None => *best = Some(v),
+                    }
+                };
+
                 match Self::straighten(start) {
                     Ok((pts, length)) => {
                         if let Some(ap) = smoothed {
                             completed.push(ap);
                         }
-                        let tol = Self::basin_tolerance() * length;
-                        if !basins.iter().any(|b| tol >= (b.length - length).abs()) {
-                            basins.push(Basin {
-                                path: pts,
-                                length,
-                                witness: nodes,
-                            });
-                        }
-                        if best.is_none_or(|b| length < b) {
-                            best = Some(length);
-                        }
+
+                        let basin = Basin {
+                            path: pts,
+                            length,
+                            witness: nodes,
+                        };
+                        set_best(&mut best, Ok(basin));
                     }
+                    // the length is reliable but the path is not
+                    Err(StraighteningResult::ArithmeticFloor(len)) => set_best(&mut best, Err(len)),
                     Err(e) => straighten_result = e,
                 }
 
@@ -2336,17 +2340,22 @@ pub trait NerveComplex<
             }
         }
 
-        if let Some(b) = best {
+        if let Some(ref b) = best {
+            let b = match b {
+                Ok(b) => b.length,
+                Err(len) => *len,
+            };
+
             debug_assert!(
                 !(graph_opt > kappa * b + c),
-                "overestimation bound violated: graph_opt {graph_opt:?} > κ·{best:?} + C"
+                "overestimation bound violated: graph_opt {graph_opt:?} > κ·{b:?} + C"
             );
         }
 
-        if basins.is_empty() {
-            return None;
+        match best {
+            Some(b) => Some((b, exhaustive, straighten_result)),
+            None => None,
         }
-        Some((basins, exhaustive, straighten_result))
     }
 
     // ---------------------------------------------------------------
@@ -2365,11 +2374,7 @@ pub trait NerveComplex<
     /// by clearing its ceiling rather than a cap; and every candidate examined
     /// straightened successfully. `Geodesic::Global` requires all three.
     fn geodesic_path(p: &P, q: &P) -> Option<Geodesic<P, V::F>> {
-        let (basins, exhaustive, straightening_result) = Self::basins(p, q)?;
-
-        let winner = basins
-            .into_iter()
-            .reduce(|a, b| if b.length < a.length { b } else { a })?;
+        let (basin, exhaustive, straightening_result) = Self::basins(p, q)?;
 
         let certificate = GeodesicCertificate {
             bound_asserted: Self::overestimation_bound().is_some(),
@@ -2377,7 +2382,11 @@ pub trait NerveComplex<
             straightening_result,
         };
 
-        let Basin { path, length, .. } = winner;
+        let (path, length) = match basin {
+            Ok(b) => (Some(b.path), b.length),
+            Err(len) => (None, len),
+        };
+
         Some(Geodesic {
             path,
             length,
