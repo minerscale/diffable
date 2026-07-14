@@ -12,7 +12,7 @@ use crate::{
 
 /// Complex numbers a + bi, backed by R^2.
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Complex<R: Real>(Coords<R, 2, 0>);
+pub struct Complex<R: Real>(pub Coords<R, 2, 0>);
 
 impl<R: Real> InvolutiveField for Complex<R> {
     type Fixed = R;

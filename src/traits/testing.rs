@@ -5,21 +5,23 @@
 // manifold, just invoke the relevant macro with appropriate generators.
 // ---------------------------------------------------------------------------
 
-/// Tests that a space claiming to be a pseudo-Euclidean space is a pseudo-Euclidean space
 #[macro_export]
-macro_rules! test_pseudo_euclidean {
+macro_rules! test_quadratic {
     ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{
-                test_group, test_interval, test_pseudo_riemannian, test_tangent_bundle,
-                traits::Quadratic,
-            };
+            use $crate::{test_group, test_tangent_bundle, traits::Quadratic};
 
-            test_tangent_bundle!(tangent_bundle, $scalar, $space, $arb_point, $arb_point);
-            test_interval!(interval, $space, $arb_point);
+            test_tangent_bundle!(
+                tangent_bundle,
+                $scalar,
+                $space,
+                $arb_point,
+                $arb_point,
+                $arb_scalar
+            );
+
             test_group!(group, $space, $arb_point);
-            test_pseudo_riemannian!(riemannian, $space, $arb_point, $arb_point);
 
             proptest! {
                 #[test]
@@ -49,6 +51,21 @@ macro_rules! test_pseudo_euclidean {
     };
 }
 
+/// Tests that a space claiming to be a pseudo-Euclidean space is a pseudo-Euclidean space
+#[macro_export]
+macro_rules! test_pseudo_euclidean {
+    ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::{test_interval, test_pseudo_riemannian, test_quadratic};
+
+            test_quadratic!(quadratic, $scalar, $space, $arb_point, $arb_scalar);
+            test_interval!(interval, $space, $arb_point);
+            test_pseudo_riemannian!(riemannian, $space, $arb_point, $arb_point);
+        }
+    };
+}
+
 /// Tests that a space claiming to be a euclidean space is a euclidean space
 #[macro_export]
 macro_rules! test_euclidean {
@@ -60,7 +77,6 @@ macro_rules! test_euclidean {
             };
 
             test_pseudo_euclidean!(pseudo_euclidean, $scalar, $space, $arb_point, $arb_scalar);
-
             test_inner_product!(inner_product, $space, $arb_point, $arb_scalar);
             test_metric!(metric, $space, $arb_point);
 
@@ -98,10 +114,13 @@ macro_rules! test_chart {
 /// via chart_at on a generated base point.
 #[macro_export]
 macro_rules! test_exp_map {
-    ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
+    ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_chart, traits::{ExpMap, Chart}};
+            use $crate::{
+                test_chart,
+                traits::{Chart, ExpMap},
+            };
 
             // inherit all Chart tests
             test_chart!(chart, $chart, $arb_point);
@@ -132,9 +151,9 @@ macro_rules! test_exp_map {
                 }
 
                 #[test]
-                fn geodesic_scaling(p in $arb_point, v in $arb_vec, t in 0.0f64..1.0f64) {
+                fn geodesic_scaling(p in $arb_point, v in $arb_vec, t in $arb_scalar) {
                     let chart = <$chart>::chart_at(&p);
-                    prop_assert!(chart.check_geodesic_scaling(v, <$scalar as num_traits::NumCast>::from(t).unwrap()));
+                    prop_assert!(chart.check_geodesic_scaling(v, t));
                 }
             }
         }
@@ -163,13 +182,13 @@ macro_rules! test_pseudo_riemannian {
 /// Tests the TangentBundle invariant on top of all ExpMap invariants.
 #[macro_export]
 macro_rules! test_tangent_bundle {
-    ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
+    ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr, $arb_scalar: expr) => {
         mod $mod_name {
             use super::*;
             use $crate::{test_exp_map, traits::TangentBundle};
 
             // inherit all ExpMap tests
-            test_exp_map!(exp_map, $scalar, $chart, $arb_point, $arb_vec);
+            test_exp_map!(exp_map, $scalar, $chart, $arb_point, $arb_vec, $arb_scalar);
 
             proptest! {
                 // The TangentFibre invariant: chart_at(&p).to_global(zero) == p
@@ -415,6 +434,68 @@ macro_rules! test_bilinear {
     };
 }
 
+/// Tests the `Sesquilinear` axioms: Hermitian symmetry, additivity, and
+/// scalar linearity in the first argument.
+#[macro_export]
+macro_rules! test_sesquilinear {
+    ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::traits::Sesquilinear;
+
+            proptest! {
+                #[test]
+                fn hermitian_symmetry(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point as Sesquilinear<_>>::check_hermitian_symmetry(a, b));
+                }
+
+                #[test]
+                fn additivity(a in $arb_point, b in $arb_point, c in $arb_point) {
+                    prop_assert!(<$point as Sesquilinear<_>>::check_additivity(a, b, c));
+                }
+
+                #[test]
+                fn scalar_linearity(a in $arb_point, c in $arb_point, k in $arb_scalar) {
+                    prop_assert!(<$point as Sesquilinear<_>>::check_scalar_linearity(a, c, k));
+                }
+            }
+        }
+    };
+}
+
+/// Tests the `RealStructure` axioms on top of the `Bilinear`/`Sesquilinear`
+/// axioms it presupposes: involution, antilinearity, and compatibility of
+/// the two forms via `conj`.
+#[macro_export]
+macro_rules! test_real_structure {
+    ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::{test_bilinear, test_sesquilinear, traits::RealStructure};
+
+            test_bilinear!(bilinear, $point, $arb_point, $arb_scalar);
+            test_sesquilinear!(sesquilinear, $point, $arb_point, $arb_scalar);
+
+            proptest! {
+                #[test]
+                fn involution(a in $arb_point) {
+                    prop_assert!(<$point as RealStructure<_>>::check_involution(a));
+                }
+
+                #[test]
+                fn antilinear(a in $arb_point, k in $arb_scalar) {
+                    prop_assert!(<$point as RealStructure<_>>::check_antilinear(a, k));
+                }
+
+                #[test]
+                fn forms_compatible(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point as RealStructure<_>>::check_forms_compatible(a, b));
+                }
+            }
+        }
+    };
+}
+
 /// Tests the InnerProduct axioms: symmetry, bilinearity, positive-definiteness.
 #[macro_export]
 macro_rules! test_inner_product {
@@ -494,6 +575,61 @@ macro_rules! test_field {
                 fn commutativity(a in $arb_point, b in $arb_point) {
                     prop_assert!(<$point>::check_commutativity(a, b));
                 }
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! test_involutive_field {
+    ($mod_name:ident, $scalar:ty, $arb_scalar:expr, $arb_fixed:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::{test_field, traits::InvolutiveField};
+
+            // InvolutiveField: Field — certify the parent field itself
+            // before testing anything about conj on top of it.
+            test_field!(field, $scalar, $arb_scalar);
+
+            proptest! {
+                #[test]
+                fn conj_additive(a in $arb_scalar, b in $arb_scalar) {
+                    prop_assert!(<$scalar>::check_conj_additive(a, b));
+                }
+                #[test]
+                fn conj_multiplicative(a in $arb_scalar, b in $arb_scalar) {
+                    prop_assert!(<$scalar>::check_conj_multiplicative(a, b));
+                }
+
+                #[test]
+                fn conj_involution(a in $arb_scalar) {
+                    prop_assert!(<$scalar>::check_conj_involution(a));
+                }
+                #[test]
+                fn from_fixed_additive(x in $arb_fixed, y in $arb_fixed) {
+                    prop_assert!(<$scalar>::check_from_fixed_additive(x, y));
+                }
+                #[test]
+                fn from_fixed_multiplicative(x in $arb_fixed, y in $arb_fixed) {
+                    prop_assert!(<$scalar>::check_from_fixed_multiplicative(x, y));
+                }
+                #[test]
+                fn descent(x in $arb_scalar) {
+                    prop_assert!(<$scalar>::check_descent(x));
+                }
+                #[test]
+                fn norm_squared_self_adjoint(x in $arb_scalar) {
+                    prop_assert!(<$scalar>::check_norm_squared_self_adjoint(x));
+                }
+                #[test]
+                fn from_fixed_is_fixed(x in $arb_fixed) {
+                    prop_assert!(<$scalar>::check_from_fixed_is_fixed(x));
+                }
+            }
+
+            #[test]
+            fn conj_unit() {
+                assert!(<$scalar>::check_conj_unit());
             }
         }
     };

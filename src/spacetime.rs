@@ -6,18 +6,15 @@ use std::{
 use num_traits::{Inv, One, Zero};
 
 use crate::{
-    complex::Complex,
-    coords::{Coords, array_zip_map},
-    impl_group_via_mul,
-    traits::{Bilinear, Field, InvolutiveField, LieGroup, NonZero, Quadratic, Real},
+    complex::Complex, coords::{Coords, array_zip_map}, impl_group_via_mul, traits::{Bilinear, ExactCmp, Field, InvolutiveField, LieGroup, NonZero, Quadratic, Real},
 };
 
 pub type Minkowski<R> = Coords<R, 4, 1>;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Sl<const N: usize, F: Field>(Matrix<N, F>);
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Matrix<const N: usize, F: Field>([[F; N]; N]);
 
 impl<const N: usize, F: Field> Matrix<N, F> {
@@ -95,15 +92,17 @@ macro_rules! todo_warn {
     ($msg:expr) => {{
         #[must_use = $msg]
         struct Warning;
-        // We use an expression block to force the compiler to notice 
+        // We use an expression block to force the compiler to notice
         // that a `must_use` structure was dropped without being used.
         Warning
     }};
 }
 
-impl<const N: usize, R: Real, F: InvolutiveField<Fixed = R>> MatrixExponential for Matrix<N, F> { 
+impl<const N: usize, R: Real, F: InvolutiveField<Fixed = R>> MatrixExponential for Matrix<N, F> {
     fn exp(&self) -> Self {
-        todo_warn!("\n\n⚠️ SHITTY IMPLEMENTATION ALERT:\nUses unstable Taylor series. Come back and refactor to Scaling and Squaring!\n");
+        todo_warn!(
+            "\n\n⚠️ SHITTY IMPLEMENTATION ALERT:\nUses unstable Taylor series. Come back and refactor to Scaling and Squaring!\n"
+        );
 
         let mut result = Matrix::one();
         let mut term = Matrix::one();
@@ -116,7 +115,7 @@ impl<const N: usize, R: Real, F: InvolutiveField<Fixed = R>> MatrixExponential f
 
             result = result + term;
 
-            if term.frobenius_norm() < epsilon * result.frobenius_norm() {
+            if term.frobenius_norm().exact_le(epsilon * result.frobenius_norm() + epsilon) {
                 break;
             }
 
@@ -131,48 +130,42 @@ impl<const N: usize, R: Real, F: InvolutiveField<Fixed = R>> MatrixExponential f
     fn log(&self) -> Option<Self> {
         let log_radius: R = R::from(0.1).unwrap();
         let x = *self - Matrix::one();
-    
+
         let norm = x.frobenius_norm();
-    
+
         if norm >= log_radius {
             return None;
         }
-    
-        let epsilon =
-            R::epsilon() * R::from(10.0).unwrap();
-    
+
+        let epsilon = R::epsilon();
+
         let mut result = x;
         let mut term = x;
-    
+
         for k in 2.. {
             term = term * x;
-    
-            let next =
-                term * F::from_fixed((
-                    if k % 2 == 0 {
-                        -R::one()
-                    } else {
-                        R::one()
-                    }
-                )
-                / R::from(k).unwrap());
-    
+
+            let next = term
+                * F::from_fixed(
+                    (if k % 2 == 0 { -R::one() } else { R::one() }) / R::from(k).unwrap(),
+                );
+
             result = result + next;
-    
-            if next.frobenius_norm() < epsilon * result.frobenius_norm() {
+
+            if next.frobenius_norm().exact_le(epsilon * result.frobenius_norm()) {
                 return Some(result);
             }
-    
+
             if k > 256 {
-                return None;
+                panic!("log failed to converge");
             }
         }
-    
+
         None
     }
 }
 
-pub type SL2C<R> = Sl<2, Complex<R>>;
+pub type Sl2c<R> = Sl<2, Complex<R>>;
 
 impl<const N: usize, F: Field> Sl<N, F> {
     pub fn trace(&self) -> F {
@@ -301,21 +294,27 @@ impl<const N: usize, F: Field> Inv for Sl<N, F> {
 
 impl_group_via_mul!(Sl<N, F>, const N: usize, F: Field);
 
-impl<F: Field, const N: usize, const D: usize> LieGroup<SlAlgebra<F, N, D>> for Sl<N, F>
+impl<F: Field> LieGroup<SlAlgebra<F, 2, 3>> for Sl<2, F>
 where
-    Matrix<N, F>: MatrixExponential,
+    Matrix<2, F>: MatrixExponential,
 {
-    fn identity_exp(v: SlAlgebra<F, N, D>) -> Self {
+    fn identity_exp(v: SlAlgebra<F, 2, 3>) -> Self {
         Self(Matrix::exp(&v.to_matrix()))
     }
 
-    fn identity_log(p: &Self) -> Option<SlAlgebra<F, N, D>> {
+    fn identity_log(p: &Self) -> Option<SlAlgebra<F, 2, 3>> {
         Matrix::log(&p.0).map(|x| SlAlgebra::from_matrix(x))
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-struct SlAlgebra<F: Field, const N: usize, const D: usize>(Coords<F, D>);
+#[derive(Debug, Copy, Clone)]
+pub struct SlAlgebra<F: Field, const N: usize, const D: usize>(Coords<F, D>);
+
+impl<F: InvolutiveField, const N: usize, const D: usize> PartialEq for SlAlgebra<F,N,D> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
 
 impl<F: Field, const N: usize, const D: usize> From<Coords<F, D>> for SlAlgebra<F, N, D> {
     fn from(value: Coords<F, D>) -> Self {

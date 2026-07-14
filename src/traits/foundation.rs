@@ -85,6 +85,39 @@ impl<R: RealNum> Field for R where NonZero<R>: Inv<Output = NonZero<R>> {}
 pub trait Real: RealNum + Field {}
 impl<R: RealNum + Field> Real for R {}
 
+/// The genuine, transitive ordering on a real-number type, independent of
+/// whatever tolerance its `PartialOrd` may carry for equality testing —
+/// see [`Real`]'s doc comment on why that tolerance exists and why it is
+/// deliberately not transitive. An iterative numerical algorithm's
+/// convergence check needs the former: comparing against a
+/// tolerance-relation order can report "not less than" forever once both
+/// sides fall inside the tolerance band, regardless of which is truly
+/// smaller.
+///
+/// Built entirely from operations `Real` already guarantees — `Sub` and
+/// `is_sign_negative` (via `num_traits::Float`, already required through
+/// `RealNum`) — with the same formula for every implementor, no
+/// per-type override. `is_sign_negative` reads the sign bit directly
+/// rather than going through `PartialEq`, exactly the same reasoning
+/// `Complex::real_sqrt`'s branch relies on — so it never sees `R64`/`R32`'s
+/// deliberately fuzzy comparison, and the blanket below is sound for
+/// every `Real` type without exception, including any brought in from
+/// outside this crate.
+///
+/// [`Real`]: crate::traits::Real
+pub trait ExactCmp: Real {
+    fn exact_lt(self, other: Self) -> bool {
+        let d = self - other;
+        d.is_sign_negative() && !d.is_zero()
+    }
+
+    fn exact_le(self, other: Self) -> bool {
+        !other.exact_lt(self)
+    }
+}
+
+impl<R: Real> ExactCmp for R {}
+
 /// A notion of distance on a manifold.
 ///
 /// The space of all values of a type `P: Metric<R>` is interpreted as
@@ -215,9 +248,35 @@ pub trait Bilinear<F: Field>: Point {
 }
 
 pub trait Sesquilinear<F: InvolutiveField>: Point {
-    fn dot(&self, other: &Self) -> F;
+    fn hermitian(&self, other: &Self) -> F;
     fn self_dot(&self) -> F::Fixed {
-        self.dot(self).to_fixed()
+        self.hermitian(self).to_fixed()
+    }
+
+    // ⟨v,w⟩ = conj(⟨w,v⟩) — Hermitian symmetry, the sesquilinear analogue
+    // of Bilinear::check_symmetry. Additivity and conjugate-linearity in
+    // the second argument both follow from this plus linearity in the
+    // first, and aren't separately checked for the same reason Bilinear
+    // doesn't separately check them.
+    #[cfg(feature = "testing")]
+    fn check_hermitian_symmetry(a: Self, b: Self) -> bool {
+        a.hermitian(&b) == b.hermitian(&a).conj()
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_additivity(a: Self, b: Self, c: Self) -> bool
+    where
+        Self: Add<Output = Self> + Clone,
+    {
+        (a.clone() + b.clone()).hermitian(&c) == a.hermitian(&c) + b.hermitian(&c)
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_scalar_linearity(a: Self, c: Self, k: F) -> bool
+    where
+        Self: Mul<F, Output = Self> + Clone,
+    {
+        (a.clone() * k).hermitian(&c) == k * a.hermitian(&c)
     }
 }
 

@@ -6,8 +6,8 @@ mod common;
 use common::*;
 
 use diffable::{
-    complex::Complex, epsilon_metric::R64, test_euclidean, test_field, test_pseudo_riemannian,
-    test_tangent_bundle, traits::NonZero,
+    complex::Complex, epsilon_metric::R64, test_euclidean, test_involutive_field,
+    test_pseudo_riemannian, test_tangent_bundle, traits::NonZero,
 };
 
 use proptest::prelude::*;
@@ -19,10 +19,11 @@ test_euclidean!(
     arb_vec::<2>().prop_map(|x| x.into()),
     arb_scalar()
 );
-test_field!(
-    complex_ring,
+test_involutive_field!(
+    complex_field,
     Complex<R64>,
-    arb_vec::<2>().prop_map(|x| Complex::<R64>::from(x))
+    arb_vec::<2>().prop_map(|x| Complex::<R64>::from(x)),
+    arb_scalar()
 );
 test_pseudo_riemannian!(
     complex_mul,
@@ -35,5 +36,6 @@ test_tangent_bundle!(
     R64,
     NonZero<Complex<R64>>,
     arb_vec::<2>().prop_filter_map("must be nonzero", |x| NonZero::new(Complex::<R64>::from(x))),
-    arb_vec::<2>().prop_map(|x| Complex::<R64>::from(x))
+    arb_vec::<2>().prop_map(|x| Complex::<R64>::from(x)),
+    arb_scalar()
 );

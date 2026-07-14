@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4d74dab90d0c73c5ed48f10e0ecdef1284d85566983cd62d90c4b4884fadd64b # shrinks to p = Coords([Complex(Coords([R64(0.0), R64(0.0)])), Complex(Coords([R64(0.0), R64(0.0)])), Complex(Coords([R64(0.0), R64(0.0)]))]), v = Coords([Complex(Coords([R64(7.602168852615136), R64(3.601571525751617)])), Complex(Coords([R64(-9.88525526088614), R64(0.1684865279746589)])), Complex(Coords([R64(5.344264005695688), R64(-0.10274637357536626)]))]), t = Complex(Coords([R64(1.605519458333101), R64(-2.944476657892521)]))

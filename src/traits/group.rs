@@ -437,6 +437,126 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     }
 }
 
+/// A field equipped with a distinguished order-≤2 automorphism ("conjugation")
+/// and its fixed subfield.
+///
+/// The paradigm instance is `ℂ/ℝ`: `conj` is complex conjugation, `Fixed` is
+/// `ℝ`, and `Complex<R>`'s `to_fixed`/`from_fixed` are literally "take the
+/// real part" / "embed a real as a complex number." But the pattern is not
+/// specific to the reals — the same shape appears for finite fields
+/// (`𝔽_q²/𝔽_q`, with `conj(x) = x^q` the Frobenius automorphism) and for
+/// local fields (the unramified quadratic extension of `ℚ_p`), each with its
+/// own norm and unitary groups built the same way. Every [`Real`] scalar
+/// type gets the trivial instance for free (`conj = id`, `Fixed = Self`) via
+/// the blanket impl below, since a real field is its own fixed field under
+/// the identity — this is the degenerate case, included so that
+/// [`Sesquilinear`] and [`RealStructure`] can be stated once and apply
+/// uniformly whether or not `conj` actually does anything.
+///
+/// - **`conj` is a field automorphism**: additive, multiplicative, and
+///   unit-preserving.
+/// - **`conj` is an involution**: `x.conj().conj() == x`.
+/// - **`from_fixed` is a field embedding**, landing inside the fixed
+///   subfield: `from_fixed(y).conj() == from_fixed(y)`.
+/// - **`to_fixed` is a retraction of `from_fixed`**: `to_fixed(from_fixed(y))
+///   == y`.
+/// - **Descent**: a genuinely self-adjoint element of `Self` — not merely
+///   one already known to be in `from_fixed`'s image — round-trips exactly
+///   through `to_fixed`/`from_fixed`. `x + x.conj()` is self-adjoint by the
+///   automorphism and involution properties alone, with no reference to
+///   `Fixed`, which is what makes this check non-circular; it is the one
+///   that actually cashes out `to_fixed`'s doc claim that a self-adjoint
+///   element "safely drops" into the invariant subfield.
+///
+/// `norm_squared` is provided as `to_fixed(x * x.conj())`, which is
+/// well-defined because `x * x.conj()` is always self-adjoint (again by the
+/// automorphism and involution properties, plus commutativity), regardless
+/// of whether `x` itself is.
+///
+/// Certified by implementing this trait; the automorphism, involution, and
+/// embedding properties are currently assumed rather than independently
+/// checked — see [`Self::check_descent`] and
+/// [`Self::check_norm_squared_self_adjoint`] for what *is* verified by
+/// `test_involutive_field!`.
+///
+/// [`Real`]: crate::traits::Real
+/// [`Sesquilinear`]: crate::traits::Sesquilinear
+/// [`RealStructure`]: crate::traits::RealStructure
+pub trait InvolutiveField: Field {
+    // Mathematically: The Fixed Field (F^σ) where σ(x) = x
+    type Fixed: Field;
+    fn conj(&self) -> Self;
+    fn norm_squared(self) -> Self::Fixed {
+        Self::to_fixed(self * self.conj())
+    }
+
+    // Forces a proof that a self-adjoint element can safely drop down
+    // into the invariant sub-field.
+    fn to_fixed(self) -> Self::Fixed;
+    fn from_fixed(x: Self::Fixed) -> Self;
+
+    // conj respects addition.
+    #[cfg(feature = "testing")]
+    fn check_conj_additive(a: Self, b: Self) -> bool {
+        (a + b).conj() == a.conj() + b.conj()
+    }
+
+    // conj respects multiplication.
+    #[cfg(feature = "testing")]
+    fn check_conj_multiplicative(a: Self, b: Self) -> bool {
+        (a * b).conj() == a.conj() * b.conj()
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_conj_unit() -> bool {
+        Self::one().conj() == Self::one()
+    }
+
+    // conj∘conj = id. Not derivable from the automorphism properties plus
+    // descent — see the earlier discussion attempting and failing to build
+    // a counterexample.
+    #[cfg(feature = "testing")]
+    fn check_conj_involution(a: Self) -> bool {
+        a.conj().conj() == a
+    }
+
+    // from_fixed respects addition.
+    #[cfg(feature = "testing")]
+    fn check_from_fixed_additive(x: Self::Fixed, y: Self::Fixed) -> bool {
+        Self::from_fixed(x + y) == Self::from_fixed(x) + Self::from_fixed(y)
+    }
+
+    // from_fixed respects multiplication.
+    #[cfg(feature = "testing")]
+    fn check_from_fixed_multiplicative(x: Self::Fixed, y: Self::Fixed) -> bool {
+        Self::from_fixed(x * y) == Self::from_fixed(x) * Self::from_fixed(y)
+    }
+
+    // x + conj(x) is self-adjoint by conj's additivity and involution alone,
+    // with no reference to Fixed — this is what actually cashes out the
+    // promise that a self-adjoint element "safely drops" into Fixed.
+    #[cfg(feature = "testing")]
+    fn check_descent(x: Self) -> bool {
+        let s = x + x.conj();
+        Self::from_fixed(s.to_fixed()) == s
+    }
+
+    // x * conj(x) is fixed for any x, not just self-adjoint x — the fact
+    // norm_squared relies on to call to_fixed at all.
+    #[cfg(feature = "testing")]
+    fn check_norm_squared_self_adjoint(x: Self) -> bool {
+        let n = x * x.conj();
+        n.conj() == n
+    }
+
+    // from_fixed's image lands inside conj's fixed points.
+    #[cfg(feature = "testing")]
+    fn check_from_fixed_is_fixed(x: Self::Fixed) -> bool {
+        let y = Self::from_fixed(x);
+        y.conj() == y
+    }
+}
+
 /// A (possibly non-abelian) group, in multiplicative notation.
 ///
 /// The space of all values of a type `G: MulGroup` is interpreted as a

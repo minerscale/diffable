@@ -19,7 +19,8 @@ test_tangent_bundle!(
     R64,
     S1<Coords<_, _>>,
     arb_s1_quotient(),
-    arb_vec::<1>()
+    arb_vec::<1>(),
+    arb_scalar()
 );
 test_quotient!(
     quotient_s1,
@@ -41,7 +42,8 @@ test_tangent_bundle!(
     R64,
     Torus<Coords<R64, 1>, Coords<R64, 2>>,
     (arb_s1_quotient(), arb_s1_quotient()).prop_map(|(a, b)| Torus::new(a, b)),
-    arb_vec2()
+    arb_vec2(),
+    arb_scalar()
 );
 test_pseudo_riemannian!(
     riemannian_torus,
@@ -55,7 +57,8 @@ test_tangent_bundle!(
     R64,
     KleinBottle<Coords<R64, 1>, Coords<R64, 2>>,
     (arb_s1_quotient(), arb_s1_quotient()).prop_map(|(a, b)| KleinBottle::new(a, b)),
-    arb_vec2()
+    arb_vec2(),
+    arb_scalar()
 );
 // ($mod_name:ident, $chart:ty, $arb_point:expr, $arb_vec:expr)
 test_pseudo_riemannian!(

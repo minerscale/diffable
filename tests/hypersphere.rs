@@ -62,11 +62,11 @@ test_pseudo_riemannian!(
     arb_vec::<3>()
 );
 
-test_tangent_bundle!(tangent_bundle_sphere0, R64, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0), arb_vec0());
-test_tangent_bundle!(tangent_bundle_sphere1, R64, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0), arb_vec1());
-test_tangent_bundle!(tangent_bundle_sphere2, R64, Sphere<_, _>, arb_sphere2(), arb_vec2());
-test_tangent_bundle!(tangent_bundle_sphere3, R64, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0), arb_vec3());
-test_tangent_bundle!(tangent_bundle_sphere4, R64, Sphere<_, _>, arb_sphere4(), arb_vec4());
+test_tangent_bundle!(tangent_bundle_sphere0, R64, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0), arb_vec0(), arb_scalar());
+test_tangent_bundle!(tangent_bundle_sphere1, R64, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0), arb_vec1(), arb_scalar());
+test_tangent_bundle!(tangent_bundle_sphere2, R64, Sphere<_, _>, arb_sphere2(), arb_vec2(), arb_scalar());
+test_tangent_bundle!(tangent_bundle_sphere3, R64, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0), arb_vec3(), arb_scalar());
+test_tangent_bundle!(tangent_bundle_sphere4, R64, Sphere<_, _>, arb_sphere4(), arb_vec4(), arb_scalar());
 
 // Sphere as TangentBundle (via blanket LieGroup impl; includes all ExpMap tests)
 test_tangent_bundle!(
@@ -74,28 +74,32 @@ test_tangent_bundle!(
     R64,
     S0<Coords<_, _>>,
     arb_sphere0(),
-    arb_vec0()
+    arb_vec0(),
+    arb_scalar()
 );
 test_tangent_bundle!(
     tangent_bundle_s1,
     R64,
     UnitComplex<Coords<_, _>>,
     arb_sphere1(),
-    arb_vec1()
+    arb_vec1(),
+    arb_scalar()
 );
 test_tangent_bundle!(
     tangent_bundle_s3,
     R64,
     S3<Coords<_, _>>,
     arb_sphere3(),
-    arb_vec3()
+    arb_vec3(),
+    arb_scalar()
 );
 test_tangent_bundle!(
     tangent_bundle_so3,
     R64,
     So3<Coords<_, _>>,
     arb_so3(),
-    arb_vec3()
+    arb_vec3(),
+    arb_scalar()
 );
 
 // Lie group axioms
@@ -111,7 +115,14 @@ test_quotient!(
     arb_sphere0().prop_map(|v| S0(Sphere::new(v.0.real(), Coords::zero())))
 );
 
-test_exp_map!(so3_cover, R64, So3Cover, arb_so3(), arb_vec3());
+test_exp_map!(
+    so3_cover,
+    R64,
+    So3Cover,
+    arb_so3(),
+    arb_vec3(),
+    arb_scalar()
+);
 
 // ---------------------------------------------------------------------------
 // Bespoke tests: properties specific to these manifolds, not general laws

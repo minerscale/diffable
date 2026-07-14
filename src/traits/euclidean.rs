@@ -1,8 +1,10 @@
 use num_traits::Zero;
 use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
-use super::{Bilinear, Field, InnerProduct, LieGroup, Real, TangentBundle};
-use crate::{impl_group_via_add, traits::Sesquilinear};
+use super::{
+    Bilinear, Field, InnerProduct, InvolutiveField, LieGroup, Real, Sesquilinear, TangentBundle,
+};
+use crate::impl_group_via_add;
 
 /// A finite-dimensional Euclidean space.
 ///
@@ -57,8 +59,6 @@ pub trait Euclidean: Quadratic<F: Real> + InnerProduct<Self::F> {
         dist_sq == norm_sq
     }
 }
-
-//pub trait Sesquilinear
 
 /// A finite-dimensional pseudo-Euclidean space.
 ///
@@ -167,18 +167,44 @@ pub trait Quadratic:
     }
 }
 
-pub trait InvolutiveField: Field {
-    // Mathematically: The Fixed Field (F^σ) where σ(x) = x
-    type Fixed: Field;
+pub trait RealStructure<F: InvolutiveField>: Bilinear<F> + Sesquilinear<F> {
     fn conj(&self) -> Self;
-    fn norm_squared(self) -> Self::Fixed {
-        Self::to_fixed(self * self.conj())
+
+    // Conjugate
+
+    // conj is an involution on the vector space itself — distinct from,
+    // but modelled on, InvolutiveField::conj one level down at the scalar
+    // field.
+    #[cfg(feature = "testing")]
+    fn check_involution(a: Self) -> bool
+    where
+        Self: PartialEq,
+    {
+        a.conj().conj() == a
     }
 
-    // Forces a proof that a self-adjoint element can safely drop down
-    // into the invariant sub-field.
-    fn to_fixed(self) -> Self::Fixed;
-    fn from_fixed(x: Self::Fixed) -> Self;
+    // (v*k).conj() == v.conj() * conj(k) — antilinear, not linear: the
+    // scalar picks up a conjugation crossing conj, mirroring how the
+    // second argument of Sesquilinear::dot is conjugate- rather than
+    // plain-linear.
+    #[cfg(feature = "testing")]
+    fn check_antilinear(a: Self, k: F) -> bool
+    where
+        Self: Mul<F, Output = Self>,
+        Self: PartialEq,
+    {
+        (a.clone() * k).conj() == a.conj() * k.conj()
+    }
+
+    // The one non-optional check: Bilinear::dot and Sesquilinear::dot
+    // are unrelated operations in general (see SlAlgebra's Killing form
+    // vs. a coordinatewise Hermitian sum) — this is what certifies that
+    // for *this* type they've been wired together correctly via conj,
+    // rather than merely coexisting.
+    #[cfg(feature = "testing")]
+    fn check_forms_compatible(a: Self, b: Self) -> bool {
+        Sesquilinear::hermitian(&a, &b) == Bilinear::dot(&a, &b.conj())
+    }
 }
 
 impl<R: Real> InvolutiveField for R {
@@ -194,14 +220,6 @@ impl<R: Real> InvolutiveField for R {
 
     fn from_fixed(x: Self::Fixed) -> Self {
         x
-    }
-}
-
-impl<F: InvolutiveField, V: Quadratic<F = F>> Sesquilinear<F> for V {
-    fn dot(&self, rhs: &Self) -> F {
-        self.iter()
-            .zip(rhs.iter())
-            .fold(F::zero(), |acc, (&a, &b)| acc + a * b.conj())
     }
 }
 
