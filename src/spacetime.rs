@@ -8,7 +8,8 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient,
     matrix::{Matrix, MatrixExponential},
     traits::{
-        Bilinear, Field, InvolutiveField, LieGroup, Quadratic, Quotient, Real, RootOfUnity,
+        Bilinear, Dual, Field, Form, LieGroup, Nondegenerate, Quadratic, Quotient, Real,
+        RootOfUnity, Sesquilinear, Vector,
     },
 };
 
@@ -17,7 +18,7 @@ pub type Minkowski<R> = Coords<R, 4, 1>;
 #[derive(Debug, Copy, Clone)]
 pub struct Sl<const N: usize, F: Field>(Matrix<N, F>);
 
-impl<const N: usize, F: InvolutiveField> PartialEq for Sl<N, F> {
+impl<const N: usize, F: Field> PartialEq for Sl<N, F> {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq(&other.0)
     }
@@ -35,7 +36,7 @@ impl<R: Real> Quotient<Sl2c<R>, RootOfUnity<Complex<R>, 2>, SlAlgebra<Complex<R>
     fn new(g: Sl2c<R>) -> Self {
         let neg_g = Sl(g.0 * (-Complex::<R>::one()));
         let [re, im] = g.0.trace().into();
-    
+
         // Tolerant comparison, deliberately — a Re(tr) that's zero up to
         // R's own tolerance should be treated as if it were exactly zero,
         // falling through to the next tiebreak, rather than having the
@@ -44,11 +45,19 @@ impl<R: Real> Quotient<Sl2c<R>, RootOfUnity<Complex<R>, 2>, SlAlgebra<Complex<R>
         // Matrix::exp/log convergence loop, there's no risk of stranding
         // anything here — "fall through" always lands on a fresh, separate
         // comparison, never on the same one repeating forever.
-        if R::zero() < re { return Self(g); }
-        if re < R::zero() { return Self(neg_g); }
-        if R::zero() < im { return Self(g); }
-        if im < R::zero() { return Self(neg_g); }
-    
+        if R::zero() < re {
+            return Self(g);
+        }
+        if re < R::zero() {
+            return Self(neg_g);
+        }
+        if R::zero() < im {
+            return Self(g);
+        }
+        if im < R::zero() {
+            return Self(neg_g);
+        }
+
         // Last resort: tr(g) is zero up to tolerance. g_ij and (-g)_ij are
         // exact negatives (negation by -1 is bit-exact), so the same
         // antisymmetry argument applies entrywise. Termination is
@@ -57,18 +66,26 @@ impl<R: Real> Quotient<Sl2c<R>, RootOfUnity<Complex<R>, 2>, SlAlgebra<Complex<R>
         // forbids every entry from being simultaneously tolerantly-zero
         // (a matrix that's tolerantly all-zero would have a
         // tolerantly-zero determinant, not 1).
-        let g_wins = g.0.flat_iter().zip(neg_g.0.flat_iter())
-            .find_map(|(&a, &b)| {
-                let [are, aim] = a.into();
-                let [bre, bim] = b.into();
-                if are < bre { Some(true) }
-                else if bre < are { Some(false) }
-                else if aim < bim { Some(true) }
-                else if bim < aim { Some(false) }
-                else { None }
-            })
-            .expect("g tolerantly equals -g despite det(g) = 1 — shouldn't be possible");
-    
+        let g_wins =
+            g.0.flat_iter()
+                .zip(neg_g.0.flat_iter())
+                .find_map(|(&a, &b)| {
+                    let [are, aim] = a.into();
+                    let [bre, bim] = b.into();
+                    if are < bre {
+                        Some(true)
+                    } else if bre < are {
+                        Some(false)
+                    } else if aim < bim {
+                        Some(true)
+                    } else if bim < aim {
+                        Some(false)
+                    } else {
+                        None
+                    }
+                })
+                .expect("g tolerantly equals -g despite det(g) = 1 — shouldn't be possible");
+
         if g_wins { Self(g) } else { Self(neg_g) }
     }
 
@@ -150,7 +167,9 @@ where
 #[derive(Debug, Copy, Clone)]
 pub struct SlAlgebra<F: Field, const N: usize, const D: usize>(Coords<F, D>);
 
-impl<F: InvolutiveField, const N: usize, const D: usize> PartialEq for SlAlgebra<F, N, D> {
+impl<F: Field, const N: usize, const D: usize> Quadratic for SlAlgebra<F, N, D> {}
+
+impl<F: Field, const N: usize, const D: usize> PartialEq for SlAlgebra<F, N, D> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
@@ -287,19 +306,94 @@ impl<F: Field, const N: usize, const D: usize> SlAlgebra<F, N, D> {
     }
 }
 
-// Here, D is N*N - 1, we do this this way because of const-generics restrictions
-// we statically assert in the constructor that D = N*N - 1.
-impl<F: Field, const N: usize, const D: usize> Bilinear<F> for SlAlgebra<F, N, D> {
-    // Killing form / 2*N
-    fn dot(&self, other: &Self) -> F {
-        let x = self.to_matrix();
-        let y = other.to_matrix();
+fn offdiag_index<const N: usize>(i: usize, j: usize) -> usize {
+    debug_assert!(i != j);
 
-        (x * y).trace()
+    let before = i * (N - 1);
+
+    before + if j < i { j } else { j - 1 }
+}
+
+impl<F: Field, const N: usize, const D: usize> Form for SlAlgebra<F, N, D> {
+    fn flat(&self) -> Dual<Self> {
+        let mut out = *self;
+
+        // ----- Root spaces -----
+        // B(E_ij,E_kl)=δ_jk δ_il
+        // so E_ij maps to the dual of E_ji.
+        for i in 0..N {
+            for j in (i + 1)..N {
+                let a = offdiag_index::<N>(i, j);
+                let b = offdiag_index::<N>(j, i);
+
+                out.0.swap(a, b);
+            }
+        }
+
+        // ----- Cartan -----
+        // Multiply by the A_{N-1} Cartan matrix.
+        let base = N * (N - 1);
+
+        for i in 0..N - 1 {
+            let mut x = self[base + i] + self[base + i];
+
+            if i > 0 {
+                x = x.sub(&self[base + i - 1]);
+            }
+
+            if i + 1 < N - 1 {
+                x = x.sub(&self[base + i + 1]);
+            }
+
+            out[base + i] = x;
+        }
+
+        Dual::from_raw(out)
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> Quadratic for SlAlgebra<F, N, D> {
+impl<F: Field, const N: usize, const D: usize> Nondegenerate for SlAlgebra<F, N, D> {
+    fn sharp(v: Dual<Self>) -> Self {
+        let mut out = Dual::to_raw(v);
+
+        // Root spaces:
+        for i in 0..N {
+            for j in (i + 1)..N {
+                let a = offdiag_index::<N>(i, j);
+                let b = offdiag_index::<N>(j, i);
+
+                out.0.swap(a, b);
+            }
+        }
+
+        let base = N * (N - 1);
+
+        // Need the original RHS while overwriting.
+        // So do one coordinate at a time into a temporary scalar.
+        for i in 0..N - 1 {
+            let mut sum = F::zero();
+
+            for j in 0..N - 1 {
+                let coeff_num = (usize::min(i, j) + 1) * (N - usize::max(i, j) - 1);
+
+                let coeff = F::from_nat(coeff_num).div(F::from_nat(N));
+
+                sum = sum + coeff * v[j + base];
+            }
+
+            out[base + i] = sum;
+        }
+
+        out
+    }
+}
+
+// Here, D is N*N - 1, we do this this way because of const-generics restrictions
+// we statically assert in the constructor that D = N*N - 1.
+impl<F: Field, const N: usize, const D: usize> Bilinear for SlAlgebra<F, N, D> {}
+impl<F: Field, const N: usize, const D: usize> Sesquilinear for SlAlgebra<F, N, D> {}
+
+impl<F: Field, const N: usize, const D: usize> Vector for SlAlgebra<F, N, D> {
     type F = F;
 
     const N: usize = D;
@@ -315,9 +409,5 @@ impl<F: Field, const N: usize, const D: usize> Quadratic for SlAlgebra<F, N, D> 
 
     fn from_fn(f: impl Fn(usize) -> Self::F) -> Self {
         Self(Coords::<F, D>::from_fn(f))
-    }
-
-    fn from_array<const K: usize>(arr: [Self::F; K]) -> Self {
-        Self(Coords::<F, D>::from_array(arr))
     }
 }

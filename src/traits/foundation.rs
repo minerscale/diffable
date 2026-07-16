@@ -1,11 +1,9 @@
 #[cfg(feature = "testing")]
-use std::ops::{Add, Mul};
-
-#[cfg(feature = "testing")]
 use num_traits::Zero;
 
 use crate::{
-    complex::Complex, traits::{CGroup, Field, InvolutiveField, NonZero},
+    complex::Complex,
+    traits::{Field, NonZero},
 };
 use num_traits::{Euclid, Inv};
 
@@ -80,10 +78,27 @@ impl<T: Clone> Point for T {}
 /// [`R32`]: crate::epsilon_metric::R32
 pub trait RealNum: num_traits::real::Real + Euclid + std::fmt::Debug {}
 impl<R: num_traits::real::Real + Euclid + std::fmt::Debug> RealNum for R {}
-impl<R: RealNum> Field for R where NonZero<R>: Inv<Output = NonZero<R>> {}
+impl<R: RealNum> Field for R
+where
+    NonZero<R>: Inv<Output = NonZero<R>>,
+{
+    type Fixed = Self;
 
-pub trait Real: RealNum + Field {}
-impl<R: RealNum + Field> Real for R {}
+    fn to_fixed(self) -> Self {
+        self
+    }
+
+    fn from_fixed(x: Self) -> Self {
+        x
+    }
+
+    fn conj(&self) -> Self {
+        *self
+    }
+}
+
+pub trait Real: RealNum + Field<Fixed = Self> {}
+impl<R: RealNum + Field<Fixed = Self>> Real for R {}
 
 /// The genuine, transitive ordering on a real-number type, independent of
 /// whatever tolerance its `PartialOrd` may carry for equality testing —
@@ -184,160 +199,3 @@ pub trait Interval<R: Real>: Point {
         a.interval(&a) == Complex::zero()
     }
 }
-
-/// A symmetric bilinear form on a vector space.
-///
-/// The space of all values of a type `P: Bilinear<R>` is interpreted as a
-/// vector space equipped with a symmetric bilinear pairing
-/// `⟨·,·⟩: P × P → R`. **No definiteness is assumed**: the induced quadratic
-/// form `Q(v) = ⟨v,v⟩` may be positive, negative, or zero for `v ≠ 0`. This is
-/// the structure of a pseudo-Euclidean (e.g. Minkowski) space as well as a
-/// Euclidean one.
-///
-/// Because the form may be indefinite, `Bilinear` provides **no norm and no
-/// distance**: `⟨v,v⟩` can be negative, so `sqrt(⟨v,v⟩)` need not be real, and
-/// the induced "distance" fails the metric-space axioms (null vectors give
-/// distinct points at separation zero; the triangle inequality reverses on
-/// timelike triples). A norm and a [`Metric`] arise only once definiteness is
-/// added — see [`InnerProduct`], which refines this trait with
-/// positive-definiteness and is therefore the only branch that induces a
-/// metric space.
-///
-/// `norm_squared` is provided as `⟨v,v⟩` and is **signed** — it is the value
-/// of the quadratic form, not the square of a norm. Callers on indefinite
-/// spaces should inspect its sign (causal character) rather than take its
-/// square root.
-///
-/// The three certified invariants — symmetry, additivity, and scalar
-/// linearity of the pairing — are signature-agnostic and hold in the
-/// indefinite case exactly as in the definite one.
-pub trait Bilinear<F: Field>: Point {
-    fn dot(&self, other: &Self) -> F;
-
-    fn self_dot(&self) -> F {
-        self.dot(self)
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_symmetry(a: Self, b: Self) -> bool {
-        a.dot(&b) == b.dot(&a)
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_additivity(a: Self, b: Self, c: Self) -> bool
-    where
-        Self: Add<Output = Self> + Clone,
-    {
-        let lhs = (a.clone() + b.clone()).dot(&c);
-        let rhs = a.dot(&c) + b.dot(&c);
-        lhs == rhs
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_scalar_linearity(a: Self, c: Self, k: F) -> bool
-    where
-        Self: Mul<F, Output = Self> + Clone,
-    {
-        let lhs = (a.clone() * k).dot(&c);
-        let rhs = k * a.dot(&c);
-        lhs == rhs
-    }
-}
-
-/// A Hermitian (sesquilinear) form on a vector space.
-///
-/// The space of all values of a type `P: Sesquilinear<F>` is interpreted as a
-/// vector space equipped with a Hermitian pairing
-/// `⟨·,·⟩: P × P → F`, where `F` is an [`InvolutiveField`]. The pairing is
-/// linear in its first argument and conjugate-linear in its second, satisfying
-/// `⟨v,w⟩ = conj(⟨w,v⟩)`.
-///
-/// Unlike [`Bilinear`], the codomain may be a field with a nontrivial
-/// involution, such as the complex numbers. Hermitian forms are the natural
-/// analogue of symmetric bilinear forms over such fields.
-///
-/// No definiteness is assumed. The induced quadratic form
-/// `Q(v) = ⟨v,v⟩` is always fixed by the involution (for example, real-valued
-/// over `ℂ`), but it may still be positive, negative, or zero for `v ≠ 0`.
-/// Consequently, this trait provides no norm or metric. A norm and the
-/// associated [`Metric`] arise only once positive-definiteness is imposed
-/// (see [`InnerProduct`] or the corresponding positive-definite Hermitian
-/// refinement, if provided).
-///
-/// `self_dot` returns the value `⟨v,v⟩` in the fixed field `F::Fixed`. This is
-/// the value of the quadratic form, not the square of a norm, and should not
-/// be square-rooted unless positive-definiteness is known.
-///
-/// The certified invariants are Hermitian symmetry, additivity, and scalar
-/// linearity in the first argument. Conjugate-linearity in the second argument
-/// follows from these together with Hermitian symmetry.
-pub trait Sesquilinear<F: InvolutiveField>: CGroup {
-    fn hermitian(&self, other: &Self) -> F;
-    fn norm_squared(&self) -> F::Fixed {
-        self.hermitian(self).to_fixed()
-    }
-
-    // ⟨v,w⟩ = conj(⟨w,v⟩) — Hermitian symmetry, the sesquilinear analogue
-    // of Bilinear::check_symmetry. Additivity and conjugate-linearity in
-    // the second argument both follow from this plus linearity in the
-    // first, and aren't separately checked for the same reason Bilinear
-    // doesn't separately check them.
-    #[cfg(feature = "testing")]
-    fn check_hermitian_symmetry(a: Self, b: Self) -> bool {
-        a.hermitian(&b) == b.hermitian(&a).conj()
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_additivity(a: Self, b: Self, c: Self) -> bool
-    where
-        Self: Add<Output = Self> + Clone,
-    {
-        (a.clone() + b.clone()).hermitian(&c) == a.hermitian(&c) + b.hermitian(&c)
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_scalar_linearity(a: Self, c: Self, k: F) -> bool
-    where
-        Self: Mul<F, Output = Self> + Clone,
-    {
-        (a.clone() * k).hermitian(&c) == k * a.hermitian(&c)
-    }
-}
-
-/// An inner product structure on a vector space.
-///
-/// Refines [`Bilinear`] with **positive-definiteness**: `⟨v,v⟩ > 0` for all
-/// `v ≠ 0`. This is exactly the property that makes the induced quantities
-/// well-behaved — `norm(v) = sqrt(⟨v,v⟩)` is real and non-negative, and
-/// `d(a,b) = ‖a - b‖` satisfies the metric-space axioms — which is why
-/// `InnerProduct` is a refinement of [`Metric`], whereas the bare
-/// [`Bilinear`] base is not.
-///
-/// Not every [`Metric`] is an `InnerProduct` — the sphere's geodesic distance
-/// is a metric not arising from any inner product, since the sphere is not a
-/// vector space. And not every [`Bilinear`] form is an `InnerProduct` — a
-/// Minkowski scalar product is bilinear and symmetric but indefinite, so it
-/// induces no metric at all.
-pub trait InnerProduct<R: Real, F: InvolutiveField<Fixed = R> = R>: Sesquilinear<F> + Metric<R> {
-    /// The norm `‖v‖ = sqrt(⟨v,v⟩)`. Well-defined and real because the form
-    /// is positive-definite. On an indefinite [`Bilinear`] space this would
-    /// not be real — which is why it lives here, not on the base.
-    fn norm(&self) -> R {
-        self.norm_squared().sqrt()
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_positive_definite(a: Self) -> bool
-    where
-        Self: Zero + PartialEq,
-    {
-        a == Self::zero() || a.norm() > R::zero()
-    }
-
-    #[cfg(feature="testing")]
-    fn check_metric_compatibility(a: Self, b: Self) -> bool {
-        a.sub(&b).norm_squared().sqrt() == a.distance(&b)
-    }
-}
-
-impl<R: Real, F: InvolutiveField<Fixed = R>, P: Sesquilinear<F> + Metric<R>> InnerProduct<R, F> for P {}

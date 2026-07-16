@@ -3,34 +3,14 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{Inv, One, Zero};
 
 use crate::{
-    coords::Coords, traits::{
-        Bilinear, Euclidean, Field, InnerProduct, Interval, InvolutiveField, LieGroup, Metric, NonZero, Quadratic, Real, Sesquilinear, Smooth,
-    },
+    coords::Coords,
+    impl_group_via_add,
+    traits::{Field, InnerProduct, Interval, LieGroup, Metric, NonZero, Real, Smooth},
 };
 
 /// Complex numbers a + bi, backed by R^2.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Complex<R: Real>(pub Coords<R, 2, 0>);
-
-impl<R: Real> InvolutiveField for Complex<R> {
-    type Fixed = R;
-
-    fn conj(&self) -> Self {
-        let [a, b] = (*self).into();
-
-        [a, -b].into()
-    }
-
-    fn to_fixed(self) -> R {
-        let [a, _] = self.into();
-
-        a
-    }
-
-    fn from_fixed(x: R) -> Self {
-        x.into()
-    }
-}
 
 impl<R: Real> Complex<R> {
     pub fn real_sqrt(r: R) -> Self {
@@ -139,6 +119,20 @@ impl<R: Real> IndexMut<usize> for Complex<R> {
     }
 }
 
+impl_group_via_add!(Complex<R>, R: Real);
+
+impl<R: Real> LieGroup<Coords<R, 2>> for Complex<R> {
+    // e^z
+    fn identity_exp(v: Coords<R, 2>) -> Self {
+        v.into()
+    }
+
+    // Log(p)
+    fn identity_log(p: &Self) -> Option<Coords<R, 2>> {
+        Some(p.0)
+    }
+}
+
 impl<R: Real> Metric<R> for Complex<R> {
     fn distance(&self, other: &Self) -> R {
         self.0.distance(&other.0)
@@ -151,62 +145,17 @@ impl<R: Real> Interval<R> for Complex<R> {
     }
 }
 
-impl<R: Real> Bilinear<R> for Complex<R> {
-    fn dot(&self, other: &Self) -> R {
-        self.0.dot(&other.0)
-    }
-}
-
-impl<R: Real> Sesquilinear<R> for Complex<R> {
-    fn hermitian(&self, other: &Self) -> R {
-        self.0.hermitian(&other.0)
-    }
-}
-
-impl<R: Real> Quadratic for Complex<R> {
-    type F = R;
-
-    const N: usize = 2;
-
-    type Iter<'a>
-        = std::slice::Iter<'a, R>
-    where
-        Self: 'a;
-
-    fn iter(&self) -> Self::Iter<'_> {
-        self.0.iter()
-    }
-
-    fn from_fn(f: impl Fn(usize) -> Self::F) -> Self {
-        Self(Coords::<R, 2>::from_fn(f))
-    }
-
-    fn from_array<const N: usize>(arr: [Self::F; N]) -> Self {
-        Self(Coords::<R, 2>::from_array(arr))
-    }
-}
-
-impl<R: Real> Euclidean for Complex<R> {}
-
-impl<R: Real> Interval<R> for NonZero<Complex<R>> {
-    fn interval(&self, other: &Self) -> Complex<R> {
-        self.log(other).unwrap().norm().into()
-    }
-}
-
 impl<R: Real> Inv for NonZero<Complex<R>> {
     type Output = Self;
 
     fn inv(self) -> Self::Output {
-        let [a, b] = self.0.into();
-        let denom = self.0.dot(&self.0);
-        Self([a / denom, -b / denom].into())
+        Self(self.0.conj() * self.0.norm_squared().recip())
     }
 }
 
-impl<R: Real> LieGroup<Complex<R>> for NonZero<Complex<R>> {
+impl<R: Real> LieGroup<Coords<R, 2>> for NonZero<Complex<R>> {
     // e^z
-    fn identity_exp(v: Complex<R>) -> Self {
+    fn identity_exp(v: Coords<R, 2>) -> Self {
         let [a, b] = v.into();
 
         let (sin, cos) = b.sin_cos();
@@ -214,9 +163,9 @@ impl<R: Real> LieGroup<Complex<R>> for NonZero<Complex<R>> {
     }
 
     // Log(p)
-    fn identity_log(p: &Self) -> Option<Complex<R>> {
+    fn identity_log(p: &Self) -> Option<Coords<R, 2>> {
         let [a, b] = p.0.into();
-        let r = p.0.norm();
+        let r = p.0.norm_squared().sqrt();
 
         let theta = b.atan2(a);
 
@@ -224,4 +173,27 @@ impl<R: Real> LieGroup<Complex<R>> for NonZero<Complex<R>> {
     }
 }
 
-impl<R: Real> Field for Complex<R> {}
+impl<R: Real> Interval<R> for NonZero<Complex<R>> {
+    fn interval(&self, other: &Self) -> Complex<R> {
+        self.log(other).unwrap().norm().into()
+    }
+}
+
+impl<R: Real> Field for Complex<R> {
+    type Fixed = R;
+
+    fn conj(&self) -> Self {
+        let [a, b] = (*self).into();
+
+        [a, -b].into()
+    }
+
+    fn to_fixed(self) -> R {
+        let [a, _] = self.into();
+        a
+    }
+
+    fn from_fixed(x: R) -> Self {
+        [x, R::zero()].into()
+    }
+}

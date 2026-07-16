@@ -1,8 +1,8 @@
-use crate::impl_group_via_mul;
+use crate::{impl_group_via_mul, traits::Vector};
 use num_traits::{Inv, One, Zero};
 use std::ops::{Mul, Neg};
 
-use super::{Point, Quadratic, Smooth};
+use super::{Point, Smooth};
 
 /// A commutative monoid, in additive notation.
 ///
@@ -429,6 +429,96 @@ where
 ///
 /// A division ring whose multiplication is abelian.
 pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
+    type Fixed: Field;
+
+    fn from_nat(mut n: usize) -> Self {
+        let mut result = Self::zero();
+        let mut current = Self::one();
+
+        while n != 0 {
+            if n & 1 == 1 {
+                result = result + current;
+            }
+
+            current = current + current;
+            n >>= 1;
+        }
+
+        result
+    }
+
+    // Mathematically: The Fixed Field (F^σ) where σ(x) = x
+    fn conj(&self) -> Self;
+    fn norm_squared(self) -> Self::Fixed {
+        Self::to_fixed(self * self.conj())
+    }
+
+    // Forces a proof that a self-adjoint element can safely drop down
+    // into the invariant sub-field.
+    fn to_fixed(self) -> Self::Fixed;
+    fn from_fixed(x: Self::Fixed) -> Self;
+
+    // conj respects addition.
+    #[cfg(feature = "testing")]
+    fn check_conj_additive(a: Self, b: Self) -> bool {
+        (a + b).conj() == a.conj() + b.conj()
+    }
+
+    // conj respects multiplication.
+    #[cfg(feature = "testing")]
+    fn check_conj_multiplicative(a: Self, b: Self) -> bool {
+        (a * b).conj() == a.conj() * b.conj()
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_conj_unit() -> bool {
+        Self::one().conj() == Self::one()
+    }
+
+    // conj∘conj = id. Not derivable from the automorphism properties plus
+    // descent — see the earlier discussion attempting and failing to build
+    // a counterexample.
+    #[cfg(feature = "testing")]
+    fn check_conj_involution(a: Self) -> bool {
+        a.conj().conj() == a
+    }
+
+    // from_fixed respects addition.
+    #[cfg(feature = "testing")]
+    fn check_from_fixed_additive(x: Self::Fixed, y: Self::Fixed) -> bool {
+        Self::from_fixed(x + y) == Self::from_fixed(x) + Self::from_fixed(y)
+    }
+
+    // from_fixed respects multiplication.
+    #[cfg(feature = "testing")]
+    fn check_from_fixed_multiplicative(x: Self::Fixed, y: Self::Fixed) -> bool {
+        Self::from_fixed(x * y) == Self::from_fixed(x) * Self::from_fixed(y)
+    }
+
+    // x + conj(x) is self-adjoint by conj's additivity and involution alone,
+    // with no reference to Fixed — this is what actually cashes out the
+    // promise that a self-adjoint element "safely drops" into Fixed.
+    #[cfg(feature = "testing")]
+    fn check_descent(x: Self) -> bool {
+        let s = x + x.conj();
+        Self::from_fixed(s.to_fixed()) == s
+    }
+
+    // x * conj(x) is fixed for any x, not just self-adjoint x — the fact
+    // norm_squared relies on to call to_fixed at all.
+    #[cfg(feature = "testing")]
+    fn check_norm_squared_self_adjoint(x: Self) -> bool {
+        let n = x * x.conj();
+        n.conj() == n
+    }
+
+    // from_fixed's image lands inside conj's fixed points.
+    #[cfg(feature = "testing")]
+    fn check_from_fixed_is_fixed(x: Self::Fixed) -> bool {
+        let y = Self::from_fixed(x);
+        y.conj() == y
+    }
+
     #[cfg(feature = "testing")]
     fn check_commutativity(a: Self, b: Self) -> bool
     where
@@ -501,7 +591,7 @@ impl<F: Field, const N: usize> Inv for RootOfUnity<F, N> {
 
 impl_group_via_mul!(RootOfUnity<F, N>, F: Field, const N: usize);
 
-impl<F: Field, V: Quadratic<F = F>, const N: usize> LieGroup<V> for RootOfUnity<F, N> {
+impl<V: Vector, const N: usize> LieGroup<V> for RootOfUnity<V::F, N> {
     fn identity_exp(_: V) -> Self {
         Self::one()
     }
@@ -514,126 +604,6 @@ impl<F: Field, V: Quadratic<F = F>, const N: usize> LieGroup<V> for RootOfUnity<
 impl<F: Field, const N: usize> RootOfUnity<F, N> {
     pub fn new(x: F) -> Option<Self> {
         ((1..N).fold(x, |acc, _| acc * x).is_one()).then_some(Self(x))
-    }
-}
-
-/// A field equipped with a distinguished order-≤2 automorphism ("conjugation")
-/// and its fixed subfield.
-///
-/// The paradigm instance is `ℂ/ℝ`: `conj` is complex conjugation, `Fixed` is
-/// `ℝ`, and `Complex<R>`'s `to_fixed`/`from_fixed` are literally "take the
-/// real part" / "embed a real as a complex number." But the pattern is not
-/// specific to the reals — the same shape appears for finite fields
-/// (`𝔽_q²/𝔽_q`, with `conj(x) = x^q` the Frobenius automorphism) and for
-/// local fields (the unramified quadratic extension of `ℚ_p`), each with its
-/// own norm and unitary groups built the same way. Every [`Real`] scalar
-/// type gets the trivial instance for free (`conj = id`, `Fixed = Self`) via
-/// the blanket impl below, since a real field is its own fixed field under
-/// the identity — this is the degenerate case, included so that
-/// [`Sesquilinear`] and [`RealStructure`] can be stated once and apply
-/// uniformly whether or not `conj` actually does anything.
-///
-/// - **`conj` is a field automorphism**: additive, multiplicative, and
-///   unit-preserving.
-/// - **`conj` is an involution**: `x.conj().conj() == x`.
-/// - **`from_fixed` is a field embedding**, landing inside the fixed
-///   subfield: `from_fixed(y).conj() == from_fixed(y)`.
-/// - **`to_fixed` is a retraction of `from_fixed`**: `to_fixed(from_fixed(y))
-///   == y`.
-/// - **Descent**: a genuinely self-adjoint element of `Self` — not merely
-///   one already known to be in `from_fixed`'s image — round-trips exactly
-///   through `to_fixed`/`from_fixed`. `x + x.conj()` is self-adjoint by the
-///   automorphism and involution properties alone, with no reference to
-///   `Fixed`, which is what makes this check non-circular; it is the one
-///   that actually cashes out `to_fixed`'s doc claim that a self-adjoint
-///   element "safely drops" into the invariant subfield.
-///
-/// `norm_squared` is provided as `to_fixed(x * x.conj())`, which is
-/// well-defined because `x * x.conj()` is always self-adjoint (again by the
-/// automorphism and involution properties, plus commutativity), regardless
-/// of whether `x` itself is.
-///
-/// Certified by implementing this trait; the automorphism, involution, and
-/// embedding properties are currently assumed rather than independently
-/// checked — see [`Self::check_descent`] and
-/// [`Self::check_norm_squared_self_adjoint`] for what *is* verified by
-/// `test_involutive_field!`.
-///
-/// [`Real`]: crate::traits::Real
-/// [`Sesquilinear`]: crate::traits::Sesquilinear
-/// [`RealStructure`]: crate::traits::RealStructure
-pub trait InvolutiveField: Field {
-    // Mathematically: The Fixed Field (F^σ) where σ(x) = x
-    type Fixed: Field;
-    fn conj(&self) -> Self;
-    fn norm_squared(self) -> Self::Fixed {
-        Self::to_fixed(self * self.conj())
-    }
-
-    // Forces a proof that a self-adjoint element can safely drop down
-    // into the invariant sub-field.
-    fn to_fixed(self) -> Self::Fixed;
-    fn from_fixed(x: Self::Fixed) -> Self;
-
-    // conj respects addition.
-    #[cfg(feature = "testing")]
-    fn check_conj_additive(a: Self, b: Self) -> bool {
-        (a + b).conj() == a.conj() + b.conj()
-    }
-
-    // conj respects multiplication.
-    #[cfg(feature = "testing")]
-    fn check_conj_multiplicative(a: Self, b: Self) -> bool {
-        (a * b).conj() == a.conj() * b.conj()
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_conj_unit() -> bool {
-        Self::one().conj() == Self::one()
-    }
-
-    // conj∘conj = id. Not derivable from the automorphism properties plus
-    // descent — see the earlier discussion attempting and failing to build
-    // a counterexample.
-    #[cfg(feature = "testing")]
-    fn check_conj_involution(a: Self) -> bool {
-        a.conj().conj() == a
-    }
-
-    // from_fixed respects addition.
-    #[cfg(feature = "testing")]
-    fn check_from_fixed_additive(x: Self::Fixed, y: Self::Fixed) -> bool {
-        Self::from_fixed(x + y) == Self::from_fixed(x) + Self::from_fixed(y)
-    }
-
-    // from_fixed respects multiplication.
-    #[cfg(feature = "testing")]
-    fn check_from_fixed_multiplicative(x: Self::Fixed, y: Self::Fixed) -> bool {
-        Self::from_fixed(x * y) == Self::from_fixed(x) * Self::from_fixed(y)
-    }
-
-    // x + conj(x) is self-adjoint by conj's additivity and involution alone,
-    // with no reference to Fixed — this is what actually cashes out the
-    // promise that a self-adjoint element "safely drops" into Fixed.
-    #[cfg(feature = "testing")]
-    fn check_descent(x: Self) -> bool {
-        let s = x + x.conj();
-        Self::from_fixed(s.to_fixed()) == s
-    }
-
-    // x * conj(x) is fixed for any x, not just self-adjoint x — the fact
-    // norm_squared relies on to call to_fixed at all.
-    #[cfg(feature = "testing")]
-    fn check_norm_squared_self_adjoint(x: Self) -> bool {
-        let n = x * x.conj();
-        n.conj() == n
-    }
-
-    // from_fixed's image lands inside conj's fixed points.
-    #[cfg(feature = "testing")]
-    fn check_from_fixed_is_fixed(x: Self::Fixed) -> bool {
-        let y = Self::from_fixed(x);
-        y.conj() == y
     }
 }
 
@@ -815,13 +785,13 @@ pub trait Group: Point {
 /// [`Chart`]: crate::traits::Chart
 /// [`ExpMap`]: crate::traits::ExpMap
 /// [`TangentBundle`]: crate::traits::TangentBundle
-pub trait LieGroup<V: Quadratic>: Group {
+pub trait LieGroup<V: Vector>: Group {
     fn identity_exp(v: V) -> Self;
     fn identity_log(p: &Self) -> Option<V>;
 }
 
 // left translation
-impl<V: Quadratic, L: LieGroup<V>> Smooth<V> for L {
+impl<V: Vector, L: LieGroup<V>> Smooth<V> for L {
     fn exp(&self, coord: V) -> Self {
         let translated = Self::identity_exp(coord);
         self.compose(&translated)
@@ -884,7 +854,7 @@ impl<V: Quadratic, L: LieGroup<V>> Smooth<V> for L {
 /// because `-1` commutes with everything (it is, after all, just a scalar
 /// multiple of the identity), which is what makes `S³/{±1} → SO(3)` and
 /// `(R\{0}, ×)/{±1} → (R⁺, ×)` both legitimate instances of this trait.
-pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Quadratic>: Point {
+pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Vector>: Point {
     /// Maps `g` to the `Quotient` value representing its coset `gH`.
     fn new(g: G) -> Self;
 

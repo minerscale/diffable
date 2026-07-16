@@ -2381,7 +2381,7 @@ pub trait NerveComplex<
     /// straightening tolerance. Whether it is the *globally* shortest such
     /// geodesic depends on three independent facts: an
     /// [`NerveComplexParameters::overestimation_bound`] was asserted; the basin
-    /// search terminated by clearing its ceiling rather than a cap; and every 
+    /// search terminated by clearing its ceiling rather than a cap; and every
     /// candidate examined straightened successfully. `Geodesic::Global` requires all three.
     fn geodesic_path(p: &P, q: &P) -> Option<Geodesic<P, V::F>> {
         let (basin, exhaustive, straightening_result) = Self::basins(p, q)?;
@@ -2454,7 +2454,7 @@ macro_rules! impl_tangent_bundle_via_bounded {
         impl<$($generics)*> Chart<$manifold, $v> for $chart {
             fn to_local(&self, p: &$manifold) -> Option<$v> {
                 <$ambient as Chart<$manifold, $v>>::to_local(self.as_ref(), p)
-                    .filter(|v| self.sdf(v) < <$v as $crate::traits::Quadratic>::F::zero())
+                    .filter(|v| self.sdf(v) < <$v as $crate::traits::Vector>::F::zero())
             }
             fn to_global(&self, c: $v) -> $manifold {
                 <$ambient as Chart<$manifold, $v>>::to_global(self.as_ref(), c)

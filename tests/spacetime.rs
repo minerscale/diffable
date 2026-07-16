@@ -6,7 +6,12 @@ mod common;
 use common::*;
 
 use diffable::{
-    complex::Complex, coords::Coords, epsilon_metric::R64, spacetime::{Lorentz, Minkowski, Sl, Sl2c, SlAlgebra}, test_group, test_quadratic, test_quotient, test_tangent_bundle, traits::{LieGroup, Quotient, RootOfUnity},
+    complex::Complex,
+    coords::Coords,
+    epsilon_metric::R64,
+    spacetime::{Lorentz, Minkowski, Sl, Sl2c, SlAlgebra},
+    test_group, test_quotient, test_tangent_bundle, test_vector,
+    traits::{LieGroup, Quotient, RootOfUnity},
 };
 
 use num_traits::One;
@@ -27,7 +32,7 @@ pub fn arb_sl2c() -> impl Strategy<Value = Sl<2, Complex<R64>>> {
     arb_sl_algebra_2c().prop_map(Sl::identity_exp)
 }
 
-test_quadratic!(
+test_vector!(
     minkowski,
     R64,
     Minkowski<_>,
@@ -55,7 +60,13 @@ pub fn arb_root_of_unity() -> impl Strategy<Value = RootOfUnity<Complex<R64>, 2>
     })
 }
 
-test_quotient!(quotient_lorentz, Lorentz<R64>, arb_sl2c().prop_map(|x| Lorentz::new(x)), arb_sl2c(), arb_root_of_unity());
+test_quotient!(
+    quotient_lorentz,
+    Lorentz<R64>,
+    arb_sl2c().prop_map(|x| Lorentz::new(x)),
+    arb_sl2c(),
+    arb_root_of_unity()
+);
 test_tangent_bundle!(
     tangent_bundle_lorentz,
     Complex<R64>,

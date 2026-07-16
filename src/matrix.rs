@@ -3,11 +3,11 @@ use std::{
     ops::{Add, Index, IndexMut, Mul, Neg, Sub},
 };
 
-use num_traits::{Inv, One, Zero};
+use num_traits::{Inv, One, Zero, real::Real as _};
 
 use crate::{
     coords::array_zip_map,
-    traits::{DivRing, ExactCmp, Field, InvolutiveField, NonZero, Real},
+    traits::{DivRing, ExactCmp, Field, NonZero, Real},
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -27,7 +27,7 @@ impl<const N: usize, F: Field> IndexMut<(usize, usize)> for Matrix<N, F> {
     }
 }
 
-impl<const N: usize, F: InvolutiveField> PartialEq for Matrix<N, F> {
+impl<const N: usize, F: Field> PartialEq for Matrix<N, F> {
     fn eq(&self, other: &Self) -> bool {
         // Scale is computed from `self` alone, not chained with
         // `other` — this looks like it should break symmetry (self.eq(other) vs
@@ -145,12 +145,12 @@ impl<const N: usize, F: Field> Matrix<N, F> {
     }
 }
 
-impl<const N: usize, R: Real, F: InvolutiveField<Fixed = R>> Matrix<N, F> {
-    pub fn frobenius_norm(&self) -> R {
+impl<const N: usize, F: Field<Fixed: Real>> Matrix<N, F> {
+    pub fn frobenius_norm(&self) -> F::Fixed {
         self.0
             .as_flattened()
             .iter()
-            .fold(R::zero(), |acc, x| acc + x.norm_squared())
+            .fold(F::Fixed::zero(), |acc, x| acc + x.norm_squared())
             .sqrt()
     }
 }
@@ -232,7 +232,7 @@ macro_rules! todo_warn {
     }};
 }
 
-impl<const N: usize, R: Real, F: InvolutiveField<Fixed = R>> MatrixExponential for Matrix<N, F> {
+impl<const N: usize, R: Real, F: Field<Fixed = R>> MatrixExponential for Matrix<N, F> {
     fn exp(&self) -> Self {
         todo_warn!(
             "\n\n⚠️ SHITTY IMPLEMENTATION ALERT:\nUses unstable Taylor series. Come back and refactor to Scaling and Squaring!\n"

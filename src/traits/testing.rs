@@ -6,11 +6,14 @@
 // ---------------------------------------------------------------------------
 
 #[macro_export]
-macro_rules! test_quadratic {
+macro_rules! test_vector {
     ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_group, test_tangent_bundle, traits::Quadratic};
+            use $crate::{
+                test_group, test_tangent_bundle,
+                traits::{Form, Vector},
+            };
 
             test_tangent_bundle!(
                 tangent_bundle,
@@ -57,9 +60,9 @@ macro_rules! test_pseudo_euclidean {
     ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_interval, test_pseudo_riemannian, test_quadratic};
+            use $crate::{test_interval, test_pseudo_riemannian, test_vector};
 
-            test_quadratic!(quadratic, $scalar, $space, $arb_point, $arb_scalar);
+            test_vector!(quadratic, $scalar, $space, $arb_point, $arb_scalar);
             test_interval!(interval, $space, $arb_point);
             test_pseudo_riemannian!(riemannian, $space, $arb_point, $arb_point);
         }
@@ -463,39 +466,6 @@ macro_rules! test_sesquilinear {
     };
 }
 
-/// Tests the `RealStructure` axioms on top of the `Bilinear`/`Sesquilinear`
-/// axioms it presupposes: involution, antilinearity, and compatibility of
-/// the two forms via `conj`.
-#[macro_export]
-macro_rules! test_real_structure {
-    ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
-        mod $mod_name {
-            use super::*;
-            use $crate::{test_bilinear, test_sesquilinear, traits::RealStructure};
-
-            test_bilinear!(bilinear, $point, $arb_point, $arb_scalar);
-            test_sesquilinear!(sesquilinear, $point, $arb_point, $arb_scalar);
-
-            proptest! {
-                #[test]
-                fn involution(a in $arb_point) {
-                    prop_assert!(<$point as RealStructure<_>>::check_involution(a));
-                }
-
-                #[test]
-                fn antilinear(a in $arb_point, k in $arb_scalar) {
-                    prop_assert!(<$point as RealStructure<_>>::check_antilinear(a, k));
-                }
-
-                #[test]
-                fn forms_compatible(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as RealStructure<_>>::check_forms_compatible(a, b));
-                }
-            }
-        }
-    };
-}
-
 /// Tests the InnerProduct axioms: symmetry, bilinearity, positive-definiteness.
 #[macro_export]
 macro_rules! test_inner_product {
@@ -568,73 +538,62 @@ macro_rules! test_div_ring {
 /// Tests the `Field` axioms: that we have a commutative division ring.
 #[macro_export]
 macro_rules! test_field {
-    ($mod_name:ident, $point:ty, $arb_point:expr) => {
+    ($mod_name:ident, $point:ty, $arb_point:expr, $arb_fixed:expr) => {
         mod $mod_name {
             use super::*;
             use $crate::{test_div_ring, traits::Field};
 
             test_div_ring!(div_ring, $point, $arb_point);
-
             proptest! {
+                #[test]
+                fn conj_additive(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_conj_additive(a, b));
+                }
+
+                #[test]
+                fn conj_multiplicative(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_conj_multiplicative(a, b));
+                }
+
+                #[test]
+                fn conj_involution(a in $arb_point) {
+                    prop_assert!(<$point>::check_conj_involution(a));
+                }
+
+                #[test]
+                fn from_fixed_additive(x in $arb_fixed, y in $arb_fixed) {
+                    prop_assert!(<$point>::check_from_fixed_additive(x, y));
+                }
+
+                #[test]
+                fn from_fixed_multiplicative(x in $arb_fixed, y in $arb_fixed) {
+                    prop_assert!(<$point>::check_from_fixed_multiplicative(x, y));
+                }
+
+                #[test]
+                fn descent(x in $arb_point) {
+                    prop_assert!(<$point>::check_descent(x));
+                }
+
+                #[test]
+                fn norm_squared_self_adjoint(x in $arb_point) {
+                    prop_assert!(<$point>::check_norm_squared_self_adjoint(x));
+                }
+
+                #[test]
+                fn from_fixed_is_fixed(x in $arb_fixed) {
+                    prop_assert!(<$point>::check_from_fixed_is_fixed(x));
+                }
+
                 #[test]
                 fn commutativity(a in $arb_point, b in $arb_point) {
                     prop_assert!(<$point>::check_commutativity(a, b));
                 }
             }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! test_involutive_field {
-    ($mod_name:ident, $scalar:ty, $arb_scalar:expr, $arb_fixed:expr) => {
-        mod $mod_name {
-            use super::*;
-            use $crate::{test_field, traits::InvolutiveField};
-
-            // InvolutiveField: Field — certify the parent field itself
-            // before testing anything about conj on top of it.
-            test_field!(field, $scalar, $arb_scalar);
-
-            proptest! {
-                #[test]
-                fn conj_additive(a in $arb_scalar, b in $arb_scalar) {
-                    prop_assert!(<$scalar>::check_conj_additive(a, b));
-                }
-                #[test]
-                fn conj_multiplicative(a in $arb_scalar, b in $arb_scalar) {
-                    prop_assert!(<$scalar>::check_conj_multiplicative(a, b));
-                }
-
-                #[test]
-                fn conj_involution(a in $arb_scalar) {
-                    prop_assert!(<$scalar>::check_conj_involution(a));
-                }
-                #[test]
-                fn from_fixed_additive(x in $arb_fixed, y in $arb_fixed) {
-                    prop_assert!(<$scalar>::check_from_fixed_additive(x, y));
-                }
-                #[test]
-                fn from_fixed_multiplicative(x in $arb_fixed, y in $arb_fixed) {
-                    prop_assert!(<$scalar>::check_from_fixed_multiplicative(x, y));
-                }
-                #[test]
-                fn descent(x in $arb_scalar) {
-                    prop_assert!(<$scalar>::check_descent(x));
-                }
-                #[test]
-                fn norm_squared_self_adjoint(x in $arb_scalar) {
-                    prop_assert!(<$scalar>::check_norm_squared_self_adjoint(x));
-                }
-                #[test]
-                fn from_fixed_is_fixed(x in $arb_fixed) {
-                    prop_assert!(<$scalar>::check_from_fixed_is_fixed(x));
-                }
-            }
 
             #[test]
             fn conj_unit() {
-                assert!(<$scalar>::check_conj_unit());
+                assert!(<$point>::check_conj_unit());
             }
         }
     };

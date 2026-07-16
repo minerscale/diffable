@@ -1,4 +1,4 @@
-use crate::traits::{CGroup, DivRing, Euclidean, Interval, Real};
+use crate::traits::{CGroup, DivRing, Euclidean, Field, Form, Interval, Real, Vector};
 
 use super::{Point, Quadratic};
 use itertools::Itertools;
@@ -15,14 +15,14 @@ use num_traits::{One, Zero};
 ///
 /// `to_local` and `to_global` are the coordinate maps, with `to_local`
 /// returning `None` at the singularities of the chart.
-pub trait Chart<P: Point, V: Quadratic>: Sized {
+pub trait Chart<P: Point, V: Vector>: Sized {
     fn to_local(&self, point: &P) -> Option<V>;
     fn to_global(&self, coord: V) -> P;
     fn chart_at(p: &P) -> Self;
 
     /// Calculates the distance between `self` and `other`
     /// in local coordinates, based at &self.
-    fn local_distance(&self, other: &P) -> Option<V::F>
+    fn local_distance(&self, other: &P) -> Option<<V::F as Field>::Fixed>
     where
         V: Euclidean,
     {
@@ -47,7 +47,7 @@ pub trait Chart<P: Point, V: Quadratic>: Sized {
 /// that distances from the origin equal arc lengths along those geodesics.
 ///
 /// Additionally, you certify that Self::chart_at(&self.base_point()) == self
-pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
+pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
     fn base_point(&self) -> P {
         self.to_global(V::zero())
     }
@@ -56,7 +56,10 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
     // Meaningful only when base_point() is overridden, since
     // the default impl makes this trivially true by construction.
     #[cfg(feature = "testing")]
-    fn check_base_point_is_origin(&self) -> bool {
+    fn check_base_point_is_origin(&self) -> bool
+    where
+        V: Form,
+    {
         self.to_local(&self.base_point())
             .map_or(false, |c| c.self_dot() == V::F::zero())
     }
@@ -64,7 +67,10 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
     // Tests that log(exp(0)) == 0, i.e. that the
     // round trip at the origin is the identity.
     #[cfg(feature = "testing")]
-    fn check_preservation_of_origin(&self) -> bool {
+    fn check_preservation_of_origin(&self) -> bool
+    where
+        V: Form,
+    {
         let zero = V::zero();
         let exp_zero = self.to_global(zero);
         self.to_local(&exp_zero)
@@ -81,7 +87,10 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
     /// i.e. `chart_at` correctly identifies the chart when queried
     /// at a known base point.
     #[cfg(feature = "testing")]
-    fn check_chart_at_base_point(&self) -> bool {
+    fn check_chart_at_base_point(&self) -> bool
+    where
+        V: Form,
+    {
         Self::chart_at(&self.base_point()).check_preservation_of_origin()
     }
 
@@ -89,7 +98,7 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
     #[cfg(feature = "testing")]
     fn check_geodesic_symmetry(&self, v: V) -> bool
     where
-        V: PartialEq,
+        V: Form + PartialEq,
     {
         let fwd = match self.to_local(&self.to_global(v)) {
             Some(x) => x,
@@ -109,7 +118,10 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
     // geodesics are straight lines: exp(tv) lies on the same geodesic as exp(v),
     // i.e. log(exp(tv)) and log(exp(v)) are parallel in local coords.
     #[cfg(feature = "testing")]
-    fn check_geodesic_scaling(&self, v: V, t: V::F) -> bool {
+    fn check_geodesic_scaling(&self, v: V, t: V::F) -> bool
+    where
+        V: Form,
+    {
         let v_local = match self.to_local(&self.to_global(v)) {
             Some(x) => x,
             None => return true,
@@ -121,9 +133,7 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
         // Gate: did either geodesic wrap? exp parametrises by arc length, so
         // ‖log(exp(w))‖ ≤ ‖w‖ always, with equality iff no wrapping. If the
         // folded coord is shorter than the input, it wrapped — skip.
-        if v_local.self_dot() != v.dot(&v)
-            || tv_local.self_dot() != (v * t).self_dot()
-        {
+        if v_local.self_dot() != v.dot(&v) || tv_local.self_dot() != (v * t).self_dot() {
             return true;
         }
         let dot = tv_local.dot(&v_local);
@@ -167,7 +177,7 @@ pub trait PseudoRiemannian<V: Quadratic<F: Real>>: ExpMap<Self, V> + Interval<V:
         };
         let s = self.base_point().interval(&global);
 
-        s * s == local.self_dot().into() // signed interval vs re-logged tangent form
+        s * s == local.norm_squared().into() // signed interval vs re-logged tangent form
     }
 }
 
@@ -189,8 +199,11 @@ impl<V: Quadratic<F: Real>, E: ExpMap<Self, V> + Interval<V::F>> PseudoRiemannia
 /// bare [`Chart`] or [`ExpMap`].
 ///
 /// Use the `test_tangent_bundle!` macro to verify this invariant.
-pub trait TangentBundle<P: Point, V: Quadratic>: ExpMap<P, V> {
-    fn sectional_curvature(&self, v: V, w: V, epsilon: V::F) -> Option<V::F> {
+pub trait TangentBundle<P: Point, V: Vector>: ExpMap<P, V> {
+    fn sectional_curvature(&self, v: V, w: V, epsilon: V::F) -> Option<V::F>
+    where
+        V: Form,
+    {
         // Denominator: signed Gram determinant of the 2-plane span(v, w).
         //   G = Q(v)·Q(w) − ⟨v,w⟩²
         // Zero ⟺ the plane is degenerate (contains a null direction, or v,w
@@ -237,7 +250,10 @@ pub trait TangentBundle<P: Point, V: Quadratic>: ExpMap<P, V> {
 
     // p is the point on the manifold which is the base point.
     #[cfg(feature = "testing")]
-    fn check_universal_centring(p: P) -> bool {
+    fn check_universal_centring(p: P) -> bool
+    where
+        V: Form,
+    {
         let chart = Self::chart_at(&p);
         chart.check_preservation_of_origin() && chart.check_base_point_is_origin()
     }
@@ -265,7 +281,7 @@ pub trait TangentBundle<P: Point, V: Quadratic>: ExpMap<P, V> {
 /// [`ExpMap<Self, V>`]: crate::traits::ExpMap
 /// [`TangentBundle<Self, V>`]: crate::traits::TangentBundle
 /// [`LieGroup`]: crate::traits::LieGroup
-pub trait Smooth<V: Quadratic>: Point {
+pub trait Smooth<V: Vector>: Point {
     /// The exponential map at `self`: sends a tangent vector `v` to the
     /// point reached by following the geodesic from `self` in direction
     /// `v` for unit time.
@@ -277,7 +293,7 @@ pub trait Smooth<V: Quadratic>: Point {
     fn log(&self, other: &Self) -> Option<V>;
 }
 
-impl<V: Quadratic, S: Smooth<V>> Chart<Self, V> for S {
+impl<V: Vector, S: Smooth<V>> Chart<Self, V> for S {
     fn to_local(&self, point: &Self) -> Option<V> {
         self.log(point)
     }
@@ -291,11 +307,11 @@ impl<V: Quadratic, S: Smooth<V>> Chart<Self, V> for S {
     }
 }
 
-impl<V: Quadratic, L: Smooth<V>> ExpMap<Self, V> for L {
+impl<V: Vector, L: Smooth<V>> ExpMap<Self, V> for L {
     // optimisation
     fn base_point(&self) -> Self {
         self.clone()
     }
 }
 
-impl<V: Quadratic, L: Smooth<V>> TangentBundle<Self, V> for L {}
+impl<V: Vector, L: Smooth<V>> TangentBundle<Self, V> for L {}
