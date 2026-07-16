@@ -3,8 +3,10 @@ use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{ConstZero, Zero};
 
 use crate::{
-    complex::Complex, traits::{
-        Bilinear, DivRing, Euclidean, Field, Interval, InvolutiveField, Metric, Quadratic, Real, RealStructure, Sesquilinear,
+    complex::Complex,
+    traits::{
+        Bilinear, DivRing, Euclidean, Field, Interval, InvolutiveField, Metric, Quadratic, Real,
+        RealStructure, Sesquilinear,
     },
 };
 
@@ -314,7 +316,8 @@ impl<F: InvolutiveField, const N: usize, const M: usize> PartialEq for Coords<F,
         // vector on an indefinite or complex-non-Hermitian form, which
         // would make THAT a strictly worse comparison than the one being
         // fixed.
-        let scale = self.iter().chain(other.iter())
+        let scale = self
+            .iter()
             .fold(F::Fixed::zero(), |acc, x| acc + x.norm_squared());
 
         self.iter().zip(other.iter()).all(|(&a, &b)| {
@@ -322,7 +325,7 @@ impl<F: InvolutiveField, const N: usize, const M: usize> PartialEq for Coords<F,
             if scale == F::Fixed::zero() {
                 diff_sq == F::Fixed::zero()
             } else {
-                F::Fixed::zero() == diff_sq.div(scale)  // reuses Fixed's own tolerant `==`
+                F::Fixed::zero() == diff_sq.div(scale) // reuses Fixed's own tolerant `==`
             }
         })
     }

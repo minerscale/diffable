@@ -1,3 +1,4 @@
+use crate::impl_group_via_mul;
 use num_traits::{Inv, One, Zero};
 use std::ops::{Mul, Neg};
 
@@ -434,6 +435,85 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
         Self: PartialEq,
     {
         a.clone() * b.clone() == b * a
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct RootOfUnityPrimitive<F: Field, const N: usize>(RootOfUnity<F, N>);
+
+impl<F: Field, const N: usize> RootOfUnityPrimitive<F, N> {
+    pub fn new(x: F) -> Option<Self> {
+        (1..N)
+            .fold(Some(x), |c, _| {
+                c.and_then(|root| {
+                    let power = root * x;
+                    (power != F::one()).then(|| power)
+                })
+            })
+            .map(|x| Self(RootOfUnity(x)))
+    }
+
+    pub fn inner(&self) -> RootOfUnity<F, N> {
+        self.0
+    }
+
+    pub fn roots_of_unity(&self) -> impl Iterator<Item = RootOfUnity<F, N>> {
+        let mut acc = F::one();
+
+        (0..N).map(move |_| {
+            let ret = acc;
+            acc = acc * self.0.0;
+            RootOfUnity(ret)
+        })
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct RootOfUnity<F: Field, const N: usize>(F);
+
+impl<F: Field, const N: usize> One for RootOfUnity<F, N> {
+    fn one() -> Self {
+        // One is always a root of unity
+        Self(F::one())
+    }
+
+    fn is_one(&self) -> bool {
+        self.0 == F::one()
+    }
+}
+
+impl<F: Field, const N: usize> Mul<Self> for RootOfUnity<F, N> {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        // Unchecked by definition!
+        Self(self.0.mul(rhs.0))
+    }
+}
+
+impl<F: Field, const N: usize> Inv for RootOfUnity<F, N> {
+    type Output = Self;
+
+    fn inv(self) -> Self::Output {
+        Self(F::Mul::from(NonZero::new_unchecked(self.0)).inv().into().0)
+    }
+}
+
+impl_group_via_mul!(RootOfUnity<F, N>, F: Field, const N: usize);
+
+impl<F: Field, V: Quadratic<F = F>, const N: usize> LieGroup<V> for RootOfUnity<F, N> {
+    fn identity_exp(_: V) -> Self {
+        Self::one()
+    }
+
+    fn identity_log(p: &Self) -> Option<V> {
+        p.is_one().then(|| V::zero())
+    }
+}
+
+impl<F: Field, const N: usize> RootOfUnity<F, N> {
+    pub fn new(x: F) -> Option<Self> {
+        ((1..N).fold(x, |acc, _| acc * x).is_one()).then_some(Self(x))
     }
 }
 
@@ -879,25 +959,25 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Quadratic>: Point {
 /// [`TangentBundle`]: crate::traits::TangentBundle
 #[macro_export]
 macro_rules! impl_lie_group_via_quotient {
-    ($type:ty, $g:ty, $h:ty $(, $bound:path)*) => {
-        impl<V: $crate::traits::Euclidean<F: Real> + $($bound +)*> $crate::traits::Group for $type {
+    ($type:ty, $g:ty, $h:ty, $v:ty, $($generics:tt)*) => {
+        impl<$($generics)*> $crate::traits::Group for $type {
             fn identity() -> Self {
-                <Self as $crate::traits::Quotient<$g, $h, V>>::quotient_identity()
+                <Self as $crate::traits::Quotient<$g, $h, $v>>::quotient_identity()
             }
             fn compose(&self, rhs: &Self) -> Self {
-                <Self as $crate::traits::Quotient<$g, $h, V>>::quotient_compose(&self, &rhs)
+                <Self as $crate::traits::Quotient<$g, $h, $v>>::quotient_compose(&self, &rhs)
             }
             fn inverse(&self) -> Self {
-                <Self as $crate::traits::Quotient<$g, $h, V>>::quotient_inverse(&self)
+                <Self as $crate::traits::Quotient<$g, $h, $v>>::quotient_inverse(&self)
             }
         }
 
-        impl<V: $crate::traits::Euclidean<F: Real> + $($bound +)*> $crate::traits::LieGroup<V> for $type {
-            fn identity_exp(v: V) -> Self {
-                <Self as $crate::traits::Quotient<$g, $h, V>>::quotient_identity_exp(v)
+        impl<$($generics)*> $crate::traits::LieGroup<$v> for $type {
+            fn identity_exp(v: $v) -> Self {
+                <Self as $crate::traits::Quotient<$g, $h, $v>>::quotient_identity_exp(v)
             }
-            fn identity_log(p: &Self) -> Option<V> {
-                <Self as $crate::traits::Quotient<$g, $h, V>>::quotient_identity_log(p)
+            fn identity_log(p: &Self) -> Option<$v> {
+                <Self as $crate::traits::Quotient<$g, $h, $v>>::quotient_identity_log(p)
             }
         }
     };

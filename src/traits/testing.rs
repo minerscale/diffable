@@ -512,6 +512,11 @@ macro_rules! test_inner_product {
                 fn positive_definite(a in $arb_point) {
                     prop_assert!(<$point>::check_positive_definite(a));
                 }
+
+                #[test]
+                fn check_metric_compatibility(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_metric_compatibility(a, b));
+                }
             }
         }
     };

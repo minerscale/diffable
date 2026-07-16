@@ -46,7 +46,7 @@ impl<V: Euclidean<F: Real> + From<[<V as Quadratic>::F; 1]>> Quotient<V, Z<V>, V
     }
 }
 
-impl_lie_group_via_quotient!(S1<V>, V, Z<V>, From<[<V as Quadratic>::F; 1]>);
+impl_lie_group_via_quotient!(S1<V>, V, Z<V>, V, V: Euclidean + From<[<V as Quadratic>::F; 1]>);
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Torus<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>>(

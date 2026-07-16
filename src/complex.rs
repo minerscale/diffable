@@ -3,10 +3,8 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{Inv, One, Zero};
 
 use crate::{
-    coords::Coords,
-    traits::{
-        Bilinear, Euclidean, Field, InnerProduct, Interval, InvolutiveField, LieGroup, Metric,
-        NonZero, Quadratic, Real, Smooth,
+    coords::Coords, traits::{
+        Bilinear, Euclidean, Field, InnerProduct, Interval, InvolutiveField, LieGroup, Metric, NonZero, Quadratic, Real, Sesquilinear, Smooth,
     },
 };
 
@@ -156,6 +154,12 @@ impl<R: Real> Interval<R> for Complex<R> {
 impl<R: Real> Bilinear<R> for Complex<R> {
     fn dot(&self, other: &Self) -> R {
         self.0.dot(&other.0)
+    }
+}
+
+impl<R: Real> Sesquilinear<R> for Complex<R> {
+    fn hermitian(&self, other: &Self) -> R {
+        self.0.hermitian(&other.0)
     }
 }
 

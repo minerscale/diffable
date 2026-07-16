@@ -913,6 +913,7 @@ impl<
 ///
 /// [`Chart`]: crate::traits::Chart
 /// [`Self::nodes`]: Nodes::nodes
+/// [`ExpMap`]: crate::traits::ExpMap
 pub trait NerveComplex<
     P: Point,
     V: Euclidean<F: 'static + Send + Sync>,
@@ -1441,7 +1442,7 @@ pub trait NerveComplex<
     // with equality for the globally minimizing one.
     //
     // The single consequence worth internalising: a loose
-    // [`Self::overestimation_bound`] cannot corrupt the result, only widen
+    // [`NerveComplexParameters::overestimation_bound`] cannot corrupt the result, only widen
     // the search. That bound is used *only* to decide how many basins to
     // inspect — never to compute a distance.
     //
@@ -1677,7 +1678,8 @@ pub trait NerveComplex<
 
         let mut prev = Self::polyline_length(pts).ok_or(StraighteningResult::NotConnected)?;
 
-        let length = |pts| Self::polyline_length(pts).ok_or(StraighteningResult::<V::F>::NotConnected);
+        let length =
+            |pts| Self::polyline_length(pts).ok_or(StraighteningResult::<V::F>::NotConnected);
 
         let mut converged = false;
         for _ in 0..iters {
@@ -1750,12 +1752,9 @@ pub trait NerveComplex<
                     if rescues > Self::max_rescues() {
                         return Err(StraighteningResult::MaxRescues);
                     }
-                    pts = Self::rescue(
-                        pts,
-                        x,
-                    );
+                    pts = Self::rescue(pts, x);
                 }
-                Err(e) => return Err(e)
+                Err(e) => return Err(e),
             }
         };
         Ok((pts, length))
@@ -1921,12 +1920,19 @@ pub trait NerveComplex<
     ///
     /// Straightening only shortens, so the first converged length is already an
     /// upper bound on `d_M(p,q)`, and a better one than `graph_opt`, which pays
-    /// corner-cutting at every hop. Recall [`Self::overestimation_bound`] in its
-    /// per-geodesic form: *every* geodesic `γ` from `p` to `q` is shadowed by an
+    /// corner-cutting at every hop. Recall [`NerveComplexParameters::overestimation_bound`]
+    /// in its per-geodesic form: *every* geodesic `γ` from `p` to `q` is shadowed by an
     /// edge-path of graph length `≤ (1+e)·len(γ)`. An unreached basin's shortest
     /// edge-path has graph length `≥ f`, so `len(γ) ≥ f/(1+e)`. Once
     /// `f > (1+e)·best`, no unreached basin can beat `best`.
-    fn basins(p: &P, q: &P) -> Option<(Result<Basin<P, V::F>, V::F>, bool, StraighteningResult<V::F>)> {
+    fn basins(
+        p: &P,
+        q: &P,
+    ) -> Option<(
+        Result<Basin<P, V::F>, V::F>,
+        bool,
+        StraighteningResult<V::F>,
+    )> {
         /// Frontier entry. `tip` indexes the prefix arena; `key` indexes the
         /// key table. Both are `u32`, so an entry is copyable and a push
         /// allocates nothing.
@@ -2114,7 +2120,6 @@ pub trait NerveComplex<
         // `O(basins)` completions, so scan the flat list.
         let mut completed: Vec<ArcPoly<P, V::F>> = Vec::new();
 
-        //let mut basins: Vec<Basin<P, V::F>> = Vec::new();
         let mut best: Option<Result<Basin<P, V::F>, V::F>> = None;
         let mut straighten_result = StraighteningResult::Success;
         let mut straightened = 0usize;
@@ -2219,20 +2224,25 @@ pub trait NerveComplex<
                 // free warm start: `straighten` merely finishes it.
                 let start = smoothed.as_ref().map_or(raw, |ap| ap.pts.clone());
 
-                let set_best = |best: &mut Option<Result<Basin<P, V::F>, V::F>>, v: Result<Basin<P, V::F>, V::F>| {
+                let set_best = |best: &mut Option<Result<Basin<P, V::F>, V::F>>,
+                                v: Result<Basin<P, V::F>, V::F>| {
                     let length = match v {
                         Ok(ref b) => b.length,
                         Err(len) => len,
                     };
 
                     match best {
-                        Some(Ok(b)) => if length < b.length {
-                            *best = Some(v)
-                        },
+                        Some(Ok(b)) => {
+                            if length < b.length {
+                                *best = Some(v)
+                            }
+                        }
                         // use le because all else equal, we'd like an explicit path
-                        Some(Err(blen)) => if length <= *blen {
-                            *best = Some(v)
-                        },
+                        Some(Err(blen)) => {
+                            if length <= *blen {
+                                *best = Some(v)
+                            }
+                        }
                         None => *best = Some(v),
                     }
                 };
@@ -2370,9 +2380,9 @@ pub trait NerveComplex<
     /// from `p` to `q` — never an approximation, up to `O(tol²)` in the
     /// straightening tolerance. Whether it is the *globally* shortest such
     /// geodesic depends on three independent facts: an
-    /// [`Self::overestimation_bound`] was asserted; the basin search terminated
-    /// by clearing its ceiling rather than a cap; and every candidate examined
-    /// straightened successfully. `Geodesic::Global` requires all three.
+    /// [`NerveComplexParameters::overestimation_bound`] was asserted; the basin
+    /// search terminated by clearing its ceiling rather than a cap; and every 
+    /// candidate examined straightened successfully. `Geodesic::Global` requires all three.
     fn geodesic_path(p: &P, q: &P) -> Option<Geodesic<P, V::F>> {
         let (basin, exhaustive, straightening_result) = Self::basins(p, q)?;
 

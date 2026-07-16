@@ -5,8 +5,7 @@ use std::ops::{Add, Mul};
 use num_traits::Zero;
 
 use crate::{
-    complex::Complex,
-    traits::{Field, InvolutiveField, NonZero},
+    complex::Complex, traits::{CGroup, Field, InvolutiveField, NonZero},
 };
 use num_traits::{Euclid, Inv};
 
@@ -29,11 +28,12 @@ use num_traits::{Euclid, Inv};
 /// two elements are the same — and it is mathematically an [`Eq`] relation.
 /// The library nonetheless does not require `Eq` (or even `PartialEq`) as a
 /// bound, because for the scalar types in practical use that equality is not
-/// computably decidable; see [`Scalar`]. Equality is required only in the
+/// computably decidable; see [`Real`]. Equality is required only in the
 /// `#[cfg(feature = "testing")]` certification layer, never for use.
 ///
 /// [`Chart`]: crate::traits::Chart
 /// [`Group`]: crate::traits::Group
+/// [`Real`]: crate::traits::Real
 pub trait Point: Clone {}
 
 impl<T: Clone> Point for T {}
@@ -214,10 +214,7 @@ pub trait Interval<R: Real>: Point {
 pub trait Bilinear<F: Field>: Point {
     fn dot(&self, other: &Self) -> F;
 
-    /// The quadratic form `Q(v) = ⟨v,v⟩`. **Signed**: may be negative on an
-    /// indefinite space. This is *not* the square of a norm — do not `sqrt`
-    /// it without first handling the sign (see causal character).
-    fn norm_squared(&self) -> F {
+    fn self_dot(&self) -> F {
         self.dot(self)
     }
 
@@ -247,9 +244,36 @@ pub trait Bilinear<F: Field>: Point {
     }
 }
 
-pub trait Sesquilinear<F: InvolutiveField>: Point {
+/// A Hermitian (sesquilinear) form on a vector space.
+///
+/// The space of all values of a type `P: Sesquilinear<F>` is interpreted as a
+/// vector space equipped with a Hermitian pairing
+/// `⟨·,·⟩: P × P → F`, where `F` is an [`InvolutiveField`]. The pairing is
+/// linear in its first argument and conjugate-linear in its second, satisfying
+/// `⟨v,w⟩ = conj(⟨w,v⟩)`.
+///
+/// Unlike [`Bilinear`], the codomain may be a field with a nontrivial
+/// involution, such as the complex numbers. Hermitian forms are the natural
+/// analogue of symmetric bilinear forms over such fields.
+///
+/// No definiteness is assumed. The induced quadratic form
+/// `Q(v) = ⟨v,v⟩` is always fixed by the involution (for example, real-valued
+/// over `ℂ`), but it may still be positive, negative, or zero for `v ≠ 0`.
+/// Consequently, this trait provides no norm or metric. A norm and the
+/// associated [`Metric`] arise only once positive-definiteness is imposed
+/// (see [`InnerProduct`] or the corresponding positive-definite Hermitian
+/// refinement, if provided).
+///
+/// `self_dot` returns the value `⟨v,v⟩` in the fixed field `F::Fixed`. This is
+/// the value of the quadratic form, not the square of a norm, and should not
+/// be square-rooted unless positive-definiteness is known.
+///
+/// The certified invariants are Hermitian symmetry, additivity, and scalar
+/// linearity in the first argument. Conjugate-linearity in the second argument
+/// follows from these together with Hermitian symmetry.
+pub trait Sesquilinear<F: InvolutiveField>: CGroup {
     fn hermitian(&self, other: &Self) -> F;
-    fn self_dot(&self) -> F::Fixed {
+    fn norm_squared(&self) -> F::Fixed {
         self.hermitian(self).to_fixed()
     }
 
@@ -294,7 +318,7 @@ pub trait Sesquilinear<F: InvolutiveField>: Point {
 /// vector space. And not every [`Bilinear`] form is an `InnerProduct` — a
 /// Minkowski scalar product is bilinear and symmetric but indefinite, so it
 /// induces no metric at all.
-pub trait InnerProduct<R: Real>: Bilinear<R> + Metric<R> {
+pub trait InnerProduct<R: Real, F: InvolutiveField<Fixed = R> = R>: Sesquilinear<F> + Metric<R> {
     /// The norm `‖v‖ = sqrt(⟨v,v⟩)`. Well-defined and real because the form
     /// is positive-definite. On an indefinite [`Bilinear`] space this would
     /// not be real — which is why it lives here, not on the base.
@@ -309,6 +333,11 @@ pub trait InnerProduct<R: Real>: Bilinear<R> + Metric<R> {
     {
         a == Self::zero() || a.norm() > R::zero()
     }
+
+    #[cfg(feature="testing")]
+    fn check_metric_compatibility(a: Self, b: Self) -> bool {
+        a.sub(&b).norm_squared().sqrt() == a.distance(&b)
+    }
 }
 
-impl<R: Real, P: Bilinear<R> + Metric<R>> InnerProduct<R> for P {}
+impl<R: Real, F: InvolutiveField<Fixed = R>, P: Sesquilinear<F> + Metric<R>> InnerProduct<R, F> for P {}

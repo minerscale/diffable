@@ -146,7 +146,7 @@ pub trait Quadratic:
     {
         let diff = a.clone() - b.clone();
         let diff_translated = (a.clone() + c.clone()) - (b.clone() + c.clone());
-        diff.norm_squared() == diff_translated.norm_squared()
+        diff.self_dot() == diff_translated.self_dot()
     }
 
     // Geodesic scaling holds globally (infinite injectivity radius):

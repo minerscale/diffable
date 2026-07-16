@@ -1,13 +1,13 @@
 mod chart;
-mod euclidean;
+mod vector;
 mod foundation;
-mod group;
+mod algebra;
 mod simplicial;
 
 pub use chart::*;
-pub use euclidean::*;
+pub use vector::*;
 pub use foundation::*;
-pub use group::*;
+pub use algebra::*;
 pub use simplicial::*;
 
 #[cfg(feature = "testing")]

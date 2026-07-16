@@ -449,7 +449,7 @@ impl<V: Euclidean> Quotient<S3<V>, S0<V>, V> for So3<V> {
     }
 }
 
-impl_lie_group_via_quotient!(So3<V>, S3<V>, S0<V>);
+impl_lie_group_via_quotient!(So3<V>, S3<V>, S0<V>, V, V: Euclidean);
 
 use crate::epsilon_metric::R64;
 

@@ -58,7 +58,7 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
     #[cfg(feature = "testing")]
     fn check_base_point_is_origin(&self) -> bool {
         self.to_local(&self.base_point())
-            .map_or(false, |c| c.norm_squared() == V::F::zero())
+            .map_or(false, |c| c.self_dot() == V::F::zero())
     }
 
     // Tests that log(exp(0)) == 0, i.e. that the
@@ -68,7 +68,7 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
         let zero = V::zero();
         let exp_zero = self.to_global(zero);
         self.to_local(&exp_zero)
-            .map_or(false, |c| c.norm_squared() == V::F::zero())
+            .map_or(false, |c| c.self_dot() == V::F::zero())
     }
 
     /// If a chart centred at `p` exists, `chart_at(p)` returns it.
@@ -100,7 +100,7 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
             None => return true,
         };
         // gate: skip if either geodesic wrapped (folded norm ≠ input norm)
-        if fwd.norm_squared() != v.norm_squared() || bwd.norm_squared() != (-v).norm_squared() {
+        if fwd.self_dot() != v.self_dot() || bwd.self_dot() != (-v).self_dot() {
             return true;
         }
         fwd == -bwd
@@ -121,13 +121,13 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
         // Gate: did either geodesic wrap? exp parametrises by arc length, so
         // ‖log(exp(w))‖ ≤ ‖w‖ always, with equality iff no wrapping. If the
         // folded coord is shorter than the input, it wrapped — skip.
-        if v_local.norm_squared() != v.norm_squared()
-            || tv_local.norm_squared() != (v * t).norm_squared()
+        if v_local.self_dot() != v.dot(&v)
+            || tv_local.self_dot() != (v * t).self_dot()
         {
             return true;
         }
         let dot = tv_local.dot(&v_local);
-        dot * dot == tv_local.norm_squared() * v_local.norm_squared()
+        dot * dot == tv_local.self_dot() * v_local.self_dot()
     }
 }
 
@@ -151,6 +151,8 @@ pub trait ExpMap<P: Point, V: Quadratic>: Chart<P, V> {
 /// statement `d(p, exp_p v) = ‖v‖`, recovered by taking `√Q`.
 ///
 /// Verified by `test_pseudo_riemannian!`.
+///
+/// [`Bilinear`]: crate::traits::Bilinear
 pub trait PseudoRiemannian<V: Quadratic<F: Real>>: ExpMap<Self, V> + Interval<V::F> {
     #[cfg(feature = "testing")]
     fn check_isometry(&self, v: V) -> bool {
@@ -165,7 +167,7 @@ pub trait PseudoRiemannian<V: Quadratic<F: Real>>: ExpMap<Self, V> + Interval<V:
         };
         let s = self.base_point().interval(&global);
 
-        s * s == local.norm_squared().into() // signed interval vs re-logged tangent form
+        s * s == local.self_dot().into() // signed interval vs re-logged tangent form
     }
 }
 
@@ -193,8 +195,8 @@ pub trait TangentBundle<P: Point, V: Quadratic>: ExpMap<P, V> {
         //   G = Q(v)·Q(w) − ⟨v,w⟩²
         // Zero ⟺ the plane is degenerate (contains a null direction, or v,w
         // dependent). Sectional curvature is undefined there — return None.
-        let qv = v.norm_squared();
-        let qw = w.norm_squared();
+        let qv = v.self_dot();
+        let qw = w.self_dot();
         let vw = v.dot(&w);
         let gram = (qv * qw).sub(&(vw * vw));
         if gram == V::F::zero() {
@@ -211,7 +213,7 @@ pub trait TangentBundle<P: Point, V: Quadratic>: ExpMap<P, V> {
         // curvature is the O(ε⁴) correction:
         //   Q(δ) = ε²·Q(w) − (1/3)·ε⁴·⟨R(w,v)v,w⟩ + O(ε⁵)
         // Solve for the numerator ⟨R(w,v)v,w⟩.
-        let q_delta = delta.norm_squared();
+        let q_delta = delta.self_dot();
         let eps2 = epsilon * epsilon;
         let three = V::F::one() + V::F::one() + V::F::one();
         let numerator = three * ((eps2 * qw).sub(&q_delta)).div(eps2 * eps2);

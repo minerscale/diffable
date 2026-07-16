@@ -20,7 +20,7 @@
 //!
 //! - [`traits::Point`] — an element of a carrier set; no topology, no
 //!   smoothness, just the ability to hold and duplicate a value
-//! - [`traits::Scalar`] — a real-number type for use as a coordinate field;
+//! - [`traits::Real`] — a real-number type for use as a coordinate field;
 //!   see its doc comment for the library's stance on approximate equality
 //! - [`traits::Interval`] — a *signed* squared interval `s²: M × M → R`
 //!   (negative timelike, zero null, positive spacelike); the pseudo-metric
@@ -172,5 +172,6 @@ pub mod complex;
 pub mod discrete;
 pub mod epsilon_metric;
 pub mod flat;
+pub mod matrix;
 pub mod spacetime;
 pub use epsilon_metric::{R32, R64};
