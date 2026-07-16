@@ -205,19 +205,18 @@ impl<F: Field, const N: usize, const M: usize> PartialEq for Coords<F, N, M> {
 
 impl<R: Field, const N: usize, const M: usize> Form for Coords<R, N, M> {
     fn flat(&self) -> Dual<Self> {
-        Dual::from_fn(|i| if i < M { -self[i] } else { self[i] })
+        Dual::from_fn(|i| if i < M { -self[i] } else { self[i] }.conj())
     }
 }
 
 impl<R: Field, const N: usize, const M: usize> Nondegenerate for Coords<R, N, M> {
     fn sharp(v: Dual<Self>) -> Self {
-        Self::from_fn(|i| if i < M { -v[i] } else { v[i] })
+        Self::from_fn(|i| if i < M { -v[i] } else { v[i] }.conj())
     }
 }
 
 impl<F: Field, const N: usize, const M: usize> Sesquilinear for Coords<F, N, M> {}
-impl<F: Field<Fixed = Self::F>, const N: usize, const M: usize> Bilinear for Coords<F, N, M> {}
-impl<F: Field<Fixed = Self::F>, const N: usize, const M: usize> Quadratic for Coords<F, N, M> where
+impl<F: Field, const N: usize, const M: usize> Quadratic for Coords<F, N, M> where
     Self: Bilinear
 {
 }

@@ -118,22 +118,23 @@ pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
     // geodesics are straight lines: exp(tv) lies on the same geodesic as exp(v),
     // i.e. log(exp(tv)) and log(exp(v)) are parallel in local coords.
     #[cfg(feature = "testing")]
-    fn check_geodesic_scaling(&self, v: V, t: V::F) -> bool
+    fn check_geodesic_scaling(&self, v: V, t: <V::F as Field>::Fixed) -> bool
     where
         V: Form,
     {
+        let t_as_f = V::F::from_fixed(t);
         let v_local = match self.to_local(&self.to_global(v)) {
             Some(x) => x,
             None => return true,
         };
-        let tv_local = match self.to_local(&self.to_global(v * t)) {
+        let tv_local = match self.to_local(&self.to_global(v * t_as_f)) {
             Some(x) => x,
             None => return true,
         };
         // Gate: did either geodesic wrap? exp parametrises by arc length, so
         // ‖log(exp(w))‖ ≤ ‖w‖ always, with equality iff no wrapping. If the
         // folded coord is shorter than the input, it wrapped — skip.
-        if v_local.self_dot() != v.dot(&v) || tv_local.self_dot() != (v * t).self_dot() {
+        if v_local.self_dot() != v.dot(&v) || tv_local.self_dot() != (v * t_as_f).self_dot() {
             return true;
         }
         let dot = tv_local.dot(&v_local);

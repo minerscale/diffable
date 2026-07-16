@@ -1,6 +1,5 @@
 use num_traits::{Zero, real::Real as _};
 use std::{
-    array::from_fn,
     ops::{Add, Index, IndexMut, Mul, Neg, Sub},
 };
 
@@ -364,32 +363,8 @@ impl<E: Vector> LieGroup<E> for E {
 /// The three certified invariants — symmetry, additivity, and scalar
 /// linearity of the pairing — are signature-agnostic and hold in the
 /// indefinite case exactly as in the definite one.
-pub trait Bilinear: Sesquilinear {
-    #[cfg(feature = "testing")]
-    fn check_symmetry(a: Self, b: Self) -> bool {
-        a.dot(&b) == b.dot(&a)
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_additivity(a: Self, b: Self, c: Self) -> bool
-    where
-        Self: Add<Output = Self> + Clone,
-    {
-        let lhs = (a.clone() + b.clone()).dot(&c);
-        let rhs = a.dot(&c) + b.dot(&c);
-        lhs == rhs
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_scalar_linearity(a: Self, c: Self, k: Self::F) -> bool
-    where
-        Self: Mul<Self::F, Output = Self> + Clone,
-    {
-        let lhs = (a.clone() * k).dot(&c);
-        let rhs = k * a.dot(&c);
-        lhs == rhs
-    }
-}
+pub trait Bilinear: Sesquilinear {}
+impl<F: Field<Fixed = F>, V: Sesquilinear<F = F>> Bilinear for V {}
 
 /// A Hermitian (sesquilinear) form on a vector space.
 ///

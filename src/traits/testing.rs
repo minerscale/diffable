@@ -12,7 +12,7 @@ macro_rules! test_vector {
             use super::*;
             use $crate::{
                 test_group, test_tangent_bundle,
-                traits::{Form, Vector},
+                traits::{Field, Form, Vector, Nondegenerate},
             };
 
             test_tangent_bundle!(
@@ -45,9 +45,16 @@ macro_rules! test_vector {
                 fn global_geodesic_scaling(
                     p in $arb_point,
                     v in $arb_point,
-                    t in $arb_scalar, // unbounded t, flat space has no injectivity radius
+                    t in $arb_scalar,
                 ) {
                     prop_assert!(<$space>::check_global_geodesic_scaling(&p, v, t));
+                }
+
+                #[test]
+                fn check_isomorphism(
+                    p in $arb_point,
+                ) {
+                    prop_assert!(<$space>::check_isomorphism(&p))
                 }
             }
         }
@@ -60,11 +67,12 @@ macro_rules! test_pseudo_euclidean {
     ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_interval, test_pseudo_riemannian, test_vector};
+            use $crate::{test_interval, test_pseudo_riemannian, test_vector, test_sesquilinear};
 
             test_vector!(quadratic, $scalar, $space, $arb_point, $arb_scalar);
             test_interval!(interval, $space, $arb_point);
             test_pseudo_riemannian!(riemannian, $space, $arb_point, $arb_point);
+            test_sesquilinear!(sesquilinear, $space, $arb_point, $arb_scalar);
         }
     };
 }
@@ -122,7 +130,7 @@ macro_rules! test_exp_map {
             use super::*;
             use $crate::{
                 test_chart,
-                traits::{Chart, ExpMap},
+                traits::{Field, Chart, ExpMap},
             };
 
             // inherit all Chart tests
@@ -156,7 +164,7 @@ macro_rules! test_exp_map {
                 #[test]
                 fn geodesic_scaling(p in $arb_point, v in $arb_vec, t in $arb_scalar) {
                     let chart = <$chart>::chart_at(&p);
-                    prop_assert!(chart.check_geodesic_scaling(v, t));
+                    prop_assert!(chart.check_geodesic_scaling(v, t.to_fixed()));
                 }
             }
         }
@@ -410,17 +418,19 @@ macro_rules! test_interval {
     };
 }
 
-/// Tests the Bilinear axioms: symmetry and bilinearity.
+/// Tests the `Sesquilinear` axioms: Hermitian symmetry, additivity, and
+/// scalar linearity in the first argument.
 #[macro_export]
-macro_rules! test_bilinear {
+macro_rules! test_sesquilinear {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::traits::Bilinear;
+            use $crate::traits::Sesquilinear;
+
             proptest! {
                 #[test]
-                fn symmetry(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_symmetry(a, b));
+                fn hermitian_symmetry(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_hermitian_symmetry(a, b));
                 }
 
                 #[test]
@@ -437,45 +447,16 @@ macro_rules! test_bilinear {
     };
 }
 
-/// Tests the `Sesquilinear` axioms: Hermitian symmetry, additivity, and
-/// scalar linearity in the first argument.
-#[macro_export]
-macro_rules! test_sesquilinear {
-    ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
-        mod $mod_name {
-            use super::*;
-            use $crate::traits::Sesquilinear;
-
-            proptest! {
-                #[test]
-                fn hermitian_symmetry(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as Sesquilinear<_>>::check_hermitian_symmetry(a, b));
-                }
-
-                #[test]
-                fn additivity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point as Sesquilinear<_>>::check_additivity(a, b, c));
-                }
-
-                #[test]
-                fn scalar_linearity(a in $arb_point, c in $arb_point, k in $arb_scalar) {
-                    prop_assert!(<$point as Sesquilinear<_>>::check_scalar_linearity(a, c, k));
-                }
-            }
-        }
-    };
-}
-
 /// Tests the InnerProduct axioms: symmetry, bilinearity, positive-definiteness.
 #[macro_export]
 macro_rules! test_inner_product {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::test_bilinear;
+            use $crate::test_sesquilinear;
             use $crate::traits::InnerProduct;
 
-            test_bilinear!(bilinear, $point, $arb_point, $arb_scalar);
+            test_sesquilinear!(bilinear, $point, $arb_point, $arb_scalar);
 
             proptest! {
                 #[test]

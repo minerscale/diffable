@@ -167,8 +167,6 @@ where
 #[derive(Debug, Copy, Clone)]
 pub struct SlAlgebra<F: Field, const N: usize, const D: usize>(Coords<F, D>);
 
-impl<F: Field, const N: usize, const D: usize> Quadratic for SlAlgebra<F, N, D> {}
-
 impl<F: Field, const N: usize, const D: usize> PartialEq for SlAlgebra<F, N, D> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
@@ -390,8 +388,9 @@ impl<F: Field, const N: usize, const D: usize> Nondegenerate for SlAlgebra<F, N,
 
 // Here, D is N*N - 1, we do this this way because of const-generics restrictions
 // we statically assert in the constructor that D = N*N - 1.
-impl<F: Field, const N: usize, const D: usize> Bilinear for SlAlgebra<F, N, D> {}
-impl<F: Field, const N: usize, const D: usize> Sesquilinear for SlAlgebra<F, N, D> {}
+impl<F: Field<Fixed = F>, const N: usize, const D: usize> Sesquilinear for SlAlgebra<F, N, D> {}
+impl<F: Field, const N: usize, const D: usize> Quadratic for SlAlgebra<F, N, D>
+where SlAlgebra<F, N, D>: Bilinear {}
 
 impl<F: Field, const N: usize, const D: usize> Vector for SlAlgebra<F, N, D> {
     type F = F;
