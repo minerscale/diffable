@@ -1,168 +1,191 @@
-//! # Diffable
+//! # diffable
+//! A differential geometry framework for Rust. Each trait represents a
+//! mathematical structure—group, vector space, smooth atlas, metric, and
+//! so on. Implementing a trait certifies that a type carries that structure,
+//! while blanket implementations derive the structures that follow from it.
+//! In practice, implementing a single high-level trait often gives
+//! you the surrounding geometry for free.
 //!
-//! A differential geometry framework for Rust. Implementing a trait certifies
-//! that a type carries the corresponding mathematical structure — a group
-//! operation, a metric, a smooth atlas — and the trait hierarchy encodes the
-//! dependency order between those structures, so blanket implementations
-//! derive the consequences automatically.
+//! ### Structure
 //!
-//! ## Structure
+//! The library is organised around a hierarchy of traits that mirror the
+//! mathematical structure of differential geometry.
 //!
-//! The library is organised around a hierarchy of traits that mirror
-//! the mathematical structure of differential geometry:
+//! #### Foundation — points, scalars, separation
 //!
-//! ### Foundation — sets, intervals, scalar products
-//!
-//! These come in matched **definite / indefinite** pairs: the indefinite
-//! member is the base, and the definite member refines it by adding
-//! positive-definiteness (and the metric-space structure that definiteness
-//! makes available).
-//!
-//! - [`traits::Point`] — an element of a carrier set; no topology, no
-//!   smoothness, just the ability to hold and duplicate a value
-//! - [`traits::Real`] — a real-number type for use as a coordinate field;
-//!   see its doc comment for the library's stance on approximate equality
+//! - [`traits::Point`] — the underlying set: an element of a manifold, group, or
+//!   metric space. Implement it and your type's values become the points of a
+//!   space; everything else builds on this
+//! - [`traits::Field`] — the scalar field of a vector space
+//! - [`traits::Real`] — a totally-ordered real-number field, used as a
+//!   coordinate scalar and as the target of every distance. See
+//!   [`traits::ExactCmp`] for the strict order that convergence tests need
+//!   when an implementor's equality is tolerance-based
 //! - [`traits::Interval`] — a *signed* squared interval `s²: M × M → R`
 //!   (negative timelike, zero null, positive spacelike); the pseudo-metric
-//!   base, claiming no metric-space axioms
-//! - [`traits::Metric`] — a distance function `d: M × M → R` satisfying the
-//!   metric-space axioms; the definite refinement, bridged into `Interval`
-//!   by `s² = d²`. Independent of any coordinate structure
-//! - [`traits::Bilinear`] — a symmetric bilinear scalar product `⟨·,·⟩` of
-//!   *arbitrary signature*, with a signed `norm_squared` but **no** norm or
-//!   distance; the Minkowski-capable base
-//! - [`traits::InnerProduct`] — a *positive-definite* `Bilinear` form,
-//!   inducing a genuine norm and (via `Metric`) a distance; the definite
-//!   refinement
+//!   base, claiming no metric-space axioms. `interval_squared` is the
+//!   primitive, `interval` its signed square root
+//! - [`traits::Metric`] — the *definite* refinement: a genuine non-negative
+//!   distance `d = √(interval_squared)`. Independent of any coordinate
+//!   structure
 //!
-//! ### Charts — local coordinate structure
+//! #### Vector spaces and forms
 //!
-//! - [`traits::Chart`] — a coordinate chart mapping points of a manifold to
-//!   a flat (pseudo-)Euclidean coordinate space and back
+//! - [`traits::Vector`] — a finite-dimensional coordinate vector space over a
+//!   `Field`. It is the local model a [`traits::Chart`] maps into and the
+//!   tangent space of every manifold, and is its own additive
+//!   [`traits::LieGroup`]. [`traits::Dual`] is the dual space `V*`
+//! - A bare `Vector` carries no metric. Scalar products are induced by
+//!   progressively stronger traits:
+//! 	- [`traits::Form`] gives a lowering map `♭: V → V*`
+//!       and the induced pairing.
+//! 	- [`traits::Nondegenerate`] makes `♭` invertible by adding `♯`
+//!     - [`traits::Sesquilinear`] specialises to Hermitian forms,
+//!		- [`traits::Bilinear`] specialises further to symmetric bilinear forms.
+//!     - [`traits::InnerProduct`] adds positive definiteness.
+//!
+//! #### Charts — local coordinate structure
+//!
+//! - [`traits::Chart`] — a coordinate chart mapping points of a manifold to a
+//!   flat coordinate space and back
 //! - [`traits::ExpMap`] — a chart whose coordinate lines are geodesics and
 //!   whose coordinate distances are (signed) arc lengths
-//! - [`traits::TangentBundle`] — a family of `ExpMap` charts, one centred
-//!   at each point of the manifold; the tangent bundle `TM`
-//! - [`traits::PseudoRiemannian`] — certifies that the exponential map and
-//!   the tangent-space scalar product agree: the geodesic interval equals
-//!   `Q(v) = ⟨v,v⟩`. Signature-agnostic; reduces to the usual Riemannian
-//!   `d(p, exp_p v) = ‖v‖` in the definite case
+//! - [`traits::TangentBundle`] — the tangent bundle `TM`: an `ExpMap` chart
+//!   centred at *every* point. This is the working surface of a smooth
+//!   manifold — `exp` and `log`, geodesics, geodesic distance, and sectional
+//!   curvature are all read off it, so most geometric computation is written
+//!   against this trait
+//! - [`traits::PseudoRiemannian`] — certifies that the exponential map and the
+//!   tangent-space form agree: the geodesic interval equals `⟨v,v⟩`.
+//!   Signature-agnostic; reduces to the usual `d(p, exp_p v) = ‖v‖` in the
+//!   definite case
 //!
-//! ### Smooth structure — self-charting manifolds
+//! #### Smooth structure — self-charting manifolds
 //!
-//! - [`traits::Smooth`] — a manifold that charts itself: provides `exp` and
-//!   `log` at every point, automatically generating `Chart`, `ExpMap`, and
-//!   `TangentBundle` via blanket implementations; the only trait a
-//!   self-charting manifold needs to implement
+//! - [`traits::Smooth`] — a manifold that charts itself, providing `exp` and
+//!   `log` at every point. Implement this one trait and the full chart bundle
+//!   — `Chart`, `ExpMap`, `TangentBundle` — is generated for you by blanket
+//!   implementations
 //!
-//! ### Algebra — groups and Lie groups
+//! #### Algebra — groups and Lie groups
 //!
-//! - [`traits::Group`] — an associative composition with identity and
-//!   inverses, spelled with operator-agnostic named methods (`compose`,
-//!   `inverse`) rather than `Add`/`Mul`, so it covers abelian and
-//!   non-abelian groups alike; purely algebraic, no smoothness required.
-//!   [`traits::CMonoid`]/[`traits::CGroup`] (`+`, commutative) and
-//!   [`traits::Monoid`]/[`traits::MulGroup`] (`*`, not assumed commutative)
-//!   are the two operator-flavoured presentations a concrete type may use,
-//!   bridged to `Group` in one line via `impl_group_via_add!`/
-//!   `impl_group_via_mul!`; [`traits::Rig`]/[`traits::Ring`] combine both
-//!   for types with a compatible addition and multiplication
+//! - [`traits::Group`] — an operator-agnostic group interface, using named
+//!   methods rather than `+` or `*`.
+//!
+//!   [`traits::CMonoid`]/[`traits::CGroup`] and
+//!   [`traits::Monoid`]/[`traits::MulGroup`] are the additive and multiplicative
+//!   presentations used by concrete types. The helper macros `impl_group_via_add!`
+//!   and `impl_group_via_mul!` connect them to `Group`.
+//!
+//!   [`traits::Rig`], [`traits::Ring`], [`traits::DivRing`],
+//!   and `Field` combine both operations.
 //! - [`traits::LieGroup`] — a group with a smooth exponential map at the
-//!   identity; automatically derives `Smooth` (and therefore the full chart
+//!   identity; automatically derives `Smooth` (and therefore the whole chart
 //!   bundle) via left translation
 //! - [`traits::Quotient`] — a quotient `G/H` of a Lie group by a subgroup,
 //!   inheriting Lie group structure from the parent
 //!
-//! ### (Pseudo-)Euclidean — flat space
+//! #### (Pseudo-)Euclidean — flat space
 //!
-//! - [`traits::Quadratic`] — flat coordinate space `Rⁿ` with a
-//!   [`traits::Bilinear`] scalar product of arbitrary signature (Minkowski
-//!   included); its own tangent bundle and an additive Lie group. The
-//!   indefinite base, carrying no norm or distance
-//! - [`traits::Euclidean`] — the positive-definite refinement: the canonical
-//!   flat space `Rⁿ` that is simultaneously an inner-product space, its own
-//!   tangent bundle, and an additive Lie group, with all three structures
-//!   coinciding trivially
+//! - [`traits::Quadratic`] — flat coordinate space of arbitrary signature
+//!   (Minkowski included): a symmetric bilinear scalar product, its own
+//!   tangent bundle, and an additive Lie group. The indefinite base, carrying
+//!   no norm or distance
+//! - [`traits::Euclidean`] — its positive-definite refinement: the canonical
+//!   flat `Rⁿ` that is simultaneously an inner-product space, its own tangent
+//!   bundle, and an additive Lie group.
 //!
-//! ### Global topology — covers, nerves, fundamental groups
+//! #### Global topology — covers, nerves, fundamental groups
 //!
 //! - [`traits::Bounded`] — a `TangentBundle` chart with a bounded domain,
 //!   expressed via a signed distance field
 //! - [`traits::NerveComplex`] — a finite cover of a manifold by `Bounded`
-//!   charts, whose overlap pattern forms a simplicial complex; computes
-//!   global geodesic distance by graph search and recovers the fundamental
-//!   group `π₁(M)` from the nerve
+//!   charts whose overlap pattern forms a simplicial complex; computes global
+//!   geodesic distance by graph search and recovers the fundamental group
+//!   `π₁(M)` from the nerve
 //! - [`traits::GroupPresentation`] — a group described by generators and
-//!   relations; the output type of `NerveComplex::fundamental_group`
+//!   relations; the output of `NerveComplex::fundamental_group`
 //!
-//! ### Blanket chains
+//! #### Blanket chains
 //!
-//! The following chains fire automatically — implement the left-hand trait,
-//! receive the right-hand traits for free:
+//! Implement one trait; receive the these for free:
 //!
 //! ```text
 //! Smooth<V>             →  Chart<Self, V>, ExpMap<Self, V>, TangentBundle<Self, V>
-//! LieGroup<V>           →  Smooth<V>  →  Chart, ExpMap, TangentBundle
-//! Quadratic/Euclidean   →  Group, LieGroup<Self>  →  Smooth<Self>  →  Chart, ExpMap, TangentBundle
-//! Quotient<G, H, V>     (via macro)  →  Group, LieGroup<V>  →  Smooth  →  ...
+//! Vector                →  LieGroup<Self> → Smooth → Chart, ExpMap, TangentBundle
+//! LieGroup<V>           →  Smooth<V> → Chart, ExpMap, TangentBundle
+//! Quadratic/Euclidean   →  Group, LieGroup<Self> → Smooth → Chart, ExpMap, TangentBundle
+//! Quotient<G, H, V>     →  Group, LieGroup<V> → Smooth → ...
+//! Sesquilinear (real)   →  Bilinear
 //! ```
 //!
-//! `Group` itself is reached via a one-line macro rather than a blanket
-//! impl (`CMonoid`/`Monoid` can't both blanket-impl the same trait without
-//! overlapping), so every `LieGroup` implementor pairs its `+`/`*`
-//! structure with `impl_group_via_add!`/`impl_group_via_mul!` before
-//! joining the chain above.
+//! `Group` itself is reached via a one-line macro rather than a blanket impl
+//! (`CMonoid`/`Monoid` can't both blanket-impl the same trait without
+//! overlapping), so every `LieGroup` implementor pairs its `+`/`*` structure
+//! with `impl_group_via_add!`/`impl_group_via_mul!` before joining the chain.
 //!
-//! ## Implementations
+//! ### Implementations
 //!
-//! - [`coords::Coords`] — the canonical flat (pseudo-)Euclidean space
-//!   `R^(N−M, M)`, a fixed-size array of scalars parameterised by a signature
-//!   `M` (the count of negative/timelike directions). The default `M = 0` is
-//!   ordinary Euclidean `Rⁿ` (with a norm and metric); `M > 0` is indefinite
-//!   (`Coords<R, 4, 1>` is Minkowski spacetime), carrying only a `Bilinear`
-//!   scalar product
-//! - [`hypersphere::Sphere`] — the unit hypersphere `Sⁿ` as a smooth
-//!   manifold with geodesic structure for any dimension
-//! - [`hypersphere::S0`], [`hypersphere::UnitComplex`],
-//!   [`hypersphere::S3`] — the Lie group structures on `S⁰` (signs under
-//!   multiplication), `S¹` (unit complex numbers), and `S³` (unit
-//!   quaternions), as newtypes of `Sphere` that add group operations
+//! - [`coords::Coords`] — the canonical flat space `R^(N−M, M)`, a fixed-size
+//!   array parameterised by a signature `M` (the count of timelike
+//!   directions). `M = 0` is ordinary Euclidean `Rⁿ` (with a norm and metric);
+//!   `M > 0` is indefinite (`Coords<R, 4, 1>` is Minkowski spacetime),
+//!   carrying only a `Bilinear` form
+//! - [`complex::Complex`] — the complex numbers as a `Field`, with `conj` the
+//!   Hermitian involution. [`traits::Symmetrized`] wraps a field to select its
+//!   *bilinear* rather than Hermitian form
+//! - [`matrix::Matrix`] — an `N×N` matrix, interpreted as the tensor
+//!   `V ⊗ V*`, with variance encoded in the type so only variance-correct
+//!   contractions typecheck. [`matrix::MatrixExponential`] provides `exp`/`log`.
+//! - [`hypersphere::Sphere`] — the unit hypersphere `Sⁿ` as a smooth manifold
+//!   with geodesic structure for any dimension
+//! - [`hypersphere::S0`], [`hypersphere::UnitComplex`], [`hypersphere::S3`] —
+//!   the Lie group structures on the three parallelizable spheres (signs, the
+//!   unit complex numbers `U(1)`, the unit quaternions `SU(2)`), as newtypes
+//!   of `Sphere` that add the group operation
 //! - [`hypersphere::So3`] — the rotation group `SO(3)` as the quotient
 //!   `S³/{±1}`, a newtype of `S3`
-//! - [`hypersphere::Stereographic`] — stereographic projection charts for
-//!   spheres, an external atlas independent of the geodesic self-charts
+//! - [`hypersphere::Stereographic`] — stereographic projection charts, an
+//!   external atlas independent of the geodesic self-charts
+//! - [`spacetime::Minkowski`] — `Coords<R, 4, 1>`, spacetime with signature
+//!   `(−,+,+,+)`; [`spacetime::Sl`]/[`spacetime::Sl2c`] the special linear
+//!   group (`SL(2,ℂ)` double-covering the Lorentz group);
+//!   [`spacetime::SlAlgebra`] its traceless Lie algebra with the Killing form;
+//!   and [`spacetime::Lorentz`] the restricted Lorentz group `SO⁺(1,3)` as
+//!   `SL(2,ℂ)/{±1}`
 //! - [`discrete::Z`] — the integers, as the Grothendieck completion of the
-//!   naturals [`discrete::N`]; also a degenerate 0-dimensional `LieGroup`
-//! - [`flat::S1`] — the circle as the flat quotient `R/Z`; a more
-//!   performant alternative model of `S¹` to `hypersphere::UnitComplex`
-//! - [`flat::Torus`], [`flat::KleinBottle`] — flat surfaces built from two
-//!   `flat::S1` coordinates, glued straight (a group) or with a
-//!   fibre-flipping twist (not a group; the library's only non-orientable
+//!   naturals [`discrete::N`]; also the covering lattice for `flat::S1`
+//! - [`flat::S1`] — the circle as the flat quotient `R/Z`, a more performant
+//!   model of `S¹` than `hypersphere::UnitComplex`;
+//!   [`flat::Torus`]/[`flat::KleinBottle`] glue two circles straight (a group)
+//!   or with a fibre-flipping twist (the library's only non-orientable
 //!   manifold)
 //!
 //! The newtype layering reflects the mathematical structure: `Sphere` is the
 //! bare manifold (geometry only), `S3` adds the quaternion group operation,
-//! and `So3` adds the antipodal identification. Each wrapper is zero-cost
-//! and peelable — `.0` is the forgetful functor dropping one layer of
-//! algebraic structure.
+//! and `So3` adds the antipodal identification. Each wrapper is zero-cost and
+//! peelable — `.0` is the forgetful functor dropping one layer of structure.
 //!
-//! ## Testing
+//! ### Testing
 //!
 //! Enable the `testing` feature to access the `test_*` macros, which verify
-//! that your implementations satisfy the mathematical invariants certified
-//! by each trait. The scalar types [`R64`] and [`R32`] provide
-//! tolerance-based equality suitable for property testing with floating
-//! point.
+//! that your implementations satisfy the mathematical invariants certified by
+//! each trait — group axioms, the `flat`/`sharp` musical isomorphism,
+//! Hermitian symmetry, metric agreement, and the rest. The scalar types `R64`
+//! and `R32` provide tolerance-based equality suitable for property testing
+//! with floating point.
 //!
 //! ```toml
 //! [dev-dependencies]
 //! diffable = { version = "...", features = ["testing"] }
 //! ```
 //!
-//! ## Optional features
+//! ### Optional features
 //!
 //! - `testing` — property-testing macros and tolerance-based scalar types
 //! - `all` — enables all features
+//!
+//! License: MIT OR Apache-2.0
 
 pub mod coords;
 pub mod hypersphere;

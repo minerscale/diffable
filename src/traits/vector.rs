@@ -58,6 +58,20 @@ pub trait Euclidean: Quadratic + InnerProduct {
     }
 }
 
+/// The dual space `V*` — the linear functionals on `V`.
+///
+/// Stored as a `V` internally, because [`pairing`](Vector::pairing) is fixed to
+/// the coordinate dot product, which identifies the dual basis with the primal
+/// basis component-wise. A `Dual<V>` is therefore coordinate-identical to the
+/// `V` holding its components — the wrapper exists purely so the type system
+/// keeps covariant and contravariant vectors apart. That separation is what
+/// lets [`Matrix`](crate::matrix::Matrix) enforce index variance (`V ⊗ V*`) and
+/// the musical maps [`flat`](Form::flat)/[`sharp`](Nondegenerate::sharp) land in
+/// the correct space.
+///
+/// Obtain a covector with a geometric meaning through [`flat`](Form::flat), not
+/// [`from_raw`](Dual::from_raw) — the latter is a bare relabel that ignores the
+/// metric.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Dual<V: Vector>(V);
 
@@ -152,6 +166,25 @@ impl<V: Vector> IndexMut<usize> for Dual<V> {
     }
 }
 
+/// A finite-dimensional coordinate vector space over a [`Field`].
+///
+/// This is the base of the linear hierarchy. A `Vector` is nothing more than
+/// `N` coordinates in `F` — it carries no metric, no notion of length or angle.
+/// Those arrive with the refinements: [`Form`] adds a lowering map,
+/// [`Nondegenerate`] makes it invertible, [`Sesquilinear`]/[`Bilinear`] fix how
+/// it interacts with the field involution, and [`InnerProduct`]/[`Euclidean`]
+/// add positive-definiteness.
+///
+/// Every `Vector` is its own tangent space: it is an abelian [`LieGroup`] under
+/// addition, with `exp` and `log` the identity (`identity_exp(v) = v`). This is
+/// what lets a flat coordinate space and a curved manifold share the same chart
+/// machinery.
+///
+/// The dual space `V*` is [`Dual<Self>`](Dual), and the canonical evaluation
+/// pairing between them is [`pairing`](Vector::pairing). Because that pairing is
+/// pinned to the coordinate dot product, `V`, `V*`, and `V**` are all
+/// coordinate-identical, which is what makes [`collapse`](Vector::collapse) a
+/// free relabel and the musical maps land in the right spaces.
 pub trait Vector:
     LieGroup<Self>
     + Add<Output = Self>
@@ -164,31 +197,61 @@ pub trait Vector:
     + Copy
     + std::fmt::Debug
 {
+    /// The scalar field the coordinates live in.
     type F: Field;
+
+    /// The dimension of the space — the number of coordinates.
     const N: usize;
 
     type Iter<'a>: Iterator<Item = &'a Self::F>
     where
         Self: 'a;
+
+    /// Iterates the `N` coordinates in order.
     fn iter(&self) -> Self::Iter<'_>;
+
+    /// Builds a vector from a function of coordinate index. The canonical
+    /// constructor — most other constructors reduce to this.
     fn from_fn(f: impl Fn(usize) -> Self::F) -> Self;
 
-    /// The canonical pairing (V, V*) -> F. Must remain the normal dot product.
+    /// The canonical evaluation pairing `(V, V*) -> F`, `⟨v, ω⟩ = ω(v)`.
+    ///
+    /// Fixed to the coordinate dot product `Σ vᵢ ωᵢ`, and **must stay that
+    /// way**: [`flat`](Form::flat), [`sharp`](Nondegenerate::sharp), and
+    /// [`collapse`](Vector::collapse) all rely on the dual basis being
+    /// identified with the primal basis component-wise. Overriding it to a
+    /// different (even valid) pairing would silently break every one of them.
     fn pairing(&self, rhs: &Dual<Self>) -> Self::F {
         self.iter()
             .zip(rhs.iter())
             .fold(Self::F::zero(), |acc, (&a, &b)| acc + a * b)
     }
 
+    /// The canonical identification `V** ≅ V`, collapsing a twice-dualised
+    /// vector back to `V`.
+    ///
+    /// This is the *evaluation* isomorphism `v ↦ (φ ↦ φ(v))`, which exists for
+    /// any finite-dimensional space with no dependence on a metric or
+    /// nondegeneracy — every [`Vector`] qualifies via its fixed dimension `N`.
+    /// It is a pure coordinate relabel (strip two [`Dual`] wrappers) precisely
+    /// because [`pairing`](Vector::pairing) is fixed to the coordinate dot
+    /// product, which identifies each dual basis with its primal basis
+    /// component-wise. Do not confuse this with the *musical* `V** ≅ V` of
+    /// [`Nondegenerate`], which routes through the metric and requires an
+    /// invertible form.
     fn collapse(v: Dual<Dual<Self>>) -> Self {
         v.0.0
     }
 
+    /// Converts a fixed-size array to a vector, checking `N` matches at compile
+    /// time. The const assertion is the crate's stand-in for length-indexed
+    /// construction that stable const generics can't express.
     fn from_array<const N: usize>(arr: [Self::F; N]) -> Self {
         const { assert!(Self::N == N) }
         Self::from_fn(|i| arr[i])
     }
 
+    /// Converts to a fixed-size array, checking `N` matches at compile time.
     fn to_array<const N: usize>(self) -> [Self::F; N] {
         const { assert!(Self::N == N) }
         std::array::from_fn(|i| self[i])
@@ -202,11 +265,14 @@ pub trait Vector:
     }
 }
 
-// Form says: "this space has a lowering map."
-// Nondegenerate says: "that lowering map is invertible."
-// Sesquilinear says: "the lowering map interacts with scalar multiplication according to an involution."
-// Bilinear says: "that involution is trivial."
-// InnerProduct says: "the "
+/// A vector space equipped with a *lowering map* `♭: V → V*`.
+///
+/// This is where geometry enters: [`flat`](Form::flat) turns a vector into the
+/// covector `⟨v, ·⟩`, and [`dot`](Form::dot) is the induced form
+/// `⟨a, b⟩ = pairing(a, b♭)`. No invertibility, definiteness, or symmetry is
+/// assumed here — a general (even indefinite or degenerate) form is a `Form`.
+/// The refinements add those: [`Nondegenerate`] (invertible), [`Sesquilinear`]
+/// (Hermitian), [`Bilinear`] (symmetric), [`InnerProduct`] (positive-definite).
 pub trait Form: Vector {
     fn flat(&self) -> Dual<Self>;
 
@@ -257,6 +323,12 @@ pub trait Form: Vector {
     }
 }
 
+/// A [`Form`] whose lowering map is invertible — a nondegenerate form.
+///
+/// [`sharp`](Nondegenerate::sharp) is the raising map `♯: V* → V`, inverse to
+/// [`flat`](Form::flat). This is the *musical* isomorphism `V ≅ V*` (and, via
+/// [`collapse`](Vector::collapse), `V ≅ V**`); it depends on the metric, unlike
+/// the purely dimensional evaluation iso.
 pub trait Nondegenerate: Form {
     fn sharp(v: Dual<Self>) -> Self;
 
@@ -372,7 +444,7 @@ impl<F: Field<Fixed = F>, V: Sesquilinear<F = F>> Bilinear for V {}
 ///
 /// The space of all values of a type `P: Sesquilinear<F>` is interpreted as a
 /// vector space equipped with a Hermitian pairing
-/// `⟨·,·⟩: P × P → F`, where `F` is an [`InvolutiveField`]. The pairing is
+/// `⟨·,·⟩: P × P → F`, where `F` is an [`Field`]. The pairing is
 /// linear in its first argument and conjugate-linear in its second, satisfying
 /// `⟨v,w⟩ = conj(⟨w,v⟩)`.
 ///

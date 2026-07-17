@@ -74,6 +74,18 @@ impl<V: Vector, const N: usize> PartialEq for Matrix<V, N> {
 }
 
 impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
+    /// Wraps a raw `N×N` array as a matrix, checking `V::N == N` at compile
+    /// time. The const assertion is the crate's stand-in for `Matrix<V, {V::N}>`,
+    /// which stable const generics can't express — it guarantees the matrix's
+    /// dimension matches the space it acts on.
+    pub fn new(m: [[F; N]; N]) -> Self {
+        const {
+            assert!(V::N == N);
+        }
+
+        Matrix(m)
+    }
+
     /// The contraction (V ⊗ V*) ⊗ (V ⊗ V*) -> (V ⊗ V*)
     pub fn mul(&self, rhs: &Self) -> Self {
         Self(matrix_mul(self.0, rhs.0))
@@ -96,14 +108,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         }))
     }
 
-    pub fn new(m: [[F; N]; N]) -> Self {
-        const {
-            assert!(V::N == N);
-        }
-
-        Matrix(m)
-    }
-
+    /// Iterates all `N²` entries in row-major order.
     pub fn flat_iter<'a>(&'a self) -> impl Iterator<Item = &'a F>
     where
         F: 'a,
@@ -111,15 +116,25 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         self.0.as_flattened().iter()
     }
 
+    /// The trace `Σᵢ Mᵢᵢ` — the contraction `V ⊗ V* -> F`.
     pub fn trace(&self) -> F {
         matrix_trace(self.0)
     }
 
+    /// Extracts the raw entry array, checking `N == M` at compile time. Escape
+    /// hatch back to a plain `[[F; M]; M]` for callers that need the components
+    /// directly.
     pub fn destructure<const M: usize>(&self) -> [[F; M]; M] {
         const { assert!(N == M) }
         from_fn(|i| from_fn(|j| self.0[i][j].clone()))
     }
 
+    /// Inverts the matrix by Gauss–Jordan elimination.
+    ///
+    /// Assumes invertibility: it `panic!`s on a zero pivot (a singular matrix).
+    /// For an [`Sl`](crate::spacetime::Sl) element that panic is unreachable —
+    /// determinant one is never singular — so this is a total operation on the
+    /// special linear group, which is where it's used.
     pub fn gauss_jordan(&self) -> Self {
         // Mutate a copy of our inner arrays (A) and an identity matrix (I)
         let mut mat = self.0;
@@ -181,6 +196,13 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
 }
 
 impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
+    /// The Frobenius norm `√(Σᵢⱼ |Mᵢⱼ|²)`, valued in the real field `F::R`.
+    ///
+    /// Requires `F: Metric` so each entry has a *definite* squared magnitude
+    /// (`interval_squared` against zero), keeping the sum a non-negative real.
+    /// This is the norm the [`MatrixExponential`] Taylor series measures
+    /// convergence against; it is submultiplicative, which is what makes that
+    /// series converge.
     pub fn frobenius_norm(&self) -> F::R {
         self.0
             .as_flattened()
@@ -256,6 +278,13 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Mul<F> for Matrix<V, N> {
     }
 }
 
+/// Matrices that can be exponentiated and (locally) logged.
+///
+/// [`exp`](MatrixExponential::exp) is the Lie-theoretic exponential
+/// `Σ Aⁿ/n!`; [`log`](MatrixExponential::log) is its local inverse, defined
+/// only within a small radius of the identity (returns `None` outside it).
+/// Because the series needs `1/k!`, this is only implemented for scalar fields
+/// of characteristic zero with a real metric — see the impl's bounds.
 pub trait MatrixExponential: Sized {
     fn exp(&self) -> Self;
     fn log(&self) -> Option<Self>;

@@ -9,6 +9,8 @@ use crate::traits::{Chart, Euclidean, Group, LieGroup, Quotient, Real, Smooth};
 
 use num_traits::{Euclid, NumCast, One, Zero, real::Real as _};
 
+/// The circle `S¹`, as the quotient of the line `V` by the integer lattice
+/// [`Z`]. One-dimensional (`From<[F; 1]>`).
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct S1<V: Euclidean + From<[<V as Vector>::F; 1]>>(V);
 
@@ -49,6 +51,7 @@ impl<V: Euclidean<F: Real> + From<[<V as Vector>::F; 1]>> Quotient<V, Z<V>, V> f
 
 impl_lie_group_via_quotient!(S1<V>, V, Z<V>, V, V: Euclidean + From<[<V as Vector>::F; 1]>);
 
+/// The 2-torus `T² = S¹ × S¹`.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Torus<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean + From<[I::F; 2]>>(
     S1<I>,
@@ -102,10 +105,16 @@ impl<I: ICompatible<V>, V: VCompatible<I>> LieGroup<V> for Torus<I, V> {
     }
 }
 
+/// Dimensional-compatibility bound for the *inner circle* type of a
+/// [`KleinBottle`]/[`Torus`], relating it to the ambient type `V`. See
+/// [`VCompatible`] for the dual constraint.
 pub trait ICompatible<V: Euclidean<F: Real + Send + Sync> + From<[Self::F; 2]>>:
     Euclidean<F: Real + From<V::F>> + From<[Self::F; 1]> + From<[V::F; 1]> + 'static + Send + Sync
 {
 }
+
+/// Dimensional-compatibility bound for the *ambient* type of a
+/// [`KleinBottle`]/[`Torus`], relating it to the inner circle type `I`.
 pub trait VCompatible<I: Euclidean<F: Real + From<Self::F>> + From<[I::F; 1]> + From<[Self::F; 1]>>:
     Euclidean<F: Real + Send + Sync> + From<[I::F; 2]> + 'static + Send + Sync
 {
@@ -125,6 +134,10 @@ impl<
 {
 }
 
+/// The Klein bottle — the non-orientable quotient of the plane, built as two
+/// circles with a twist. `I` is the "inner" circle coordinate type and `V` the
+/// ambient embedding type; [`ICompatible`]/[`VCompatible`] pin the dimensional
+/// relationship between them that the twist requires.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct KleinBottle<I: ICompatible<V>, V: VCompatible<I>>(S1<I>, S1<I>, PhantomData<V>);
 

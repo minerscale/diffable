@@ -12,12 +12,25 @@ use crate::{
 
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 
+/// The unit `N`-sphere `Sⁿ ⊂ V::F ⊕ V`.
+///
+/// A point is split as a scalar `real` part and a vector `imag` part,
+/// constrained to `real² + ‖imag‖² = 1`. This splitting is what the
+/// [`Stereographic`] chart projects from and what the geodesic distance
+/// (`cos θ = ⟨p, q⟩`) is computed against. `V: Euclidean` supplies the
+/// positive-definite inner product that makes "unit" and "distance" meaningful.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Sphere<const N: usize, V: Euclidean> {
     real: V::F,
     imag: V,
 }
 
+/// A [`Chart`] on the [`Sphere`] by stereographic projection from a chosen pole.
+///
+/// Projecting from one pole leaves the *opposite* pole as the chart's single
+/// missing point, so two charts (north and south) cover the sphere. Construct
+/// with [`south_pole`](Stereographic::south_pole) or
+/// [`north_pole`](Stereographic::north_pole).
 #[derive(Clone, Debug)]
 pub struct Stereographic<V: Euclidean>(StereographicPole, PhantomData<V>);
 
@@ -238,14 +251,18 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
     }
 }
 
+/// `S⁰ = {±1}` — the two-point sphere, the unit-norm reals, a group under multiplication.
 #[derive(Debug, Clone, PartialEq)]
 pub struct S0<V: Euclidean>(pub Sphere<0, V>);
 impl_group_via_mul!(S0<V>, V: Euclidean);
 
+/// `S¹ ⊂ ℂ` — the unit complex numbers `U(1)`, a group under multiplication.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnitComplex<V: Euclidean>(pub Sphere<1, V>);
 impl_group_via_mul!(UnitComplex<V>, V: Euclidean);
 
+/// `S³ ⊂ ℍ` — the unit quaternions `SU(2)`, a group under multiplication and
+/// the double cover of [`So3`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct S3<V: Euclidean>(pub Sphere<3, V>);
 impl_group_via_mul!(S3<V>, V: Euclidean);
@@ -436,6 +453,7 @@ impl<const N: usize, V: Euclidean> Interval for Sphere<N, V> {
 
 impl<const N: usize, V: Euclidean> Metric for Sphere<N, V> {}
 
+/// The rotation group `SO(3)`, as `S³` quotiented by `{±1}` (`RP³`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct So3<V: Euclidean>(S3<V>);
 

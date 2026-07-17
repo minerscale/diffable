@@ -15,8 +15,20 @@ use crate::{
 
 pub type Minkowski<R> = Coords<R, 4, 1>;
 
+/// The special linear group `SL(V)` — automorphisms of `V` with determinant one.
+///
+/// The determinant-one invariant is maintained *by construction*: there is no
+/// raw constructor. Values arise only from the group operations (the identity,
+/// products, inverses) and from [`exp`](crate::matrix::MatrixExponential::exp)
+/// of the traceless [`SlAlgebra`] — all of which preserve `det = 1`
+/// (`det(AB) = det(A)det(B)`, `det(exp X) = e^{tr X} = e^0`). Since the Lie
+/// algebra has no invalid representations either, every reachable `Sl` value is
+/// genuinely in the group; membership is a theorem about reachability, not a
+/// runtime check.
 #[derive(Debug, Copy, Clone)]
 pub struct Sl<V: Vector, const N: usize>(Matrix<V, N>);
+
+/// `SL(2, ℂ)` — the double cover of the restricted Lorentz group. See [`Lorentz`].
 pub type Sl2c<R> = Sl<Coords<Complex<R>, 2>, 2>;
 
 impl<V: Vector, const N: usize> PartialEq for Sl<V, N> {
@@ -163,8 +175,16 @@ where
     }
 }
 
-// Here, D is N*N - 1, we do this this way because of const-generics restrictions
-// we statically assert in the constructor that D = N*N - 1.
+/// The Lie algebra `𝔰𝔩(N)` — the traceless `N×N` matrices, tangent space to
+/// [`Sl`].
+///
+/// Stored in coordinates as `Coords<F, D>` with `D = N² − 1` (the const
+/// assertion in the constructor enforces the relation, which stable const
+/// generics can't state directly). Every representation is valid — tracelessness
+/// is built into the basis, so there are no invalid elements to exclude. Its
+/// [`flat`](`crate::traits::Form`)/[`sharp`](`crate::traits::Nondegenerate`)
+/// implement the (normalised) Killing form `⟨X, Y⟩ = tr(XY)`,
+/// with the Cartan block carrying the `A_{N−1}` Cartan matrix and its inverse.
 #[derive(Debug, Copy, Clone)]
 pub struct SlAlgebra<F: Field, const N: usize, const D: usize>(Coords<F, D>);
 

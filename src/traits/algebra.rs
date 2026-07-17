@@ -141,6 +141,7 @@ pub trait CGroup: CMonoid + Sub<Output = Self> + Neg<Output = Self> {
         self.clone() + -self.clone() == Self::zero()
     }
 
+    #[cfg(feature = "testing")]
     fn check_sub_agrees_with_neg(a: &Self, b: &Self) -> bool
     where
         Self: PartialEq,
@@ -442,7 +443,14 @@ where
 ///
 /// A division ring whose multiplication is abelian.
 pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
+    /// The fixed field under `[Self::conj]`, where x.conj() = x.
     type Fixed: Field;
+
+    /// The field's characteristic, as a type-level [`Nat`]. `NatZero` means
+    /// characteristic zero (ℚ embeds). Callers that need `1/k` — the matrix
+    /// exponential, [`from_nat`](Field::from_nat) — bound on `Characteristic =
+    /// NatZero` so that finite-characteristic fields are rejected at compile
+    /// time rather than dividing by a zero that only appears at runtime.
     type Characteristic: Nat;
 
     fn from_nat(mut n: usize) -> Self {
@@ -545,6 +553,9 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
         a.clone() * b.clone() == b * a
     }
 
+    // Audits the declared characteristic against the
+    // field's actual arithmetic, as far as `bound` allows.
+    #[cfg(feature = "testing")]
     fn check_characteristic_up_to(bound: usize) -> bool {
         let mut acc = Self::zero();
 
@@ -569,11 +580,27 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     }
 }
 
+/// A type-level natural number (Peano encoding).
+///
+/// Used to carry a [`Field`]'s [`characteristic`](Field::Characteristic) in the
+/// type system, where it can be matched on in bounds (`Characteristic = NatZero`)
+/// rather than checked at runtime. [`N`](Nat::N) reflects the numeral back to a
+/// `usize` for the rare cases that need the value (e.g. the finite characteristic
+/// audit in [`check_characteristic_up_to`](Field::check_characteristic_up_to)).
 pub trait Nat {
+    /// The numeral's value as a `usize`. `NatZero::N == 0`, `Succ<N>::N == N::N + 1`.
     const N: usize;
 }
 
+/// The successor `n + 1` at the type level. See [`Nat`].
 pub struct Succ<N: Nat>(N);
+
+/// Type-level zero — the base of the [`Nat`] tower.
+///
+/// Deliberately uninhabited: as a *set* it is the empty set, so its cardinality
+/// (`0`) matches the numeral it denotes. A field with `Characteristic = NatZero`
+/// is characteristic zero (contains ℚ), which is exactly the precondition the
+/// matrix exponential needs to form `1/k!`.
 pub enum NatZero {}
 
 impl Nat for NatZero {
@@ -584,6 +611,25 @@ impl<N: Nat> Nat for Succ<N> {
     const N: usize = N::N + 1;
 }
 
+/// A field `F` with its involution *trivialised*: `conj = id`, hence
+/// `Fixed = Self`.
+///
+/// This selects the `σ = id` sector of `F` without threading an involution
+/// parameter through the hierarchy. On this sector a symmetric bilinear form is
+/// the same thing as a Hermitian one, so [`Bilinear`] falls out of
+/// [`Sesquilinear`] via the blanket impl. `Symmetrized<Complex<R>>` is ℂ viewed
+/// through the identity involution — the home of the ℂ-*bilinear* Killing form,
+/// distinct at the type level from `Complex<R>` (whose canonical involution is
+/// conjugation, giving a *Hermitian* form).
+///
+/// It shares every algebraic and analytic fact with the inner `F` except the
+/// involution: arithmetic, characteristic, and any forwarded metric all delegate
+/// straight through. Note that `Fixed = Self` means its fixed field is *not*
+/// `R`, so it is deliberately excluded from anything that requires a real fixed
+/// field (e.g. the matrix exponential).
+///
+/// [`Bilinear`]: crate::traits::Bilinear
+/// [`Sesquilinear`]: crate::traits::Sesquilinear
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Symmetrized<F: Field>(pub F);
 
@@ -687,6 +733,12 @@ impl<F: Field + Interval> Interval for Symmetrized<F> {
 
 impl<F: Field + Metric> Metric for Symmetrized<F> {}
 
+/// A *primitive* `N`-th root of unity — one that generates all of `μ_N`.
+///
+/// [`new`](RootOfUnityPrimitive::new) returns `None` if the given element isn't
+/// primitive (some lower power hits `1`), and
+/// [`roots_of_unity`](RootOfUnityPrimitive::roots_of_unity) enumerates the full
+/// group it generates.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct RootOfUnityPrimitive<F: Field, const N: usize>(RootOfUnity<F, N>);
 
@@ -717,6 +769,12 @@ impl<F: Field, const N: usize> RootOfUnityPrimitive<F, N> {
     }
 }
 
+/// An `N`-th root of unity in `F` — an element of the finite cyclic group `μ_N`.
+///
+/// A zero-dimensional [`LieGroup`] (its tangent space is trivial, so `exp`/`log`
+/// are trivial). Used as the kernel in quotient constructions — e.g. the
+/// [`Lorentz`](crate::spacetime::Lorentz) group is `SL(2,ℂ)` quotiented by
+/// `RootOfUnity<_, 2> = {±1}`.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct RootOfUnity<F: Field, const N: usize>(F);
 

@@ -10,6 +10,8 @@ use crate::{
     traits::{Euclidean, LieGroup},
 };
 
+/// The natural numbers `ℕ` under addition — the free commutative monoid on one
+/// generator. Grothendieck-completed to [`Z`] to form the integer lattice.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct N(pub usize);
 
@@ -47,6 +49,8 @@ impl Mul for N {
 
 impl_ring_via_grothendieck!(Z<V>, N, V: Euclidean);
 
+/// The integers `ℤ`, as the Grothendieck completion of [`N`]. Serves as the
+/// covering lattice for [`S1`](crate::flat::S1).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Z<V: Euclidean>(pub isize, PhantomData<V>);
 impl_group_via_add!(Z<V>, V: Euclidean);

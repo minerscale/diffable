@@ -98,6 +98,17 @@ where
     }
 }
 
+/// A real-number field: totally ordered, and its own involution fixed field
+/// (`Fixed = Self`, so `conj = id`).
+///
+/// Implementors (`R64`, `R32`) carry a **tolerance** in their `PartialEq`/
+/// `PartialOrd`: two values within a relative epsilon compare equal, so that
+/// floating-point round-off doesn't fracture geometric equality. That tolerance
+/// is deliberately **not transitive** (`a ≈ b` and `b ≈ c` does not give
+/// `a ≈ c`), which is fine for equality testing but wrong for the strict,
+/// transitive order an iterative algorithm needs to decide convergence — hence
+/// [`ExactCmp`], which recovers the genuine order from the sign bit instead of
+/// the tolerant comparison.
 pub trait Real: RealNum + Field<Fixed = Self> {}
 impl<R: RealNum + Field<Fixed = Self>> Real for R {}
 
@@ -179,6 +190,10 @@ pub trait Metric: Interval {
 /// axioms are claimed — this is not a distance, it is the value of the
 /// line element between two points along the connecting geodesic.
 pub trait Interval: Point {
+    /// The ordered field the interval is valued in — the real field where
+    /// magnitudes, distances, and convergence live. Distinct from a scalar
+    /// field's involution `Fixed`: analysis happens here regardless of the
+    /// algebraic involution.
     type R: Real;
 
     /// Interval between self and other. Real or imaginary
@@ -187,6 +202,15 @@ pub trait Interval: Point {
         Complex::real_sqrt(self.interval_squared(other))
     }
 
+    /// The **signed** squared interval `s²(a, b)` — the primitive from which
+    /// [`interval`](Interval::interval) (its signed square root) and
+    /// [`distance`](Metric::distance) both derive.
+    ///
+    /// Signed carries causal character: negative timelike, zero null, positive
+    /// spacelike (or your sign convention). It is the value of the line element,
+    /// not a metric-space distance — no non-negativity or triangle inequality is
+    /// claimed here. [`Metric`] is the refinement that additionally promises it
+    /// is definite.
     fn interval_squared(&self, other: &Self) -> Self::R;
 
     #[cfg(feature = "testing")]
