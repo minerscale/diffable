@@ -1,5 +1,4 @@
 use crate::{
-    complex::Complex,
     discrete::Z,
     impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
     traits::{Bounded, BuildNodes, Interval, NerveComplexParameters, Vector},
@@ -13,9 +12,11 @@ use num_traits::{Euclid, NumCast, One, Zero, real::Real as _};
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct S1<V: Euclidean + From<[<V as Vector>::F; 1]>>(V);
 
-impl<V: Euclidean<F: Real> + From<[V::F; 1]>> Interval<V::F> for S1<V> {
-    fn interval(&self, other: &Self) -> Complex<V::F> {
-        self.to_local(other).unwrap().norm().into()
+impl<V: Euclidean<F: Real> + From<[V::F; 1]>> Interval for S1<V> {
+    type R = V::F;
+
+    fn interval_squared(&self, other: &Self) -> V::F {
+        self.to_local(other).unwrap().norm_squared()
     }
 }
 
@@ -61,12 +62,14 @@ impl<I: ICompatible<V>, V: VCompatible<I>> Torus<I, V> {
     }
 }
 
-impl<I: ICompatible<V>, V: VCompatible<I>> Interval<I::F> for Torus<I, V>
+impl<I: ICompatible<V>, V: VCompatible<I>> Interval for Torus<I, V>
 where
     I::F: From<V::F>,
 {
-    fn interval(&self, other: &Self) -> Complex<I::F> {
-        <I::F as From<V::F>>::from(self.to_local(other).unwrap().norm()).into()
+    type R = I::F;
+
+    fn interval_squared(&self, other: &Self) -> I::F {
+        self.to_local(other).unwrap().norm_squared().into()
     }
 }
 
@@ -205,9 +208,11 @@ impl<I: ICompatible<V>, V: VCompatible<I>> KleinBottle<I, V> {
     }
 }
 
-impl<I: ICompatible<V>, V: VCompatible<I>> Interval<I::F> for KleinBottle<I, V> {
-    fn interval(&self, other: &Self) -> Complex<I::F> {
-        <I::F as From<V::F>>::from(self.to_local(other).unwrap().norm()).into()
+impl<I: ICompatible<V>, V: VCompatible<I>> Interval for KleinBottle<I, V> {
+    type R = I::F;
+
+    fn interval_squared(&self, other: &Self) -> I::F {
+        self.to_local(other).unwrap().norm_squared().into()
     }
 }
 

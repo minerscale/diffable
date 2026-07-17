@@ -3,11 +3,10 @@ use std::{
     ops::{Add, Index, IndexMut, Mul, Neg, Sub},
 };
 
-use num_traits::{Inv, One, Zero, real::Real as _};
+use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 
 use crate::{
-    coords::array_zip_map,
-    traits::{DivRing, ExactCmp, Field, NonZero, Real},
+    coords::array_zip_map, traits::{DivRing, ExactCmp, Field, Metric, NatZero, NonZero},
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -131,10 +130,10 @@ impl<const N: usize, F: Field> Matrix<N, F> {
                     for j in 0..N {
                         // Equivalent to: row[k] = row[k] - (factor * row[i])
                         let mat_sub = factor.clone() * mat[i][j].clone();
-                        mat[k][j] = mat[k][j].sub(&mat_sub);
+                        mat[k][j] = mat[k][j] - mat_sub;
 
                         let inv_sub = factor.clone() * inv[i][j].clone();
-                        inv[k][j] = inv[k][j].sub(&inv_sub);
+                        inv[k][j] = inv[k][j] - inv_sub;
                     }
                 }
             }
@@ -145,12 +144,12 @@ impl<const N: usize, F: Field> Matrix<N, F> {
     }
 }
 
-impl<const N: usize, F: Field<Fixed: Real>> Matrix<N, F> {
-    pub fn frobenius_norm(&self) -> F::Fixed {
+impl<const N: usize, F: Field + Metric> Matrix<N, F> {
+    pub fn frobenius_norm(&self) -> F::R {
         self.0
             .as_flattened()
             .iter()
-            .fold(F::Fixed::zero(), |acc, x| acc + x.norm_squared())
+            .fold(F::R::zero(), |acc, x| acc + x.interval_squared(&F::zero()))
             .sqrt()
     }
 }
@@ -196,7 +195,7 @@ impl<const N: usize, F: Field> Sub<Self> for Matrix<N, F> {
 
     fn sub(self, rhs: Self) -> Self::Output {
         Matrix(array_zip_map(self.0, rhs.0, |&v, &u| {
-            array_zip_map(v, u, |&a, &b| a.sub(&b))
+            array_zip_map(v, u, |&a, &b| a - b)
         }))
     }
 }
@@ -232,7 +231,7 @@ macro_rules! todo_warn {
     }};
 }
 
-impl<const N: usize, R: Real, F: Field<Fixed = R>> MatrixExponential for Matrix<N, F> {
+impl<const N: usize, F: Field<Characteristic = NatZero> + Metric> MatrixExponential for Matrix<N, F> {
     fn exp(&self) -> Self {
         todo_warn!(
             "\n\n⚠️ SHITTY IMPLEMENTATION ALERT:\nUses unstable Taylor series. Come back and refactor to Scaling and Squaring!\n"
@@ -241,12 +240,14 @@ impl<const N: usize, R: Real, F: Field<Fixed = R>> MatrixExponential for Matrix<
         let mut result = Matrix::one();
         let mut term = Matrix::one();
 
-        let epsilon = R::epsilon();
+        let epsilon = F::R::epsilon();
 
+        let mut k_as_f = F::one();
         for k in 1.. {
             term = term * *self;
-            term = term * F::from_fixed(R::one() / R::from(k).unwrap());
-
+            term = term * F::one().div(k_as_f);
+            k_as_f = F::one() + k_as_f;
+            
             result = result + term;
 
             if term
@@ -265,7 +266,7 @@ impl<const N: usize, R: Real, F: Field<Fixed = R>> MatrixExponential for Matrix<
     }
 
     fn log(&self) -> Option<Self> {
-        let log_radius: R = R::from(0.1).unwrap();
+        let log_radius: F::R = <F::R as NumCast>::from(0.1).unwrap();
         let x = *self - Matrix::one();
 
         let norm = x.frobenius_norm();
@@ -274,18 +275,20 @@ impl<const N: usize, R: Real, F: Field<Fixed = R>> MatrixExponential for Matrix<
             return None;
         }
 
-        let epsilon = R::epsilon();
+        let epsilon = F::R::epsilon();
 
         let mut result = x;
         let mut term = x;
 
+        let mut k_as_f = F::one() + F::one();
         for k in 2.. {
             term = term * x;
 
             let next = term
-                * F::from_fixed(
-                    (if k % 2 == 0 { -R::one() } else { R::one() }) / R::from(k).unwrap(),
-                );
+                * 
+                    (if k % 2 == 0 { -F::one() } else { F::one() }).div(k_as_f);
+
+            k_as_f = k_as_f + F::one();
 
             result = result + next;
 

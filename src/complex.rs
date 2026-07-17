@@ -3,9 +3,7 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{Inv, One, Zero};
 
 use crate::{
-    coords::Coords,
-    impl_group_via_add,
-    traits::{Field, InnerProduct, Interval, LieGroup, Metric, NonZero, Real, Smooth},
+    coords::Coords, impl_group_via_add, traits::{Field, Interval, LieGroup, Metric, NatZero, NonZero, Real, Sesquilinear, Smooth},
 };
 
 /// Complex numbers a + bi, backed by R^2.
@@ -133,17 +131,7 @@ impl<R: Real> LieGroup<Coords<R, 2>> for Complex<R> {
     }
 }
 
-impl<R: Real> Metric<R> for Complex<R> {
-    fn distance(&self, other: &Self) -> R {
-        self.0.distance(&other.0)
-    }
-}
-
-impl<R: Real> Interval<R> for Complex<R> {
-    fn interval(&self, other: &Self) -> Complex<R> {
-        self.0.distance(&other.0).into()
-    }
-}
+impl<R: Real> Metric for Complex<R> {}
 
 impl<R: Real> Inv for NonZero<Complex<R>> {
     type Output = Self;
@@ -173,14 +161,17 @@ impl<R: Real> LieGroup<Coords<R, 2>> for NonZero<Complex<R>> {
     }
 }
 
-impl<R: Real> Interval<R> for NonZero<Complex<R>> {
-    fn interval(&self, other: &Self) -> Complex<R> {
-        self.log(other).unwrap().norm().into()
+impl<R: Real> Interval for NonZero<Complex<R>> {
+    type R = R;
+
+    fn interval_squared(&self, other: &Self) -> R {
+        self.log(other).unwrap().norm_squared().into()
     }
 }
 
 impl<R: Real> Field for Complex<R> {
     type Fixed = R;
+    type Characteristic = NatZero;
 
     fn conj(&self) -> Self {
         let [a, b] = (*self).into();

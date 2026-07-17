@@ -164,6 +164,8 @@ where
     }
 }
 
+// Here, D is N*N - 1, we do this this way because of const-generics restrictions
+// we statically assert in the constructor that D = N*N - 1.
 #[derive(Debug, Copy, Clone)]
 pub struct SlAlgebra<F: Field, const N: usize, const D: usize>(Coords<F, D>);
 
@@ -268,7 +270,7 @@ impl<F: Field, const N: usize, const D: usize> SlAlgebra<F, N, D> {
             let c = self[index];
 
             out[k][k] = out[k][k] + c;
-            out[k + 1][k + 1] = out[k + 1][k + 1].sub(&c);
+            out[k + 1][k + 1] = out[k + 1][k + 1] - c;
 
             index += 1;
         }
@@ -336,11 +338,11 @@ impl<F: Field, const N: usize, const D: usize> Form for SlAlgebra<F, N, D> {
             let mut x = self[base + i] + self[base + i];
 
             if i > 0 {
-                x = x.sub(&self[base + i - 1]);
+                x = x - self[base + i - 1];
             }
 
             if i + 1 < N - 1 {
-                x = x.sub(&self[base + i + 1]);
+                x = x - self[base + i + 1];
             }
 
             out[base + i] = x;
@@ -386,11 +388,11 @@ impl<F: Field, const N: usize, const D: usize> Nondegenerate for SlAlgebra<F, N,
     }
 }
 
-// Here, D is N*N - 1, we do this this way because of const-generics restrictions
-// we statically assert in the constructor that D = N*N - 1.
 impl<F: Field<Fixed = F>, const N: usize, const D: usize> Sesquilinear for SlAlgebra<F, N, D> {}
-impl<F: Field, const N: usize, const D: usize> Quadratic for SlAlgebra<F, N, D>
-where SlAlgebra<F, N, D>: Bilinear {}
+impl<F: Field, const N: usize, const D: usize> Quadratic for SlAlgebra<F, N, D> where
+    SlAlgebra<F, N, D>: Bilinear
+{
+}
 
 impl<F: Field, const N: usize, const D: usize> Vector for SlAlgebra<F, N, D> {
     type F = F;

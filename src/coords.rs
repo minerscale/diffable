@@ -3,7 +3,6 @@ use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{ConstZero, Zero};
 
 use crate::{
-    complex::Complex,
     traits::{
         Bilinear, DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate,
         Quadratic, Real, Sesquilinear, Vector,
@@ -119,7 +118,7 @@ impl<F: Field, const N: usize, const M: usize> Sub for Coords<F, N, M> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        array_zip_map(*self, *rhs, |&a, &b| a.sub(&b)).into()
+        array_zip_map(*self, *rhs, |&a, &b| a - b).into()
     }
 }
 
@@ -157,15 +156,15 @@ impl<F: Field, const N: usize, const M: usize> Vector for Coords<F, N, M> {
     }
 }
 
-impl<R: Field + Real, const N: usize, const M: usize> Interval<R> for Coords<R, N, M> {
-    fn interval(&self, other: &Self) -> Complex<R> {
-        let displacement = *self - *other;
+impl<R: Real, F: Field<Fixed = R>, const N: usize, const M: usize> Interval for Coords<F, N, M> {
+    type R = R;
 
-        Complex::real_sqrt(displacement.dot(&displacement))
+    fn interval_squared(&self, other: &Self) -> R {
+        (*self - *other).norm_squared()
     }
 }
 
-impl<R: Field + Real, const N: usize> Metric<R> for Coords<R, N, 0> {
+impl<R: Field + Real, const N: usize> Metric for Coords<R, N, 0> {
     fn distance(&self, other: &Self) -> R {
         let displacement = *self - *other;
         displacement.dot(&displacement).sqrt()
@@ -216,8 +215,5 @@ impl<R: Field, const N: usize, const M: usize> Nondegenerate for Coords<R, N, M>
 }
 
 impl<F: Field, const N: usize, const M: usize> Sesquilinear for Coords<F, N, M> {}
-impl<F: Field, const N: usize, const M: usize> Quadratic for Coords<F, N, M> where
-    Self: Bilinear
-{
-}
+impl<F: Field, const N: usize, const M: usize> Quadratic for Coords<F, N, M> where Self: Bilinear {}
 impl<R: Real, const N: usize> Euclidean for Coords<R, N, 0> {}

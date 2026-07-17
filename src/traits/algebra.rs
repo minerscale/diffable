@@ -1,6 +1,6 @@
-use crate::{impl_group_via_mul, traits::Vector};
+use crate::{impl_group_via_mul, traits::{Interval, Metric, Real, Vector}};
 use num_traits::{Inv, One, Zero};
-use std::ops::{Mul, Neg};
+use std::ops::{Add, Mul, Neg, Sub};
 
 use super::{Point, Smooth};
 
@@ -121,11 +121,7 @@ impl<M: Point + One> Monoid for M {}
 ///
 /// [`impl_group_via_add`]: crate::impl_group_via_add
 /// [`impl_group_via_mul`]: crate::impl_group_via_mul
-pub trait CGroup: CMonoid + Neg<Output = Self> {
-    fn sub(&self, rhs: &Self) -> Self {
-        self.clone().add(rhs.clone().neg())
-    }
-
+pub trait CGroup: CMonoid + Sub<Output = Self> + Neg<Output = Self> {
     #[cfg(feature = "testing")]
     fn check_left_inverse(&self) -> bool
     where
@@ -141,8 +137,14 @@ pub trait CGroup: CMonoid + Neg<Output = Self> {
     {
         self.clone() + -self.clone() == Self::zero()
     }
+
+    fn check_sub_agrees_with_neg(a: &Self, b: &Self) -> bool
+    where
+        Self: PartialEq, {
+        a.clone() - b.clone() == a.clone() + -(b.clone())
+    }
 }
-impl<G: CMonoid + Neg<Output = Self>> CGroup for G {}
+impl<G: CMonoid + Sub<Output = Self> + Neg<Output = Self>> CGroup for G {}
 
 /// Bridges a `+`/`-`-flavoured type into the spelling-agnostic [`Group`]
 /// by delegating `identity`/`compose`/`inverse` to its `Zero`/`Add`/`Neg`.
@@ -227,6 +229,13 @@ macro_rules! impl_abelian_group_via_grothendieck {
                 let (a, b) = self.into();
                 let (c, d) = other.into();
                 (a + c, b + d).into()
+            }
+        }
+
+        impl<$($generics)*> std::ops::Sub for $target {
+            type Output = Self;
+            fn sub(self, other: Self) -> Self {
+                self + -other
             }
         }
 
@@ -430,6 +439,7 @@ where
 /// A division ring whose multiplication is abelian.
 pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     type Fixed: Field;
+    type Characteristic: Nat;
 
     fn from_nat(mut n: usize) -> Self {
         let mut result = Self::zero();
@@ -526,7 +536,146 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     {
         a.clone() * b.clone() == b * a
     }
+
+    fn check_characteristic_up_to(bound: usize) -> bool {
+        let mut acc = Self::zero();
+
+        let bound = match Self::Characteristic::N {
+            0 => bound,
+            n => bound.min(n)
+        };
+        for _ in 1..bound {
+            acc = acc + Self::one();
+            if acc == Self::zero() { return false; }   // caught a characteristic ≤ bound
+        }
+
+        if bound != 0 && bound == Self::Characteristic::N {
+            // one more add should send it to zero
+            acc + Self::one() == Self::zero()
+        } else {
+            // didn't probe far enough / characteristic is 0
+            acc + Self::one() != Self::zero()
+        }
+    }
 }
+
+pub trait Nat {
+    const N: usize;
+}
+
+pub struct Succ<N: Nat>(N);
+pub enum NatZero {}
+
+impl Nat for NatZero {
+    const N: usize = 0;
+}
+
+impl<N: Nat> Nat for Succ<N> {
+    const N: usize = N::N + 1;
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Symmetrized<F: Field>(pub F);
+
+impl<F: Field> Sub for Symmetrized<F> {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl<F: Field> Add for Symmetrized<F> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl<F: Field> Neg for Symmetrized<F> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self(-self.0)
+    }
+}
+
+impl<F: Field> Mul for Symmetrized<F> {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self(self.0.mul(rhs.0))
+    }
+}
+
+impl<F: Field> One for Symmetrized<F> {
+    fn one() -> Self {
+        Self(F::one())
+    }
+
+    fn is_one(&self) -> bool {
+        self.0.is_one()
+    }
+}
+
+impl<F: Field> Zero for Symmetrized<F> {
+    fn zero() -> Self {
+        Self(F::zero())
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0.is_zero()
+    }
+}
+
+impl<F: Field> Inv for NonZero<Symmetrized<F>> {
+    type Output = Self;
+
+    fn inv(self) -> Self::Output {
+        NonZero::new_unchecked(Symmetrized(
+            <F::Mul>::from(NonZero::new_unchecked(self.0.0))
+                .inv()
+                .into()
+                .0,
+        ))
+    }
+}
+
+impl<F: Field> Field for Symmetrized<F> {
+    type Fixed = Self;
+    type Characteristic = F::Characteristic;
+
+    fn conj(&self) -> Self {
+        *self
+    }
+
+    fn to_fixed(self) -> Self::Fixed {
+        self
+    }
+
+    fn from_fixed(x: Self::Fixed) -> Self {
+        x
+    }
+}
+
+impl<R: Real, F: Field<Fixed = R>> Interval for F {
+    type R = R;
+
+    fn interval_squared(&self, other: &Self) -> R {
+        (*self - *other).norm_squared()
+    }
+}
+
+impl<F: Field + Interval> Interval for Symmetrized<F> {
+    type R = F::R;
+
+    fn interval_squared(&self, other: &Self) -> F::R {
+        self.0.interval_squared(&other.0)
+    }
+}
+
+impl<F: Field + Metric> Metric  for Symmetrized<F> {}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct RootOfUnityPrimitive<F: Field, const N: usize>(RootOfUnity<F, N>);

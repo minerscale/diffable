@@ -1,4 +1,4 @@
-use crate::traits::{CGroup, DivRing, Euclidean, Field, Form, Interval, Real, Vector};
+use crate::traits::{DivRing, Euclidean, Field, Form, Interval, Real, Vector};
 
 use super::{Point, Quadratic};
 use itertools::Itertools;
@@ -164,7 +164,7 @@ pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
 /// Verified by `test_pseudo_riemannian!`.
 ///
 /// [`Bilinear`]: crate::traits::Bilinear
-pub trait PseudoRiemannian<V: Quadratic<F: Real>>: ExpMap<Self, V> + Interval<V::F> {
+pub trait PseudoRiemannian<V: Quadratic<F: Real>>: ExpMap<Self, V> + Interval<R = V::F> {
     #[cfg(feature = "testing")]
     fn check_isometry(&self, v: V) -> bool {
         let global = self.to_global(v);
@@ -182,7 +182,7 @@ pub trait PseudoRiemannian<V: Quadratic<F: Real>>: ExpMap<Self, V> + Interval<V:
     }
 }
 
-impl<V: Quadratic<F: Real>, E: ExpMap<Self, V> + Interval<V::F>> PseudoRiemannian<V> for E {}
+impl<V: Quadratic<F: Real>, E: ExpMap<Self, V> + Interval<R = V::F>> PseudoRiemannian<V> for E {}
 
 /// A tangent bundle structure on a manifold.
 ///
@@ -212,7 +212,7 @@ pub trait TangentBundle<P: Point, V: Vector>: ExpMap<P, V> {
         let qv = v.self_dot();
         let qw = w.self_dot();
         let vw = v.dot(&w);
-        let gram = (qv * qw).sub(&(vw * vw));
+        let gram = qv * qw - vw * vw;
         if gram == V::F::zero() {
             return None;
         }
@@ -230,7 +230,7 @@ pub trait TangentBundle<P: Point, V: Vector>: ExpMap<P, V> {
         let q_delta = delta.self_dot();
         let eps2 = epsilon * epsilon;
         let three = V::F::one() + V::F::one() + V::F::one();
-        let numerator = three * ((eps2 * qw).sub(&q_delta)).div(eps2 * eps2);
+        let numerator = three * (eps2 * qw - q_delta).div(eps2 * eps2);
 
         Some(numerator.div(gram))
     }

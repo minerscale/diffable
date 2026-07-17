@@ -12,7 +12,7 @@ macro_rules! test_vector {
             use super::*;
             use $crate::{
                 test_group, test_tangent_bundle,
-                traits::{Field, Form, Vector, Nondegenerate},
+                traits::{Field, Form, Nondegenerate, Vector},
             };
 
             test_tangent_bundle!(
@@ -67,7 +67,7 @@ macro_rules! test_pseudo_euclidean {
     ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_interval, test_pseudo_riemannian, test_vector, test_sesquilinear};
+            use $crate::{test_interval, test_pseudo_riemannian, test_sesquilinear, test_vector};
 
             test_vector!(quadratic, $scalar, $space, $arb_point, $arb_scalar);
             test_interval!(interval, $space, $arb_point);
@@ -130,7 +130,7 @@ macro_rules! test_exp_map {
             use super::*;
             use $crate::{
                 test_chart,
-                traits::{Field, Chart, ExpMap},
+                traits::{Chart, ExpMap, Field},
             };
 
             // inherit all Chart tests
@@ -337,6 +337,11 @@ macro_rules! test_cgroup {
                 fn right_inverse(p in $arb_point) {
                     prop_assert!(<$point as CGroup>::check_right_inverse(&p));
                 }
+
+                #[test]
+                fn sub_agrees_with_neg(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_sub_agrees_with_neg(&a, &b))
+                }
             }
         }
     };
@@ -373,7 +378,9 @@ macro_rules! test_metric {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::traits::Metric;
+            use $crate::{test_interval, traits::{Metric}};
+
+            test_interval!(interval, $point, $arb_point);
 
             proptest! {
                 #[test]
@@ -382,13 +389,8 @@ macro_rules! test_metric {
                 }
 
                 #[test]
-                fn symmetry(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_metric_symmetry(a, b));
-                }
-
-                #[test]
-                fn self_distance_zero(p in $arb_point) {
-                    prop_assert!(<$point>::check_self_distance_zero(p))
+                fn distance_agrees_with_interval(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_distance_agrees_with_interval(a, b))
                 }
             }
         }
@@ -412,6 +414,11 @@ macro_rules! test_interval {
                 #[test]
                 fn self_interval_zero(p in $arb_point) {
                     prop_assert!(<$point>::check_self_interval_zero(p))
+                }
+
+                #[test]
+                fn interval_squared_agrees_with_interval(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_interval_squared_agrees_with_interval(&a, &b))
                 }
             }
         }
@@ -570,6 +577,11 @@ macro_rules! test_field {
                 fn commutativity(a in $arb_point, b in $arb_point) {
                     prop_assert!(<$point>::check_commutativity(a, b));
                 }
+            }
+
+            #[test]
+            fn characteristic() {
+                assert!(<$point>::check_characteristic_up_to(256))
             }
 
             #[test]

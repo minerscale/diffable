@@ -113,6 +113,14 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
 
         sphere.normalised()
     }
+
+    fn geodesic_distance(&self, other: &Self) -> V::F {
+        let cos_d = self.real * other.real + self.imag.dot(&other.imag);
+        let w_real = other.real - cos_d * self.real;
+        let w_imag = other.imag - self.imag * cos_d;
+        let sin_d = (w_real * w_real + w_imag.norm_squared()).sqrt();
+        V::F::atan2(sin_d, cos_d)          // θ, stable through the antipode
+    }
 }
 
 impl<const N: usize, V: Euclidean> Smooth<V> for Sphere<N, V> {
@@ -242,26 +250,33 @@ impl_group_via_mul!(UnitComplex<V>, V: Euclidean);
 pub struct S3<V: Euclidean>(pub Sphere<3, V>);
 impl_group_via_mul!(S3<V>, V: Euclidean);
 
-impl<V: Euclidean> Interval<V::F> for S0<V> {
-    fn interval(&self, other: &Self) -> Complex<V::F> {
-        self.0.interval(&other.0)
-    }
-}
-impl<V: Euclidean> Metric<V::F> for S0<V> {}
+impl<V: Euclidean> Interval for S0<V> {
+    type R = V::F;
 
-impl<V: Euclidean> Interval<V::F> for UnitComplex<V> {
-    fn interval(&self, other: &Self) -> Complex<V::F> {
-        self.0.interval(&other.0)
+    fn interval_squared(&self, other: &Self) -> V::F {
+        self.0.interval_squared(&other.0)
     }
 }
-impl<V: Euclidean> Metric<V::F> for UnitComplex<V> {}
 
-impl<V: Euclidean> Interval<V::F> for S3<V> {
-    fn interval(&self, other: &Self) -> Complex<V::F> {
-        self.0.interval(&other.0)
+impl<V: Euclidean> Metric for S0<V> {}
+
+impl<V: Euclidean> Interval for UnitComplex<V> {
+    type R = V::F;
+
+    fn interval_squared(&self, other: &Self) -> V::F {
+        self.0.interval_squared(&other.0)
     }
 }
-impl<V: Euclidean> Metric<V::F> for S3<V> {}
+impl<V: Euclidean> Metric for UnitComplex<V> {}
+
+impl<V: Euclidean> Interval for S3<V> {
+    type R = V::F;
+
+    fn interval_squared(&self, other: &Self) -> V::F {
+        self.0.interval_squared(&other.0)
+    }
+}
+impl<V: Euclidean> Metric for S3<V> {}
 
 impl<V: Euclidean> One for S0<V> {
     fn one() -> Self {
@@ -407,20 +422,20 @@ impl<V: Euclidean> LieGroup<V> for S3<V> {
     }
 }
 
-impl<const N: usize, V: Euclidean> Interval<V::F> for Sphere<N, V> {
+
+impl<const N: usize, V: Euclidean> Interval for Sphere<N, V> {
+    type R = V::F;
+    
     fn interval(&self, other: &Self) -> Complex<V::F> {
-        // ambient inner product of two unit vectors = cos(geodesic distance)
-        let cos_d = self.real * other.real + self.imag.dot(&other.imag);
-        // the perpendicular component gives sin(geodesic distance):
-        // ‖q − (p·q)p‖ = sin(θ)
-        let w_real = other.real - cos_d * self.real;
-        let w_imag = other.imag - self.imag * cos_d;
-        let sin_d = (w_real * w_real + w_imag.norm_squared()).sqrt();
-        // θ = atan2(sin, cos), stable everywhere including antipode (θ=π)
-        V::F::atan2(sin_d, cos_d).into()
+        self.geodesic_distance(other).into()
+    }
+    fn interval_squared(&self, other: &Self) -> V::F {
+        let d = self.geodesic_distance(other);
+        d * d
     }
 }
-impl<const N: usize, V: Euclidean> Metric<V::F> for Sphere<N, V> {}
+
+impl<const N: usize, V: Euclidean> Metric for Sphere<N, V> {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct So3<V: Euclidean>(S3<V>);

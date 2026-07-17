@@ -1,7 +1,5 @@
 use num_traits::{Zero, real::Real as _};
-use std::{
-    ops::{Add, Index, IndexMut, Mul, Neg, Sub},
-};
+use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
 use super::{Chart, Field, LieGroup, Real};
 use crate::{impl_group_via_add, traits::Metric};
@@ -441,7 +439,7 @@ pub trait Sesquilinear: Form {
 /// vector space. And not every [`Bilinear`] form is an `InnerProduct` — a
 /// Minkowski scalar product is bilinear and symmetric but indefinite, so it
 /// induces no metric at all.
-pub trait InnerProduct: Sesquilinear<F: Real> + Metric<<Self::F as Field>::Fixed> {
+pub trait InnerProduct: Sesquilinear<F: Real> + Metric<R = <Self::F as Field>::Fixed> {
     /// The norm `‖v‖ = sqrt(⟨v,v⟩)`. Well-defined and real because the form
     /// is positive-definite. On an indefinite [`Bilinear`] space this would
     /// not be real — which is why it lives here, not on the base.
@@ -463,4 +461,4 @@ pub trait InnerProduct: Sesquilinear<F: Real> + Metric<<Self::F as Field>::Fixed
     }
 }
 
-impl<P: Sesquilinear<F: Real> + Metric<<Self::F as Field>::Fixed>> InnerProduct for P {}
+impl<P: Sesquilinear<F: Real> + Metric<R = <Self::F as Field>::Fixed>> InnerProduct for P {}

@@ -2,10 +2,9 @@
 use num_traits::Zero;
 
 use crate::{
-    complex::Complex,
-    traits::{Field, NonZero},
+    complex::Complex, traits::{Field, NatZero, NonZero},
 };
-use num_traits::{Euclid, Inv};
+use num_traits::{Euclid, Inv, real::Real as _};
 
 /// An element of the carrier set of a manifold, group, or metric space.
 ///
@@ -83,6 +82,7 @@ where
     NonZero<R>: Inv<Output = NonZero<R>>,
 {
     type Fixed = Self;
+    type Characteristic = NatZero;
 
     fn to_fixed(self) -> Self {
         self
@@ -155,26 +155,19 @@ impl<R: Real> ExactCmp for R {}
 ///
 /// [`Chart`]: crate::traits::Chart
 /// [`Euclidean`]: crate::traits::Euclidean
-pub trait Metric<R: Real>: Interval<R> {
-    fn distance(&self, other: &Self) -> R {
-        let [a, _] = self.interval(other).into();
-
-        a
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_self_distance_zero(a: Self) -> bool {
-        a.distance(&a) == R::zero()
+pub trait Metric: Interval {
+    fn distance(&self, other: &Self) -> Self::R {
+        self.interval_squared(other).sqrt()
     }
 
     #[cfg(feature = "testing")]
     fn check_non_negative(a: Self, b: Self) -> bool {
-        a.distance(&b) >= R::zero()
+        a.distance(&b) >= Self::R::zero()
     }
 
     #[cfg(feature = "testing")]
-    fn check_metric_symmetry(a: Self, b: Self) -> bool {
-        a.distance(&b) == b.distance(&a)
+    fn check_distance_agrees_with_interval(a: Self, b: Self) -> bool {
+        a.distance(&b) == a.interval_squared(&b).sqrt()
     }
 }
 
@@ -184,10 +177,16 @@ pub trait Metric<R: Real>: Interval<R> {
 /// zero null, positive spacelike (or your sign convention). No metric-space
 /// axioms are claimed — this is not a distance, it is the value of the
 /// line element between two points along the connecting geodesic.
-pub trait Interval<R: Real>: Point {
+pub trait Interval: Point {
+    type R: Real;
+
     /// Interval between self and other. Real or imaginary
     /// carries causal character.
-    fn interval(&self, other: &Self) -> Complex<R>;
+    fn interval(&self, other: &Self) -> Complex<Self::R> {
+        Complex::real_sqrt(self.interval_squared(other))
+    }
+
+    fn interval_squared(&self, other: &Self) -> Self::R;
 
     #[cfg(feature = "testing")]
     fn check_interval_symmetry(a: Self, b: Self) -> bool {
@@ -197,5 +196,10 @@ pub trait Interval<R: Real>: Point {
     #[cfg(feature = "testing")]
     fn check_self_interval_zero(a: Self) -> bool {
         a.interval(&a) == Complex::zero()
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_interval_squared_agrees_with_interval(a: &Self, b: &Self) -> bool {
+        Complex::real_sqrt(a.interval_squared(b)) == a.interval(b)
     }
 }
