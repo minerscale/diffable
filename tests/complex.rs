@@ -6,7 +6,10 @@ mod common;
 use common::*;
 
 use diffable::{
-    complex::Complex, epsilon_metric::R64, test_field, test_metric, test_pseudo_riemannian, test_tangent_bundle, traits::{NonZero, Symmetrized},
+    complex::Complex,
+    epsilon_metric::R64,
+    test_field, test_metric, test_pseudo_riemannian, test_tangent_bundle,
+    traits::{NonZero, Symmetrized},
 };
 
 use proptest::prelude::*;
@@ -25,7 +28,7 @@ test_metric!(
 
 test_field!(
     symmetrized_complex_field,
-    Symmetrized<Complex<R64>> ,
+    Symmetrized<Complex<R64>>,
     arb_vec::<2>().prop_map(|x| Symmetrized(Complex::<R64>::from(x))),
     arb_vec::<2>().prop_map(|x| Symmetrized(Complex::<R64>::from(x)))
 );

@@ -2,11 +2,9 @@ use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, Neg, Sub};
 
 use num_traits::{ConstZero, Zero};
 
-use crate::{
-    traits::{
-        Bilinear, DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate,
-        Quadratic, Real, Sesquilinear, Vector,
-    },
+use crate::traits::{
+    Bilinear, DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate, Quadratic,
+    Real, Sesquilinear, Vector,
 };
 
 /// The canonical model of flat pseudo-Euclidean coordinate space `R^(N−M, M)`.

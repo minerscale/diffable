@@ -119,7 +119,7 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
         let w_real = other.real - cos_d * self.real;
         let w_imag = other.imag - self.imag * cos_d;
         let sin_d = (w_real * w_real + w_imag.norm_squared()).sqrt();
-        V::F::atan2(sin_d, cos_d)          // θ, stable through the antipode
+        V::F::atan2(sin_d, cos_d) // θ, stable through the antipode
     }
 }
 
@@ -422,10 +422,9 @@ impl<V: Euclidean> LieGroup<V> for S3<V> {
     }
 }
 
-
 impl<const N: usize, V: Euclidean> Interval for Sphere<N, V> {
     type R = V::F;
-    
+
     fn interval(&self, other: &Self) -> Complex<V::F> {
         self.geodesic_distance(other).into()
     }

@@ -6,27 +6,31 @@ use std::{
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 
 use crate::{
-    coords::array_zip_map, traits::{DivRing, ExactCmp, Field, Metric, NatZero, NonZero},
+    coords::array_zip_map,
+    traits::{DivRing, Dual, ExactCmp, Field, Metric, NatZero, NonZero, Vector},
 };
 
+/// A matrix, interpreted as the (1, 1) tensor V ⊗ V*.
+/// N must be equal to V::N. This is enforced by all constructors
+/// at compile time. This is due to limitations in Rust's const generics.
 #[derive(Debug, Copy, Clone)]
-pub struct Matrix<const N: usize, F: Field>([[F; N]; N]);
+pub struct Matrix<V: Vector, const N: usize>([[V::F; N]; N]);
 
-impl<const N: usize, F: Field> Index<(usize, usize)> for Matrix<N, F> {
-    type Output = F;
+impl<V: Vector, const N: usize> Index<(usize, usize)> for Matrix<V, N> {
+    type Output = V::F;
 
     fn index(&self, index: (usize, usize)) -> &Self::Output {
         &self.0[index.0][index.1]
     }
 }
 
-impl<const N: usize, F: Field> IndexMut<(usize, usize)> for Matrix<N, F> {
+impl<V: Vector, const N: usize> IndexMut<(usize, usize)> for Matrix<V, N> {
     fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
         &mut self.0[index.0][index.1]
     }
 }
 
-impl<const N: usize, F: Field> PartialEq for Matrix<N, F> {
+impl<V: Vector, const N: usize> PartialEq for Matrix<V, N> {
     fn eq(&self, other: &Self) -> bool {
         // Scale is computed from `self` alone, not chained with
         // `other` — this looks like it should break symmetry (self.eq(other) vs
@@ -46,11 +50,13 @@ impl<const N: usize, F: Field> PartialEq for Matrix<N, F> {
         //
         // And whenever they *don't* agree closely, they're obviously unequal,
         // so they'll not be equal.
+        let zero = <V::F as Field>::Fixed::zero();
+
         let scale = self
             .0
             .as_flattened()
             .iter()
-            .fold(F::Fixed::zero(), |acc, x| acc + x.norm_squared());
+            .fold(zero, |acc, x| acc + x.norm_squared());
 
         self.0
             .as_flattened()
@@ -58,21 +64,50 @@ impl<const N: usize, F: Field> PartialEq for Matrix<N, F> {
             .zip(other.0.as_flattened().iter())
             .all(|(&a, &b)| {
                 let diff_sq = (a + (-b)).norm_squared();
-                if scale == F::Fixed::zero() {
-                    diff_sq == F::Fixed::zero()
+                if scale == zero {
+                    diff_sq == zero
                 } else {
-                    F::Fixed::zero() == diff_sq.div(scale)
+                    zero == diff_sq.div(scale)
                 }
             })
     }
 }
 
-impl<const N: usize, F: Field> Matrix<N, F> {
+impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
+    /// The contraction (V ⊗ V*) ⊗ (V ⊗ V*) -> (V ⊗ V*)
+    pub fn mul(&self, rhs: &Self) -> Self {
+        Self(matrix_mul(self.0, rhs.0))
+    }
+
+    /// The contraction (V ⊗ V*) ⊗ V -> V
+    pub fn mul_v(&self, v: &V) -> V {
+        V::from_fn(|i| (0..N).fold(V::F::zero(), |acc, j| acc + self[(i, j)] * v[j]))
+    }
+
+    /// The contraction V* ⊗ (V ⊗ V*) -> V*
+    pub fn mul_dual_v(&self, v: &Dual<V>) -> Dual<V> {
+        Dual::from_fn(|j| (0..N).fold(V::F::zero(), |acc, i| acc + v[i] * self[(i, j)]))
+    }
+
+    /// The transpose V ⊗ V* -> V* ⊗ V** ≅ V* ⊗ V
+    pub fn transpose(self) -> Matrix<Dual<V>, N> {
+        Matrix::new(std::array::from_fn(|i| {
+            std::array::from_fn(|j| self[(j, i)])
+        }))
+    }
+
     pub fn new(m: [[F; N]; N]) -> Self {
+        const {
+            assert!(V::N == N);
+        }
+
         Matrix(m)
     }
 
-    pub fn flat_iter(&self) -> impl Iterator<Item = &F> {
+    pub fn flat_iter<'a>(&'a self) -> impl Iterator<Item = &'a F>
+    where
+        F: 'a,
+    {
         self.0.as_flattened().iter()
     }
 
@@ -85,10 +120,10 @@ impl<const N: usize, F: Field> Matrix<N, F> {
         from_fn(|i| from_fn(|j| self.0[i][j].clone()))
     }
 
-    pub fn gauss_jordan(&self) -> Matrix<N, F> {
+    pub fn gauss_jordan(&self) -> Self {
         // Mutate a copy of our inner arrays (A) and an identity matrix (I)
         let mut mat = self.0;
-        let mut inv: [[F; N]; N] = Matrix::one().0;
+        let mut inv: [[F; N]; N] = Matrix::<V, N>::one().0;
 
         for i in 0..N {
             // 1. Find the pivot row (first non-zero element in column `i` downwards)
@@ -114,9 +149,10 @@ impl<const N: usize, F: Field> Matrix<N, F> {
             inv.swap(i, pivot);
 
             // 3. Scale the pivot row so the pivot element becomes exactly 1
-            let pivot_inv = F::Mul::inv(NonZero::new(mat[i][i].clone()).unwrap().into())
-                .into()
-                .0;
+            let pivot_inv =
+                <F as DivRing>::Mul::inv(NonZero::new(mat[i][i].clone()).unwrap().into())
+                    .into()
+                    .0;
             for j in 0..N {
                 mat[i][j] = mat[i][j].clone() * pivot_inv.clone();
                 inv[i][j] = inv[i][j].clone() * pivot_inv.clone();
@@ -144,7 +180,7 @@ impl<const N: usize, F: Field> Matrix<N, F> {
     }
 }
 
-impl<const N: usize, F: Field + Metric> Matrix<N, F> {
+impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
     pub fn frobenius_norm(&self) -> F::R {
         self.0
             .as_flattened()
@@ -154,8 +190,10 @@ impl<const N: usize, F: Field + Metric> Matrix<N, F> {
     }
 }
 
-impl<const N: usize, F: Field> Zero for Matrix<N, F> {
+impl<F: Field, V: Vector<F = F>, const N: usize> Zero for Matrix<V, N> {
     fn zero() -> Self {
+        const { assert!(V::N == N) }
+
         Self(from_fn(|_| from_fn(|_| F::zero())))
     }
 
@@ -164,15 +202,17 @@ impl<const N: usize, F: Field> Zero for Matrix<N, F> {
     }
 }
 
-impl<const N: usize, F: Field> One for Matrix<N, F> {
+impl<F: Field, V: Vector<F = F>, const N: usize> One for Matrix<V, N> {
     fn one() -> Self {
+        const { assert!(V::N == N) }
+
         Self(from_fn(|i| {
             from_fn(|j| if i == j { F::one() } else { F::zero() })
         }))
     }
 }
 
-impl<const N: usize, F: Field> Mul<Self> for Matrix<N, F> {
+impl<F: Field, V: Vector<F = F>, const N: usize> Mul<Self> for Matrix<V, N> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -180,7 +220,7 @@ impl<const N: usize, F: Field> Mul<Self> for Matrix<N, F> {
     }
 }
 
-impl<const N: usize, F: Field> Add<Self> for Matrix<N, F> {
+impl<F: Field, V: Vector<F = F>, const N: usize> Add<Self> for Matrix<V, N> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -190,7 +230,7 @@ impl<const N: usize, F: Field> Add<Self> for Matrix<N, F> {
     }
 }
 
-impl<const N: usize, F: Field> Sub<Self> for Matrix<N, F> {
+impl<F: Field, V: Vector<F = F>, const N: usize> Sub<Self> for Matrix<V, N> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -200,7 +240,7 @@ impl<const N: usize, F: Field> Sub<Self> for Matrix<N, F> {
     }
 }
 
-impl<const N: usize, F: Field> Neg for Matrix<N, F> {
+impl<F: Field, V: Vector<F = F>, const N: usize> Neg for Matrix<V, N> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -208,7 +248,7 @@ impl<const N: usize, F: Field> Neg for Matrix<N, F> {
     }
 }
 
-impl<const N: usize, F: Field> Mul<F> for Matrix<N, F> {
+impl<F: Field, V: Vector<F = F>, const N: usize> Mul<F> for Matrix<V, N> {
     type Output = Self;
 
     fn mul(self, rhs: F) -> Self::Output {
@@ -231,7 +271,9 @@ macro_rules! todo_warn {
     }};
 }
 
-impl<const N: usize, F: Field<Characteristic = NatZero> + Metric> MatrixExponential for Matrix<N, F> {
+impl<const N: usize, F: Field<Characteristic = NatZero> + Metric, V: Vector<F = F>>
+    MatrixExponential for Matrix<V, N>
+{
     fn exp(&self) -> Self {
         todo_warn!(
             "\n\n⚠️ SHITTY IMPLEMENTATION ALERT:\nUses unstable Taylor series. Come back and refactor to Scaling and Squaring!\n"
@@ -247,7 +289,7 @@ impl<const N: usize, F: Field<Characteristic = NatZero> + Metric> MatrixExponent
             term = term * *self;
             term = term * F::one().div(k_as_f);
             k_as_f = F::one() + k_as_f;
-            
+
             result = result + term;
 
             if term
@@ -284,9 +326,7 @@ impl<const N: usize, F: Field<Characteristic = NatZero> + Metric> MatrixExponent
         for k in 2.. {
             term = term * x;
 
-            let next = term
-                * 
-                    (if k % 2 == 0 { -F::one() } else { F::one() }).div(k_as_f);
+            let next = term * (if k % 2 == 0 { -F::one() } else { F::one() }).div(k_as_f);
 
             k_as_f = k_as_f + F::one();
 

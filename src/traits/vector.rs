@@ -171,14 +171,18 @@ pub trait Vector:
     where
         Self: 'a;
     fn iter(&self) -> Self::Iter<'_>;
+    fn from_fn(f: impl Fn(usize) -> Self::F) -> Self;
 
+    /// The canonical pairing (V, V*) -> F. Must remain the normal dot product.
     fn pairing(&self, rhs: &Dual<Self>) -> Self::F {
         self.iter()
             .zip(rhs.iter())
             .fold(Self::F::zero(), |acc, (&a, &b)| acc + a * b)
     }
 
-    fn from_fn(f: impl Fn(usize) -> Self::F) -> Self;
+    fn collapse(v: Dual<Dual<Self>>) -> Self {
+        v.0.0
+    }
 
     fn from_array<const N: usize>(arr: [Self::F; N]) -> Self {
         const { assert!(Self::N == N) }

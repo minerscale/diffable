@@ -28,7 +28,7 @@ prop_compose! {
     }
 }
 
-pub fn arb_sl2c() -> impl Strategy<Value = Sl<2, Complex<R64>>> {
+pub fn arb_sl2c() -> impl Strategy<Value = Sl2c<R64>> {
     arb_sl_algebra_2c().prop_map(Sl::identity_exp)
 }
 

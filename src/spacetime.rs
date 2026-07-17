@@ -16,15 +16,14 @@ use crate::{
 pub type Minkowski<R> = Coords<R, 4, 1>;
 
 #[derive(Debug, Copy, Clone)]
-pub struct Sl<const N: usize, F: Field>(Matrix<N, F>);
+pub struct Sl<V: Vector, const N: usize>(Matrix<V, N>);
+pub type Sl2c<R> = Sl<Coords<Complex<R>, 2>, 2>;
 
-impl<const N: usize, F: Field> PartialEq for Sl<N, F> {
+impl<V: Vector, const N: usize> PartialEq for Sl<V, N> {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq(&other.0)
     }
 }
-
-pub type Sl2c<R> = Sl<2, Complex<R>>;
 
 /// The restricted lorentz group
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -105,19 +104,19 @@ impl<R: Real> Quotient<Sl2c<R>, RootOfUnity<Complex<R>, 2>, SlAlgebra<Complex<R>
 
 impl_lie_group_via_quotient!(Lorentz<R>, Sl2c<R>, RootOfUnity<Complex<R>,2>, SlAlgebra<Complex<R>, 2, 3>, R: Real);
 
-impl<const N: usize, F: Field> Sl<N, F> {
-    pub fn trace(&self) -> F {
+impl<V: Vector, const N: usize> Sl<V, N> {
+    pub fn trace(&self) -> V::F {
         self.0.trace()
     }
 }
 
-impl<const N: usize, F: Field> One for Sl<N, F> {
+impl<V: Vector, const N: usize> One for Sl<V, N> {
     fn one() -> Self {
         Self(Matrix::one())
     }
 }
 
-impl<const N: usize, F: Field> Mul for Sl<N, F> {
+impl<V: Vector, const N: usize> Mul for Sl<V, N> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -125,7 +124,7 @@ impl<const N: usize, F: Field> Mul for Sl<N, F> {
     }
 }
 
-impl<const N: usize, F: Field> Inv for Sl<N, F> {
+impl<V: Vector, const N: usize> Inv for Sl<V, N> {
     type Output = Self;
 
     fn inv(self) -> Self::Output {
@@ -149,11 +148,11 @@ impl<const N: usize, F: Field> Inv for Sl<N, F> {
     }
 }
 
-impl_group_via_mul!(Sl<N, F>, const N: usize, F: Field);
+impl_group_via_mul!(Sl<V, N>, V: Vector, const N: usize);
 
-impl<F: Field> LieGroup<SlAlgebra<F, 2, 3>> for Sl<2, F>
+impl<F: Field> LieGroup<SlAlgebra<F, 2, 3>> for Sl<Coords<F, 2>, 2>
 where
-    Matrix<2, F>: MatrixExponential,
+    Matrix<Coords<F, 2>, 2>: MatrixExponential,
 {
     fn identity_exp(v: SlAlgebra<F, 2, 3>) -> Self {
         Self(Matrix::exp(&v.to_matrix()))
@@ -250,7 +249,7 @@ impl<F: Field, const N: usize, const D: usize> IndexMut<usize> for SlAlgebra<F, 
 }
 
 impl<F: Field, const N: usize, const D: usize> SlAlgebra<F, N, D> {
-    fn to_matrix(&self) -> Matrix<N, F> {
+    fn to_matrix(&self) -> Matrix<Coords<F, N>, N> {
         let mut out = [[F::zero(); N]; N];
 
         let mut index = 0;
@@ -278,7 +277,7 @@ impl<F: Field, const N: usize, const D: usize> SlAlgebra<F, N, D> {
         Matrix::new(out)
     }
 
-    fn from_matrix(m: Matrix<N, F>) -> Self {
+    fn from_matrix(m: Matrix<Coords<F, N>, N>) -> Self {
         let mut out = [F::zero(); D];
 
         let mut index = 0;

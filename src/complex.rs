@@ -3,7 +3,9 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{Inv, One, Zero};
 
 use crate::{
-    coords::Coords, impl_group_via_add, traits::{Field, Interval, LieGroup, Metric, NatZero, NonZero, Real, Sesquilinear, Smooth},
+    coords::Coords,
+    impl_group_via_add,
+    traits::{Field, Interval, LieGroup, Metric, NatZero, NonZero, Real, Sesquilinear, Smooth},
 };
 
 /// Complex numbers a + bi, backed by R^2.

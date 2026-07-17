@@ -1,4 +1,7 @@
-use crate::{impl_group_via_mul, traits::{Interval, Metric, Real, Vector}};
+use crate::{
+    impl_group_via_mul,
+    traits::{Interval, Metric, Real, Vector},
+};
 use num_traits::{Inv, One, Zero};
 use std::ops::{Add, Mul, Neg, Sub};
 
@@ -140,7 +143,8 @@ pub trait CGroup: CMonoid + Sub<Output = Self> + Neg<Output = Self> {
 
     fn check_sub_agrees_with_neg(a: &Self, b: &Self) -> bool
     where
-        Self: PartialEq, {
+        Self: PartialEq,
+    {
         a.clone() - b.clone() == a.clone() + -(b.clone())
     }
 }
@@ -442,6 +446,10 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     type Characteristic: Nat;
 
     fn from_nat(mut n: usize) -> Self {
+        if Self::Characteristic::N != 0 {
+            assert!(n < Self::Characteristic::N);
+        }
+
         let mut result = Self::zero();
         let mut current = Self::one();
 
@@ -542,11 +550,13 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
 
         let bound = match Self::Characteristic::N {
             0 => bound,
-            n => bound.min(n)
+            n => bound.min(n),
         };
         for _ in 1..bound {
             acc = acc + Self::one();
-            if acc == Self::zero() { return false; }   // caught a characteristic ≤ bound
+            if acc == Self::zero() {
+                return false;
+            }
         }
 
         if bound != 0 && bound == Self::Characteristic::N {
@@ -675,7 +685,7 @@ impl<F: Field + Interval> Interval for Symmetrized<F> {
     }
 }
 
-impl<F: Field + Metric> Metric  for Symmetrized<F> {}
+impl<F: Field + Metric> Metric for Symmetrized<F> {}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct RootOfUnityPrimitive<F: Field, const N: usize>(RootOfUnity<F, N>);

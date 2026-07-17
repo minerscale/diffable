@@ -378,7 +378,7 @@ macro_rules! test_metric {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_interval, traits::{Metric}};
+            use $crate::{test_interval, traits::Metric};
 
             test_interval!(interval, $point, $arb_point);
 
