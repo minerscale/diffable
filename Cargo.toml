@@ -7,7 +7,7 @@ description = "a differential geometry framework for rust"
 readme = "readme.md"
 homepage = "https://aaroncottle.au"
 repository = "https://github.com/minerscale/diffable"
-keywords = ["math", "maths", "mathematics", "geometry", "differential geometry", "abstract algebra", "algebra"]
+keywords = ["mathematics", "geometry", "linear-algebra", "abstract-algebra", "topology"]
 categories = ["mathematics", "science"]
 
 [package.metadata.docs.rs]

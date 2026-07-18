@@ -19,9 +19,9 @@ use proptest::prelude::*;
 
 prop_compose! {
     pub fn arb_sl_algebra_2c()(
-        e01_re in -3.0f64..3.00f64, e01_im in -3.0f64..3.00f64,
-        e10_re in -3.0f64..3.00f64, e10_im in -3.0f64..3.00f64,
-        h_re in -3.0f64..3.00f64, h_im in -3.0f64..3.00f64,
+        e01_re in -6.0f64..6.00f64, e01_im in -6.0f64..6.00f64,
+        e10_re in -6.0f64..6.00f64, e10_im in -6.0f64..6.00f64,
+        h_re in -6.0f64..6.00f64, h_im in -6.0f64..6.00f64,
     ) -> SlAlgebra<Complex<R64>, 2, 3> {
         let c = |re, im| Complex::from([R64(re), R64(im)]);
         [c(e01_re, e01_im), c(e10_re, e10_im), c(h_re, h_im)].into()

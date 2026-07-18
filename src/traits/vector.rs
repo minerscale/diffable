@@ -1,8 +1,11 @@
 use num_traits::{Zero, real::Real as _};
 use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
-use super::{Chart, Field, LieGroup, Real};
-use crate::{impl_group_via_add, traits::Metric};
+#[cfg(feature = "testing")]
+use super::Chart;
+
+use super::{Field, LieGroup, Real, Metric};
+use crate::impl_group_via_add;
 
 /// A finite-dimensional Euclidean space.
 ///
@@ -473,7 +476,9 @@ pub trait Sesquilinear: Form {
 /// Minkowski scalar product is bilinear and symmetric but indefinite, so it
 /// induces no metric at all.
 pub trait InnerProduct: Sesquilinear + Metric<R = <Self::F as Field>::Fixed>
-where <Self::F as Field>::Fixed: Real {
+where
+    <Self::F as Field>::Fixed: Real,
+{
     /// The norm `‖v‖ = sqrt(⟨v,v⟩)`. Well-defined and real because the form
     /// is positive-definite. On an indefinite [`Bilinear`] space this would
     /// not be real — which is why it lives here, not on the base.
@@ -495,5 +500,7 @@ where <Self::F as Field>::Fixed: Real {
     }
 }
 
-impl<P: Sesquilinear + Metric<R = <Self::F as Field>::Fixed>> InnerProduct for P
-where <Self::F as Field>::Fixed: Real {}
+impl<P: Sesquilinear + Metric<R = <Self::F as Field>::Fixed>> InnerProduct for P where
+    <Self::F as Field>::Fixed: Real
+{
+}

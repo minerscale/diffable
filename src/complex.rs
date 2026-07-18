@@ -3,14 +3,14 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{Inv, One, Zero};
 
 use crate::{
-    coords::Coords,
-    impl_group_via_add,
-    traits::{Field, Interval, LieGroup, Metric, NatZero, NonZero, Real, Sesquilinear, Smooth},
+    coords::Coords, impl_group_via_add, traits::{Field, FieldExp, Interval, LieGroup, Metric, NatZero, NonZero, Real, Sesquilinear, Smooth},
 };
 
 /// Complex numbers a + bi, backed by R^2.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Complex<R: Real>(pub Coords<R, 2, 0>);
+
+impl<R: Real> FieldExp for Complex<R> {}
 
 impl<R: Real> Complex<R> {
     pub fn real_sqrt(r: R) -> Self {

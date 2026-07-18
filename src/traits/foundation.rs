@@ -2,8 +2,7 @@
 use num_traits::Zero;
 
 use crate::{
-    complex::Complex,
-    traits::{Field, NatZero, NonZero},
+    complex::Complex, traits::{Field, FieldExp, NatZero, NonZero},
 };
 use num_traits::{Euclid, Inv, real::Real as _};
 
@@ -112,6 +111,12 @@ where
 pub trait Real: RealNum + Field<Fixed = Self> {}
 impl<R: RealNum + Field<Fixed = Self>> Real for R {}
 
+impl<R: Real<Characteristic = NatZero> + Metric> FieldExp for R {
+    fn exp(&self) -> Self {
+        <Self as num_traits::real::Real>::exp(*self)
+    }
+}
+
 /// The genuine, transitive ordering on a real-number type, independent of
 /// whatever tolerance its `PartialOrd` may carry for equality testing —
 /// see [`Real`]'s doc comment on why that tolerance exists and why it is
@@ -180,6 +185,16 @@ pub trait Metric: Interval {
     #[cfg(feature = "testing")]
     fn check_distance_agrees_with_interval(a: Self, b: Self) -> bool {
         a.distance(&b) == a.interval_squared(&b).sqrt()
+    }
+}
+
+pub trait FromReal: Interval {
+    fn from_real(r: Self::R) -> Self;
+}
+
+impl<F: Field<Fixed: Real>> FromReal for F {
+    fn from_real(r: Self::R) -> Self {
+        Self::from_fixed(r)
     }
 }
 

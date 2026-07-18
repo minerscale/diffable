@@ -1,8 +1,7 @@
 use crate::{
-    impl_group_via_mul,
-    traits::{Interval, Metric, Real, Vector},
+    impl_group_via_mul, traits::{ExactCmp, FromReal, Interval, Metric, Real, Vector},
 };
-use num_traits::{Inv, One, Zero};
+use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 use std::ops::{Add, Mul, Neg, Sub};
 
 use super::{Point, Smooth};
@@ -432,6 +431,7 @@ pub trait DivRing: Ring {
 
     type Mul: MulGroup + From<NonZero<Self>> + Into<NonZero<Self>>;
 }
+
 impl<R: Ring> DivRing for R
 where
     NonZero<Self>: MulGroup,
@@ -453,9 +453,25 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     /// time rather than dividing by a zero that only appears at runtime.
     type Characteristic: Nat;
 
+    fn pow(&self, mut s: usize) -> Self {
+        let mut base = *self;
+        let mut result = Self::one();
+
+        while s != 0 {
+            if s & 1 != 0 {
+                result = result * base;
+            }
+
+            base = base * base;
+            s >>= 1;
+        }
+
+        result
+    }
+
     fn from_nat(mut n: usize) -> Self {
         if Self::Characteristic::N != 0 {
-            assert!(n < Self::Characteristic::N);
+            debug_assert!(n < Self::Characteristic::N);
         }
 
         let mut result = Self::zero();
@@ -577,6 +593,38 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
             // didn't probe far enough / characteristic is 0
             acc + Self::one() != Self::zero()
         }
+    }
+}
+
+pub trait FieldExp: Field<Characteristic = NatZero> + Metric {
+    fn exp(&self) -> Self {
+        let theta = Self::R::one();
+        let n = 20;
+        let r = self.distance(&Self::zero());
+
+        let div = r.div(theta);
+        let s = if !div.exact_lt(Self::R::one()) {
+            <i32 as NumCast>::from(div.log2().ceil()).unwrap()
+        } else {
+            0
+        };
+
+        let scaled = self.div((Self::from_nat(2)).pow(s.try_into().unwrap()));
+
+        let (mut result, _, _) = (0..n).fold(
+            (Self::one(), Self::one(), Self::one()),
+            |(acc, term, n), _| {
+                let term = term * scaled.div(n);
+
+                (acc + term, term, n + Self::one())
+            },
+        );
+
+        for _ in 0..s {
+            result = result * result;
+        }
+
+        result
     }
 }
 
@@ -728,6 +776,12 @@ impl<F: Field + Interval> Interval for Symmetrized<F> {
 
     fn interval_squared(&self, other: &Self) -> F::R {
         self.0.interval_squared(&other.0)
+    }
+}
+
+impl<F: Field<Fixed: Real>> FromReal for Symmetrized<F> {
+    fn from_real(r: Self::R) -> Self {
+        Self(F::from_fixed(r))
     }
 }
 
@@ -953,9 +1007,19 @@ pub trait Group: Point {
     #[cfg(feature = "testing")]
     fn check_left_inverse(&self) -> bool
     where
-        Self: PartialEq,
+        Self: PartialEq + std::fmt::Debug,
     {
-        (self.inverse()).compose(self) == Self::identity()
+        println!(
+            "{:#?}\n\n {:#?}\n\n {:#?}\n\n\n\n",
+            self,
+            (self.inverse()).compose(self),
+            Self::identity()
+        );
+
+        // We test it this way to give tolerance relations a scale to measure the
+        // relative error from, so that this test passes at all scales.
+        // Solves catestrophic cancelling problems.
+        (self.inverse()).compose(self).compose(self) == Self::identity().compose(self)
     }
 
     #[cfg(feature = "testing")]
@@ -963,7 +1027,7 @@ pub trait Group: Point {
     where
         Self: PartialEq,
     {
-        self.compose(&self.inverse()) == Self::identity()
+        self.compose(&self.inverse()).compose(self) == Self::identity().compose(self)
     }
 }
 

@@ -8,8 +8,8 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient,
     matrix::{Matrix, MatrixExponential},
     traits::{
-        Dual, Field, Form, LieGroup, Nondegenerate, Quotient, Real,
-        RootOfUnity, Sesquilinear, Vector,
+        Dual, Field, Form, LieGroup, Nondegenerate, Quotient, Real, RootOfUnity, Sesquilinear,
+        Vector,
     },
 };
 
@@ -155,7 +155,7 @@ impl<V: Vector, const N: usize> Inv for Sl<V, N> {
 
                 Sl(output)
             }
-            _ => Sl(self.0.gauss_jordan()),
+            _ => Sl(self.0.inverse()),
         }
     }
 }

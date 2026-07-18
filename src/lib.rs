@@ -106,11 +106,11 @@
 //! | Trait                               | Blaket impls                       |
 //! | ----------------------------------- | ---------------------------------- |
 //! | `Smooth<V>`                         | `Chart`, `ExpMap`, `TangentBundle` |
-//! | `LieGroup<V>`                       | `Smooth<V>` → ...                  | 
+//! | `LieGroup<V>`                       | `Smooth<V>` → ...                  |
 //! | `Vector`                            | `Group`, `LieGroup<Self>` → ...    |
 //! | `Quotient<G, H, V>` (via macro)     | `Group`, `LieGroup<V>` → ...       |
 //! | `Sesquilinear<F: Field<Fixed = F>>` | `Bilinear`                         |
-//! 
+//!
 //!
 //! `Group` itself is reached via a one-line macro rather than a blanket impl
 //! (`CMonoid`/`Monoid` can't both blanket-impl the same trait without
