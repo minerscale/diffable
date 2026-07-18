@@ -1,4 +1,5 @@
-//! # diffable
+//! # Diffable
+//!
 //! A differential geometry framework for Rust. Each trait represents a
 //! mathematical structure—group, vector space, smooth atlas, metric, and
 //! so on. Implementing a trait certifies that a type carries that structure,
@@ -13,59 +14,55 @@
 //!
 //! #### Foundation — points, scalars, separation
 //!
-//! - [`traits::Point`] — the underlying set: an element of a manifold, group, or
-//!   metric space. Implement it and your type's values become the points of a
-//!   space; everything else builds on this
-//! - [`traits::Field`] — the scalar field of a vector space
-//! - [`traits::Real`] — a totally-ordered real-number field, used as a
-//!   coordinate scalar and as the target of every distance. See
+//! - [`traits::Point`] — The underlying set: an element of a manifold, group, or
+//!   metric space. Anything can be a Point, in fact; anything that is `Clone` is
+//!   a `Point`.
+//! - [`traits::Field`] — The scalar field of a vector space. Follows the field axioms.
+//! - [`traits::Real`] — An ordered real-number field, used as a
+//!   coordinate scalar and as the target of intervals and metrics. See
 //!   [`traits::ExactCmp`] for the strict order that convergence tests need
-//!   when an implementor's equality is tolerance-based
-//! - [`traits::Interval`] — a *signed* squared interval `s²: M × M → R`
+//!   when an implementor's equality is tolerance-based.
+//! - [`traits::Interval`] — A *signed* squared interval `s²: M × M → R`
 //!   (negative timelike, zero null, positive spacelike); the pseudo-metric
 //!   base, claiming no metric-space axioms. `interval_squared` is the
-//!   primitive, `interval` its signed square root
+//!   primitive, `interval` its signed square root, returning `Complex<R: Real>`
 //! - [`traits::Metric`] — the *definite* refinement: a genuine non-negative
 //!   distance `d = √(interval_squared)`. Independent of any coordinate
 //!   structure
 //!
 //! #### Vector spaces and forms
 //!
-//! - [`traits::Vector`] — a finite-dimensional coordinate vector space over a
+//! - [`traits::Vector`] — A finite-dimensional coordinate vector space over a
 //!   `Field`. It is the local model a [`traits::Chart`] maps into and the
 //!   tangent space of every manifold, and is its own additive
-//!   [`traits::LieGroup`]. [`traits::Dual`] is the dual space `V*`
+//!   [`traits::LieGroup`]. [`traits::Dual`] is the dual space `V*`.
 //! - A bare `Vector` carries no metric. Scalar products are induced by
 //!   progressively stronger traits:
 //! 	- [`traits::Form`] gives a lowering map `♭: V → V*`
-//!       and the induced pairing.
-//! 	- [`traits::Nondegenerate`] makes `♭` invertible by adding `♯`
-//!     - [`traits::Sesquilinear`] specialises to Hermitian forms,
+//!       and the induced pairing `dot`.
+//! 	- [`traits::Nondegenerate`] makes `♭` invertible by adding `♯`.
+//!     - [`traits::Sesquilinear`] specialises to Hermitian forms.
 //!		- [`traits::Bilinear`] specialises further to symmetric bilinear forms.
 //!     - [`traits::InnerProduct`] adds positive definiteness.
 //!
 //! #### Charts — local coordinate structure
 //!
-//! - [`traits::Chart`] — a coordinate chart mapping points of a manifold to a
-//!   flat coordinate space and back
-//! - [`traits::ExpMap`] — a chart whose coordinate lines are geodesics and
-//!   whose coordinate distances are (signed) arc lengths
-//! - [`traits::TangentBundle`] — the tangent bundle `TM`: an `ExpMap` chart
+//! - [`traits::Chart`] — A coordinate chart mapping points of a manifold to a
+//!   flat coordinate space and back.
+//! - [`traits::ExpMap`] — A chart whose coordinate lines are geodesics and
+//!   whose coordinate distances are (signed) arc lengths.
+//! - [`traits::TangentBundle`] — The tangent bundle `TM`: an `ExpMap` chart
 //!   centred at *every* point. This is the working surface of a smooth
 //!   manifold — `exp` and `log`, geodesics, geodesic distance, and sectional
 //!   curvature are all read off it, so most geometric computation is written
-//!   against this trait
-//! - [`traits::PseudoRiemannian`] — certifies that the exponential map and the
+//!   against this trait.
+//! - [`traits::PseudoRiemannian`] — Certifies that the exponential map and the
 //!   tangent-space form agree: the geodesic interval equals `⟨v,v⟩`.
 //!   Signature-agnostic; reduces to the usual `d(p, exp_p v) = ‖v‖` in the
-//!   definite case
-//!
-//! #### Smooth structure — self-charting manifolds
-//!
-//! - [`traits::Smooth`] — a manifold that charts itself, providing `exp` and
-//!   `log` at every point. Implement this one trait and the full chart bundle
-//!   — `Chart`, `ExpMap`, `TangentBundle` — is generated for you by blanket
-//!   implementations
+//!   definite case.
+//! - [`traits::Smooth`] — A helper trait for manifolds that charts themselves,
+//!   providing `exp` and `log` at every point. Implement this one trait and the
+//!   full chart bundle `Chart`, `ExpMap`, `TangentBundle` for free.
 //!
 //! #### Algebra — groups and Lie groups
 //!
@@ -95,16 +92,21 @@
 //!   flat `Rⁿ` that is simultaneously an inner-product space, its own tangent
 //!   bundle, and an additive Lie group.
 //!
-//! #### Global topology — covers, nerves, fundamental groups
+//! #### Global topology — covers, nerve complexes, fundamental groups
+//!      and global geodesic minimisation
 //!
-//! - [`traits::Bounded`] — a `TangentBundle` chart with a bounded domain,
-//!   expressed via a signed distance field
+//! - [`traits::Bounded`] — a `TangentBundle` chart with a bounded, open domain,
+//!   expressed via a signed distance field.
 //! - [`traits::NerveComplex`] — a finite cover of a manifold by `Bounded`
 //!   charts whose overlap pattern forms a simplicial complex; computes global
 //!   geodesic distance by graph search and recovers the fundamental group
-//!   `π₁(M)` from the nerve
+//!   `π₁(M)` from the nerve. Since the cover finite and open,
+//!   NerveComplex serves as a proof that the implemented manifold is compact.
 //! - [`traits::GroupPresentation`] — a group described by generators and
-//!   relations; the output of `NerveComplex::fundamental_group`
+//!   relations; the output of `NerveComplex::fundamental_group`. Group presentation
+//!   does not implement `Group` because the
+//!   [word problem](https://en.wikipedia.org/wiki/Word_problem_(mathematics))
+//!   is uncomputable in general.
 //!
 //! #### Blanket chains
 //!
@@ -168,12 +170,13 @@
 //!
 //! ### Testing
 //!
-//! Enable the `testing` feature to access the `test_*` macros, which verify
-//! that your implementations satisfy the mathematical invariants certified by
-//! each trait — group axioms, the `flat`/`sharp` musical isomorphism,
-//! Hermitian symmetry, metric agreement, and the rest. The scalar types `R64`
-//! and `R32` provide tolerance-based equality suitable for property testing
-//! with floating point.
+//! Diffable takes the philosophy that any axiom which is assumed true of a type
+//! but not directly enforcable by the compiler should be emperically verified
+//! via property testing. Enable the `testing` feature to access the `test_*`
+//! macros, which verify that your implementations satisfy the mathematical
+//! invariants certified by each trait. The `Real` types `R64` and `R32` provide
+//! tolerance-based equality suitable for property testing with floating point,
+//! since the library assumes that its real numbers are perfect.
 //!
 //! ```toml
 //! [dev-dependencies]
@@ -184,8 +187,6 @@
 //!
 //! - `testing` — property-testing macros and tolerance-based scalar types
 //! - `all` — enables all features
-//!
-//! License: MIT OR Apache-2.0
 
 pub mod coords;
 pub mod hypersphere;
