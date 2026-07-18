@@ -901,7 +901,7 @@ macro_rules! impl_group_via_mul {
 /// # Why `compose`/`inverse`/`identity`, not `Mul`/`Neg`/`Add`
 /// `Group` deliberately has no operator-trait bound and no commutativity
 /// requirement, so that it can describe both abelian groups (this crate's
-/// [`Quadratic`] spaces, [`Z`](crate::discrete::Z), [`S1`](crate::flat::S1))
+/// [`Vector`] spaces, [`Z`](crate::discrete::Z), [`S1`](crate::flat::S1))
 /// and non-abelian ones (`SO(3)`, unit quaternions) uniformly. Real groups
 /// split into two genuinely different notations depending on whether they
 /// commute — `+` for abelian, `*` otherwise — and a single trait cannot
@@ -918,7 +918,7 @@ macro_rules! impl_group_via_mul {
 /// no type implements both flavours at once, so the two bridges are
 /// supplied as macros invoked per concrete type instead.
 ///
-/// [`Quadratic`]: crate::traits::Quadratic
+/// [`Vector`]: crate::traits::Vector
 /// [`impl_group_via_add`]: crate::impl_group_via_add
 /// [`impl_group_via_mul`]: crate::impl_group_via_mul
 pub trait Group: Point {

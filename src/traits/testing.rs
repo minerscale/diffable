@@ -5,6 +5,7 @@
 // manifold, just invoke the relevant macro with appropriate generators.
 // ---------------------------------------------------------------------------
 
+/// Tests that a vector space is a vector space
 #[macro_export]
 macro_rules! test_vector {
     ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
@@ -69,7 +70,7 @@ macro_rules! test_pseudo_euclidean {
             use super::*;
             use $crate::{test_interval, test_pseudo_riemannian, test_sesquilinear, test_vector};
 
-            test_vector!(quadratic, $scalar, $space, $arb_point, $arb_scalar);
+            test_vector!(vector, $scalar, $space, $arb_point, $arb_scalar);
             test_interval!(interval, $space, $arb_point);
             test_pseudo_riemannian!(riemannian, $space, $arb_point, $arb_point);
             test_sesquilinear!(sesquilinear, $space, $arb_point, $arb_scalar);

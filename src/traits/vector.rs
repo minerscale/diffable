@@ -12,7 +12,7 @@ use crate::{impl_group_via_add, traits::Metric};
 /// which local coordinate charts take their values, and in which tangent
 /// vectors live.
 ///
-/// `Euclidean` is the **definite real-valued refinement** of [`Quadratic`]:
+/// `Euclidean` is the **definite real-valued refinement** of [`Bilinear`]:
 /// it is a pseudo-Euclidean space (signature `(N, 0)`) that additionally
 /// carries an [`InnerProduct`] — a positive-definite pairing inducing a genuine
 /// `norm` and a [`Metric`]. Where the pseudo-Euclidean base has only a signed
@@ -30,20 +30,20 @@ use crate::{impl_group_via_add, traits::Metric};
 /// are straight lines, parallel transport is path-independent, and the
 /// exponential map is a global isomorphism rather than merely a local one.
 /// These properties are verified by the `check_*` methods inherited from
-/// [`TangentBundle`] and [`Quadratic`] (`check_global_chart`,
+/// [`TangentBundle`] and [`Vector`] (`check_global_chart`,
 /// `check_global_geodesic_scaling`, `check_translation_invariance`), together
 /// with the definite-only `check_pythagorean` below.
 ///
 /// # Implementing
 /// Use the `test_euclidean!` macro to verify that your implementation
 /// satisfies the Euclidean axioms. (For an indefinite space, implement only
-/// [`Quadratic`] and use `test_pseudo_euclidean!` instead.)
+/// [`Sesquilinear`] and use `test_pseudo_euclidean!` instead.)
 ///
 /// [`Bilinear`]: crate::traits::Bilinear
 /// [`InnerProduct`]: crate::traits::InnerProduct
 /// [`Metric`]: crate::traits::Metric
 /// [`TangentBundle`]: crate::traits::TangentBundle
-pub trait Euclidean: Quadratic + InnerProduct {
+pub trait Euclidean: Bilinear<F: Real> + InnerProduct {
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
     fn check_pythagorean(a: &Self, b: &Self) -> bool
@@ -356,49 +356,6 @@ impl<V: Nondegenerate> Nondegenerate for Dual<V> {
     }
 }
 
-/// A finite-dimensional pseudo-Euclidean space.
-///
-/// The space of all values of a type `V: Quadratic` is interpreted as
-/// flat coordinate space `F^N` (`N := V::N`, `F := V::F`) equipped with a
-/// symmetric [`Bilinear`] scalar product of *arbitrary signature*. The form
-/// may be indefinite: a vector's quadratic form `⟨v,v⟩` (its `norm_squared`)
-/// can be positive, negative, or zero. Minkowski spacetime is the archetype.
-///
-/// This is the **indefinite base**; [`Euclidean`] is its positive-definite
-/// refinement. Because the form is only [`Bilinear`], a pseudo-Euclidean
-/// space has **no norm and no [`Metric`]** — `sqrt(⟨v,v⟩)` need not be real,
-/// null vectors give distinct points at zero separation, and the triangle
-/// inequality reverses on timelike triples. Operations that need a genuine
-/// norm or distance (e.g. `check_pythagorean`, `local_distance`,
-/// `max_sectional_curvature`) are therefore available only on the definite
-/// [`Euclidean`] refinement, gated by trait bounds rather than runtime checks.
-///
-/// # Flatness
-/// Like a Euclidean space, a pseudo-Euclidean space is flat: geodesics are
-/// straight lines, parallel transport is path-independent, and the
-/// exponential map is a global isomorphism rather than merely a local one.
-/// These properties are verified by the `check_*` methods inherited from
-/// [`TangentBundle`] and by the signature-agnostic checks below —
-/// `check_global_chart`, `check_global_geodesic_scaling`, and
-/// `check_translation_invariance` — all stated on the *signed* quadratic form
-/// so they hold in any signature. Compatibility of the exponential map with
-/// the scalar product is certified separately by [`PseudoRiemannian`].
-///
-/// # Implementing
-/// Use the `test_pseudo_euclidean!` macro to verify the pseudo-Euclidean
-/// axioms. If the space is positive-definite, implement [`Euclidean`] as well
-/// and use `test_euclidean!`, which additionally certifies the metric-space
-/// and inner-product structure.
-///
-/// [`Bilinear`]: crate::traits::Bilinear
-/// [`Euclidean`]: crate::traits::Euclidean
-/// [`Metric`]: crate::traits::Metric
-/// [`TangentBundle`]: crate::traits::TangentBundle
-/// [`PseudoRiemannian`]: crate::traits::PseudoRiemannian
-pub trait Quadratic: Bilinear {
-    // todo: tests for Quadratic spaces
-}
-
 impl_group_via_add!(V, V: Vector);
 
 impl<E: Vector> LieGroup<E> for E {
@@ -515,7 +472,8 @@ pub trait Sesquilinear: Form {
 /// vector space. And not every [`Bilinear`] form is an `InnerProduct` — a
 /// Minkowski scalar product is bilinear and symmetric but indefinite, so it
 /// induces no metric at all.
-pub trait InnerProduct: Sesquilinear<F: Real> + Metric<R = <Self::F as Field>::Fixed> {
+pub trait InnerProduct: Sesquilinear + Metric<R = <Self::F as Field>::Fixed>
+where <Self::F as Field>::Fixed: Real {
     /// The norm `‖v‖ = sqrt(⟨v,v⟩)`. Well-defined and real because the form
     /// is positive-definite. On an indefinite [`Bilinear`] space this would
     /// not be real — which is why it lives here, not on the base.
@@ -537,4 +495,5 @@ pub trait InnerProduct: Sesquilinear<F: Real> + Metric<R = <Self::F as Field>::F
     }
 }
 
-impl<P: Sesquilinear<F: Real> + Metric<R = <Self::F as Field>::Fixed>> InnerProduct for P {}
+impl<P: Sesquilinear + Metric<R = <Self::F as Field>::Fixed>> InnerProduct for P
+where <Self::F as Field>::Fixed: Real {}

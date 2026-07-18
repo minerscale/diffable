@@ -3,8 +3,7 @@ use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{ConstZero, Zero};
 
 use crate::traits::{
-    Bilinear, DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate, Quadratic,
-    Real, Sesquilinear, Vector,
+    DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate, Real, Sesquilinear, Vector,
 };
 
 /// The canonical model of flat pseudo-Euclidean coordinate space `R^(N−M, M)`.
@@ -29,16 +28,14 @@ use crate::traits::{
 ///
 /// # Trait scoping
 /// The definite (`M = 0`) case implements [`InnerProduct`], [`Metric`], and
-/// [`Euclidean`]; the general case implements [`Bilinear`] and
-/// [`Quadratic`]. Operations requiring positive-definiteness — `norm`,
-/// `distance`, sectional-curvature maxima — are therefore available only at
-/// `M = 0`, enforced by the trait bounds rather than by runtime checks.
+/// [`Euclidean`]; the general case implements [`Sesquilinear`] and, in cases
+/// where the fixed field is itself, [`Bilinear`]
 ///
 /// [`Bilinear`]: crate::traits::Bilinear
 /// [`InnerProduct`]: crate::traits::InnerProduct
 /// [`Metric`]: crate::traits::Metric
 /// [`Euclidean`]: crate::traits::Euclidean
-/// [`Quadratic`]: crate::traits::Quadratic
+/// [`Sesquilinear`]: crate::traits::Sesquilinear
 #[derive(Debug, Copy, Clone)]
 pub struct Coords<F: Field, const N: usize, const M: usize = 0>([F; N]);
 
@@ -213,5 +210,4 @@ impl<R: Field, const N: usize, const M: usize> Nondegenerate for Coords<R, N, M>
 }
 
 impl<F: Field, const N: usize, const M: usize> Sesquilinear for Coords<F, N, M> {}
-impl<F: Field, const N: usize, const M: usize> Quadratic for Coords<F, N, M> where Self: Bilinear {}
 impl<R: Real, const N: usize> Euclidean for Coords<R, N, 0> {}

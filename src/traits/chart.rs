@@ -1,6 +1,6 @@
-use crate::traits::{DivRing, Euclidean, Field, Form, Interval, Real, Vector};
+use crate::traits::{Bilinear, DivRing, Euclidean, Field, Form, Interval, Real, Vector};
 
-use super::{Point, Quadratic};
+use super::Point;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
@@ -164,7 +164,7 @@ pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
 /// Verified by `test_pseudo_riemannian!`.
 ///
 /// [`Bilinear`]: crate::traits::Bilinear
-pub trait PseudoRiemannian<V: Quadratic<F: Real>>: ExpMap<Self, V> + Interval<R = V::F> {
+pub trait PseudoRiemannian<V: Bilinear<F: Real>>: ExpMap<Self, V> + Interval<R = V::F> {
     #[cfg(feature = "testing")]
     fn check_isometry(&self, v: V) -> bool {
         let global = self.to_global(v);
@@ -182,7 +182,7 @@ pub trait PseudoRiemannian<V: Quadratic<F: Real>>: ExpMap<Self, V> + Interval<R 
     }
 }
 
-impl<V: Quadratic<F: Real>, E: ExpMap<Self, V> + Interval<R = V::F>> PseudoRiemannian<V> for E {}
+impl<V: Bilinear<F: Real>, E: ExpMap<Self, V> + Interval<R = V::F>> PseudoRiemannian<V> for E {}
 
 /// A tangent bundle structure on a manifold.
 ///

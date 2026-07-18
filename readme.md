@@ -40,12 +40,14 @@ mathematical structure of differential geometry.
   [`traits::LieGroup`]. [`traits::Dual`] is the dual space `V*`.
 - A bare `Vector` carries no metric. Scalar products are induced by
   progressively stronger traits:
-	- [`traits::Form`] gives a lowering map `♭: V → V*`
+    - [`traits::Form`] gives a lowering map `♭: V → V*`
       and the induced pairing `dot`.
-	- [`traits::Nondegenerate`] makes `♭` invertible by adding `♯`.
+    - [`traits::Nondegenerate`] makes `♭` invertible by adding `♯`.
     - [`traits::Sesquilinear`] specialises to Hermitian forms.
-		- [`traits::Bilinear`] specialises further to symmetric bilinear forms.
+    - [`traits::Bilinear`] specialises further to symmetric bilinear forms.
     - [`traits::InnerProduct`] adds positive definiteness.
+- [`traits::Euclidean`] — The canonical flat `Rⁿ` that is simultaneously an
+  inner-product space, its own tangent bundle, and an additive Lie group.
 
 ##### Charts — local coordinate structure
 
@@ -84,18 +86,7 @@ mathematical structure of differential geometry.
 - [`traits::Quotient`] — a quotient `G/H` of a Lie group by a subgroup,
   inheriting Lie group structure from the parent
 
-##### (Pseudo-)Euclidean — flat space
-
-- [`traits::Quadratic`] — flat coordinate space of arbitrary signature
-  (Minkowski included): a symmetric bilinear scalar product, its own
-  tangent bundle, and an additive Lie group. The indefinite base, carrying
-  no norm or distance
-- [`traits::Euclidean`] — its positive-definite refinement: the canonical
-  flat `Rⁿ` that is simultaneously an inner-product space, its own tangent
-  bundle, and an additive Lie group.
-
-##### Global topology — covers, nerve complexes, fundamental groups
-     and global geodesic minimisation
+##### Global topology — covers, nerve complexes, fundamental groups and global geodesic minimisation
 
 - [`traits::Bounded`] — a `TangentBundle` chart with a bounded, open domain,
   expressed via a signed distance field.
@@ -114,14 +105,14 @@ mathematical structure of differential geometry.
 
 Implement one trait; receive the these for free:
 
-```
-Smooth<V>             →  Chart<Self, V>, ExpMap<Self, V>, TangentBundle<Self, V>
-Vector                →  LieGroup<Self> → Smooth → Chart, ExpMap, TangentBundle
-LieGroup<V>           →  Smooth<V> → Chart, ExpMap, TangentBundle
-Quadratic/Euclidean   →  Group, LieGroup<Self> → Smooth → Chart, ExpMap, TangentBundle
-Quotient<G, H, V>     →  Group, LieGroup<V> → Smooth → ...
-Sesquilinear (real)   →  Bilinear
-```
+| Trait                               | Blaket impls                       |
+| ----------------------------------- | ---------------------------------- |
+| `Smooth<V>`                         | `Chart`, `ExpMap`, `TangentBundle` |
+| `LieGroup<V>`                       | `Smooth<V>` → ...                  |
+| `Vector`                            | `Group`, `LieGroup<Self>` → ...    |
+| `Quotient<G, H, V>` (via macro)     | `Group`, `LieGroup<V>` → ...       |
+| `Sesquilinear<F: Field<Fixed = F>>` | `Bilinear`                         |
+
 
 `Group` itself is reached via a one-line macro rather than a blanket impl
 (`CMonoid`/`Monoid` can't both blanket-impl the same trait without

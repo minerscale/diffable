@@ -1,8 +1,17 @@
 [package]
 name = "diffable"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+description = "a differential geometry framework for rust"
+readme = "readme.md"
+homepage = "https://aaroncottle.au"
+repository = "https://github.com/minerscale/diffable"
+keywords = ["math", "maths", "mathematics", "geometry", "differential geometry", "abstract algebra", "algebra"]
+categories = ["mathematics", "science"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [lib]
 path = "src/lib.rs"

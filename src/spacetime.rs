@@ -8,7 +8,7 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient,
     matrix::{Matrix, MatrixExponential},
     traits::{
-        Bilinear, Dual, Field, Form, LieGroup, Nondegenerate, Quadratic, Quotient, Real,
+        Dual, Field, Form, LieGroup, Nondegenerate, Quotient, Real,
         RootOfUnity, Sesquilinear, Vector,
     },
 };
@@ -408,10 +408,6 @@ impl<F: Field, const N: usize, const D: usize> Nondegenerate for SlAlgebra<F, N,
 }
 
 impl<F: Field<Fixed = F>, const N: usize, const D: usize> Sesquilinear for SlAlgebra<F, N, D> {}
-impl<F: Field, const N: usize, const D: usize> Quadratic for SlAlgebra<F, N, D> where
-    SlAlgebra<F, N, D>: Bilinear
-{
-}
 
 impl<F: Field, const N: usize, const D: usize> Vector for SlAlgebra<F, N, D> {
     type F = F;
