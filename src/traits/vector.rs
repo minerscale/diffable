@@ -4,7 +4,7 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 #[cfg(feature = "testing")]
 use super::Chart;
 
-use super::{Field, LieGroup, Real, Metric};
+use super::{Field, LieGroup, Metric, Real};
 use crate::impl_group_via_add;
 
 /// A finite-dimensional Euclidean space.

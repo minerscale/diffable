@@ -7,7 +7,7 @@ use diffable::{
     epsilon_metric::R64,
     flat::S1,
     hypersphere::{S0, S3, So3, Sphere, UnitComplex},
-    traits::Quotient,
+    traits::{Field, Quotient, RootOfUnity},
 };
 
 use num_traits::{One, real::Real};
@@ -19,9 +19,9 @@ use proptest::prelude::*;
 pub fn arb_sphere0() -> impl Strategy<Value = S0<Coords<R64, 0>>> {
     proptest::bool::ANY.prop_map(|positive| {
         if positive {
-            S0(Sphere::new(R64::one(), [].into()))
+            S0::new(Sphere::new(R64::one(), [].into()))
         } else {
-            S0(Sphere::new(-R64::one(), [].into()))
+            S0::new(Sphere::new(-R64::one(), [].into()))
         }
     })
 }
@@ -31,7 +31,7 @@ prop_compose! {
         -> UnitComplex<Coords<R64, 1>>
     {
         let angle = R64(angle);
-        UnitComplex(Sphere::new(angle.cos(), [angle.sin()].into()))
+        UnitComplex::new(Sphere::new(angle.cos(), [angle.sin()].into()))
     }
 }
 
@@ -43,7 +43,7 @@ prop_compose! {
         z in -1.0f64..1.0f64,
     ) -> S3<Coords<R64, 3>> {
         let w = if w.abs() + x.abs() + y.abs() + z.abs() < 1e-10 { 1.0 } else { w };
-        S3(Sphere::new(R64(w), [x, y, z].map(|x| R64(x)).into()))
+        S3::new(Sphere::new(R64(w), [x, y, z].map(|x| R64(x)).into()))
     }
 }
 
@@ -52,7 +52,7 @@ prop_compose! {
         w in -1.0f64..1.0f64,
         x in -1.0f64..1.0f64,
         y in -1.0f64..1.0f64,
-    ) -> Sphere<2, Coords<R64, 2>> {
+    ) -> Sphere<Coords<R64, 2>> {
         let w = if w.abs() + x.abs() + y.abs() < 1e-10 { 1.0 } else { w };
         Sphere::new(R64(w), [x, y].map(R64).into())
     }
@@ -65,7 +65,7 @@ prop_compose! {
         y in -1.0f64..1.0f64,
         z in -1.0f64..1.0f64,
         u in -1.0f64..1.0f64,
-    ) -> Sphere<4, Coords<R64, 4>> {
+    ) -> Sphere<Coords<R64, 4>> {
         let w = if w.abs() + x.abs() + y.abs() + z.abs() + u.abs() < 1e-10 { 1.0 } else { w };
         Sphere::new(R64(w), [x, y, z, u].map(R64).into())
     }
@@ -149,4 +149,14 @@ pub fn arb_s1_quotient() -> impl Strategy<Value = S1<Coords<R64, 1>>> {
 
 pub fn arb_s1_quotient_f64() -> impl Strategy<Value = S1<Coords<f64, 1>>> {
     arb_scalar_f64().prop_map(|x| S1::new([x].into()))
+}
+
+pub fn arb_root_of_unity<F: Field>() -> impl Strategy<Value = RootOfUnity<F, 2>> {
+    proptest::bool::ANY.prop_map(|positive| {
+        if positive {
+            RootOfUnity::new(F::one()).unwrap()
+        } else {
+            RootOfUnity::new(-F::one()).unwrap()
+        }
+    })
 }

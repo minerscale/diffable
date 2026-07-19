@@ -11,10 +11,9 @@ use diffable::{
     epsilon_metric::R64,
     spacetime::{Lorentz, Minkowski, Sl, Sl2c, SlAlgebra},
     test_group, test_quotient, test_tangent_bundle, test_vector,
-    traits::{LieGroup, Quotient, RootOfUnity},
+    traits::{LieGroup, Quotient},
 };
 
-use num_traits::One;
 use proptest::prelude::*;
 
 prop_compose! {
@@ -49,16 +48,6 @@ test_tangent_bundle!(
     arb_sl_algebra_2c(),
     arb_vec::<2>().prop_map(|x| Complex::<R64>::from(x))
 );
-
-pub fn arb_root_of_unity() -> impl Strategy<Value = RootOfUnity<Complex<R64>, 2>> {
-    proptest::bool::ANY.prop_map(|positive| {
-        if positive {
-            RootOfUnity::new(Complex::<R64>::one()).unwrap()
-        } else {
-            RootOfUnity::new(-Complex::<R64>::one()).unwrap()
-        }
-    })
-}
 
 test_quotient!(
     quotient_lorentz,

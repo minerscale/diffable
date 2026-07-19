@@ -6,7 +6,7 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
     traits::{
         Bounded, BuildNodes, Chart, Euclidean, ExpMap, InnerProduct, Interval, LieGroup, Metric,
-        NerveComplexParameters, Quotient, Real, Smooth, TangentBundle,
+        NerveComplexParameters, Quotient, Real, RootOfUnity, Smooth, TangentBundle,
     },
 };
 
@@ -20,7 +20,7 @@ use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 /// (`cos θ = ⟨p, q⟩`) is computed against. `V: Euclidean` supplies the
 /// positive-definite inner product that makes "unit" and "distance" meaningful.
 #[derive(Debug, PartialEq, Clone)]
-pub struct Sphere<const N: usize, V: Euclidean> {
+pub struct Sphere<V: Euclidean> {
     real: V::F,
     imag: V,
 }
@@ -51,8 +51,8 @@ enum StereographicPole {
 
 pub const EPSILON: f64 = 1e-3;
 
-impl<const N: usize, V: Euclidean> Chart<Sphere<N, V>, V> for Stereographic<V> {
-    fn to_local(&self, point: &Sphere<N, V>) -> Option<V> {
+impl<V: Euclidean> Chart<Sphere<V>, V> for Stereographic<V> {
+    fn to_local(&self, point: &Sphere<V>) -> Option<V> {
         let first = match self.0 {
             StereographicPole::NorthPole => point.real,
             StereographicPole::SouthPole => -point.real,
@@ -69,7 +69,7 @@ impl<const N: usize, V: Euclidean> Chart<Sphere<N, V>, V> for Stereographic<V> {
         Some(point.imag * recip)
     }
 
-    fn to_global(&self, coord: V) -> Sphere<N, V> {
+    fn to_global(&self, coord: V) -> Sphere<V> {
         let two = V::F::one() + V::F::one();
         let r_sq = coord.norm_squared();
         let denom = V::F::one() + r_sq;
@@ -82,7 +82,7 @@ impl<const N: usize, V: Euclidean> Chart<Sphere<N, V>, V> for Stereographic<V> {
         )
     }
 
-    fn chart_at(p: &Sphere<N, V>) -> Self {
+    fn chart_at(p: &Sphere<V>) -> Self {
         if p.real > V::F::zero() {
             Self::south_pole()
         } else {
@@ -91,7 +91,7 @@ impl<const N: usize, V: Euclidean> Chart<Sphere<N, V>, V> for Stereographic<V> {
     }
 }
 
-impl<const N: usize, V: Euclidean> Sphere<N, V> {
+impl<V: Euclidean> Sphere<V> {
     pub fn real(&self) -> V::F {
         self.real
     }
@@ -136,7 +136,7 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
     }
 }
 
-impl<const N: usize, V: Euclidean> Smooth<V> for Sphere<N, V> {
+impl<V: Euclidean> Smooth<V> for Sphere<V> {
     fn exp(&self, v: V) -> Self {
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
 
@@ -205,7 +205,7 @@ fn sinc_recip<F: Real>(alpha: F, eps: F) -> F {
     }
 }
 
-impl<const N: usize, V: Euclidean> Sphere<N, V> {
+impl<V: Euclidean> Sphere<V> {
     // s = -sign(self.real): reflect from the far pole (no self.real∓1 cancellation).
     fn far_pole_sign(&self) -> V::F {
         if self.real > V::F::zero() {
@@ -253,18 +253,18 @@ impl<const N: usize, V: Euclidean> Sphere<N, V> {
 
 /// `S⁰ = {±1}` — the two-point sphere, the unit-norm reals, a group under multiplication.
 #[derive(Debug, Clone, PartialEq)]
-pub struct S0<V: Euclidean>(pub Sphere<0, V>);
+pub struct S0<V: Euclidean>(Sphere<V>);
 impl_group_via_mul!(S0<V>, V: Euclidean);
 
 /// `S¹ ⊂ ℂ` — the unit complex numbers `U(1)`, a group under multiplication.
 #[derive(Debug, Clone, PartialEq)]
-pub struct UnitComplex<V: Euclidean>(pub Sphere<1, V>);
+pub struct UnitComplex<V: Euclidean>(Sphere<V>);
 impl_group_via_mul!(UnitComplex<V>, V: Euclidean);
 
 /// `S³ ⊂ ℍ` — the unit quaternions `SU(2)`, a group under multiplication and
 /// the double cover of [`So3`].
 #[derive(Debug, Clone, PartialEq)]
-pub struct S3<V: Euclidean>(pub Sphere<3, V>);
+pub struct S3<V: Euclidean>(Sphere<V>);
 impl_group_via_mul!(S3<V>, V: Euclidean);
 
 impl<V: Euclidean> Interval for S0<V> {
@@ -276,6 +276,60 @@ impl<V: Euclidean> Interval for S0<V> {
 }
 
 impl<V: Euclidean> Metric for S0<V> {}
+
+impl<V: Euclidean> S0<V> {
+    pub fn new(s: Sphere<V>) -> Self {
+        // Dim(V) + 1 dimensions must embed
+        // the unit circle.
+        const { assert!(V::N == 0) }
+
+        Self(s)
+    }
+
+    pub fn to_inner(self) -> Sphere<V> {
+        self.0
+    }
+
+    pub fn inner(&self) -> &Sphere<V> {
+        &self.0
+    }
+}
+
+impl<V: Euclidean> UnitComplex<V> {
+    pub fn new(s: Sphere<V>) -> Self {
+        // Dim(V) + 1 dimensions must embed
+        // the unit circle.
+        const { assert!(V::N == 1) }
+
+        Self(s)
+    }
+
+    pub fn to_inner(self) -> Sphere<V> {
+        self.0
+    }
+
+    pub fn inner(&self) -> &Sphere<V> {
+        &self.0
+    }
+}
+
+impl<V: Euclidean> S3<V> {
+    pub fn new(s: Sphere<V>) -> Self {
+        // Dim(V) + 1 dimensions must embed
+        // the unit circle.
+        const { assert!(V::N == 3) }
+
+        Self(s)
+    }
+
+    pub fn to_inner(self) -> Sphere<V> {
+        self.0
+    }
+
+    pub fn inner(&self) -> &Sphere<V> {
+        &self.0
+    }
+}
 
 impl<V: Euclidean> Interval for UnitComplex<V> {
     type R = V::F;
@@ -337,7 +391,7 @@ impl<V: Euclidean> LieGroup<V> for S0<V> {
 
 impl<V: Euclidean> One for UnitComplex<V> {
     fn one() -> Self {
-        Self(Sphere::identity())
+        Self::new(Sphere::identity())
     }
 
     fn is_one(&self) -> bool {
@@ -371,7 +425,7 @@ impl<V: Euclidean> LieGroup<V> for UnitComplex<V> {
     fn identity_exp(v: V) -> Self {
         let alpha = v[0];
 
-        UnitComplex(Sphere::new(alpha.cos(), V::from_array([alpha.sin()])))
+        Self::new(Sphere::new(alpha.cos(), V::from_array([alpha.sin()])))
     }
 
     fn identity_log(p: &Self) -> Option<V> {
@@ -381,7 +435,7 @@ impl<V: Euclidean> LieGroup<V> for UnitComplex<V> {
 
 impl<V: Euclidean> One for S3<V> {
     fn one() -> Self {
-        Self(Sphere::identity())
+        Self::new(Sphere::identity())
     }
 
     fn is_one(&self) -> bool {
@@ -422,7 +476,7 @@ impl<V: Euclidean> LieGroup<V> for S3<V> {
         let (sin, cos) = alpha.sin_cos();
 
         let sinc = sinc_from(alpha, sin, <V::F as NumCast>::from(EPSILON).unwrap());
-        Self(Sphere::new(cos, v * sinc))
+        Self::new(Sphere::new(cos, v * sinc))
     }
 
     fn identity_log(p: &Self) -> Option<V> {
@@ -439,7 +493,7 @@ impl<V: Euclidean> LieGroup<V> for S3<V> {
     }
 }
 
-impl<const N: usize, V: Euclidean> Interval for Sphere<N, V> {
+impl<V: Euclidean> Interval for Sphere<V> {
     type R = V::F;
 
     fn interval(&self, other: &Self) -> Complex<V::F> {
@@ -451,13 +505,13 @@ impl<const N: usize, V: Euclidean> Interval for Sphere<N, V> {
     }
 }
 
-impl<const N: usize, V: Euclidean> Metric for Sphere<N, V> {}
+impl<V: Euclidean> Metric for Sphere<V> {}
 
 /// The rotation group `SO(3)`, as `S³` quotiented by `{±1}` (`RP³`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct So3<V: Euclidean>(S3<V>);
 
-impl<V: Euclidean> Quotient<S3<V>, S0<V>, V> for So3<V> {
+impl<V: Euclidean> Quotient<S3<V>, RootOfUnity<V::F, 2>, V> for So3<V> {
     fn new(g: S3<V>) -> Self {
         // lexographic ordering on the fields
         match g
@@ -476,12 +530,12 @@ impl<V: Euclidean> Quotient<S3<V>, S0<V>, V> for So3<V> {
         self.0.clone()
     }
 
-    fn embed(h: S0<V>) -> S3<V> {
-        S3(Sphere::new(h.0.real(), V::zero()))
+    fn embed(h: RootOfUnity<V::F, 2>) -> S3<V> {
+        S3(Sphere::new(h.inner(), V::zero()))
     }
 }
 
-impl_lie_group_via_quotient!(So3<V>, S3<V>, S0<V>, V, V: Euclidean);
+impl_lie_group_via_quotient!(So3<V>, S3<V>, RootOfUnity<V::F, 2>, V, V: Euclidean);
 
 use crate::epsilon_metric::R64;
 

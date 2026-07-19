@@ -26,22 +26,61 @@ use proptest::prelude::*;
 // ---------------------------------------------------------------------------
 
 // Stereographic chart roundtrips
-test_chart!(stereo_s0, Stereographic<_>, arb_sphere0().prop_map(|x| x.0));
-test_chart!(stereo_s1, Stereographic<_>, arb_sphere1().prop_map(|x| x.0));
+test_chart!(
+    stereo_s0,
+    Stereographic<_>,
+    arb_sphere0().prop_map(|x| x.to_inner())
+);
+test_chart!(
+    stereo_s1,
+    Stereographic<_>,
+    arb_sphere1().prop_map(|x| x.to_inner())
+);
 test_chart!(stereo_s2, Stereographic<_>, arb_sphere2());
-test_chart!(stereo_s3, Stereographic<_>, arb_sphere3().prop_map(|x| x.0));
+test_chart!(
+    stereo_s3,
+    Stereographic<_>,
+    arb_sphere3().prop_map(|x| x.to_inner())
+);
 
 // Metric axioms
-test_metric!(metric_sphere0, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0));
-test_metric!(metric_sphere1, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0));
-test_metric!(metric_sphere2, Sphere<_, _>, arb_sphere2());
-test_metric!(metric_sphere3, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0));
+test_metric!(
+    metric_sphere0,
+    Sphere<_>,
+    arb_sphere0().prop_map(|x| x.to_inner())
+);
+test_metric!(
+    metric_sphere1,
+    Sphere<_>,
+    arb_sphere1().prop_map(|x| x.to_inner())
+);
+test_metric!(metric_sphere2, Sphere<_>, arb_sphere2());
+test_metric!(
+    metric_sphere3,
+    Sphere<_>,
+    arb_sphere3().prop_map(|x| x.to_inner())
+);
 
 // Metric + ExpMap compatibility
-test_pseudo_riemannian!(riemannian_sphere0, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0), arb_vec::<0>());
-test_pseudo_riemannian!(riemannian_sphere1, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0), arb_vec::<1>());
-test_pseudo_riemannian!(riemannian_sphere2, Sphere<_, _>, arb_sphere2(), arb_vec::<2>());
-test_pseudo_riemannian!(riemannian_sphere3, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0), arb_vec::<3>());
+test_pseudo_riemannian!(
+    riemannian_sphere0,
+    Sphere<_>,
+    arb_sphere0().prop_map(|x| x.to_inner()),
+    arb_vec::<0>()
+);
+test_pseudo_riemannian!(
+    riemannian_sphere1,
+    Sphere<_>,
+    arb_sphere1().prop_map(|x| x.to_inner()),
+    arb_vec::<1>()
+);
+test_pseudo_riemannian!(riemannian_sphere2, Sphere<_>, arb_sphere2(), arb_vec::<2>());
+test_pseudo_riemannian!(
+    riemannian_sphere3,
+    Sphere<_>,
+    arb_sphere3().prop_map(|x| x.to_inner()),
+    arb_vec::<3>()
+);
 
 test_pseudo_riemannian!(
     riemannian_s0,
@@ -62,11 +101,46 @@ test_pseudo_riemannian!(
     arb_vec::<3>()
 );
 
-test_tangent_bundle!(tangent_bundle_sphere0, R64, Sphere<_, _>, arb_sphere0().prop_map(|x| x.0), arb_vec0(), arb_scalar());
-test_tangent_bundle!(tangent_bundle_sphere1, R64, Sphere<_, _>, arb_sphere1().prop_map(|x| x.0), arb_vec1(), arb_scalar());
-test_tangent_bundle!(tangent_bundle_sphere2, R64, Sphere<_, _>, arb_sphere2(), arb_vec2(), arb_scalar());
-test_tangent_bundle!(tangent_bundle_sphere3, R64, Sphere<_, _>, arb_sphere3().prop_map(|x| x.0), arb_vec3(), arb_scalar());
-test_tangent_bundle!(tangent_bundle_sphere4, R64, Sphere<_, _>, arb_sphere4(), arb_vec4(), arb_scalar());
+test_tangent_bundle!(
+    tangent_bundle_sphere0,
+    R64,
+    Sphere<_>,
+    arb_sphere0().prop_map(|x| x.to_inner()),
+    arb_vec0(),
+    arb_scalar()
+);
+test_tangent_bundle!(
+    tangent_bundle_sphere1,
+    R64,
+    Sphere<_>,
+    arb_sphere1().prop_map(|x| x.to_inner()),
+    arb_vec1(),
+    arb_scalar()
+);
+test_tangent_bundle!(
+    tangent_bundle_sphere2,
+    R64,
+    Sphere<_>,
+    arb_sphere2(),
+    arb_vec2(),
+    arb_scalar()
+);
+test_tangent_bundle!(
+    tangent_bundle_sphere3,
+    R64,
+    Sphere<_>,
+    arb_sphere3().prop_map(|x| x.to_inner()),
+    arb_vec3(),
+    arb_scalar()
+);
+test_tangent_bundle!(
+    tangent_bundle_sphere4,
+    R64,
+    Sphere<_>,
+    arb_sphere4(),
+    arb_vec4(),
+    arb_scalar()
+);
 
 // Sphere as TangentBundle (via blanket LieGroup impl; includes all ExpMap tests)
 test_tangent_bundle!(
@@ -112,7 +186,7 @@ test_quotient!(
     So3<Coords<_, _>>,
     arb_so3(),
     arb_sphere3(),
-    arb_sphere0().prop_map(|v| S0(Sphere::new(v.0.real(), Coords::zero())))
+    arb_root_of_unity()
 );
 
 test_exp_map!(
@@ -153,7 +227,7 @@ proptest! {
     // no matter which representative Quotient::new keeps.
     #[test]
     fn so3_antipodal_lifts_are_equal(g in arb_sphere3()) {
-        let neg = S3(Sphere::new(-g.0.real(), -g.0.imag()));
+        let neg = S3::new(Sphere::new(-g.inner().real(), -g.inner().imag()));
         prop_assert!(So3::new(g) == So3::new(neg));
     }
 }
@@ -163,18 +237,21 @@ fn so3_equator_equality() {
     // 180° rotations lift to quaternions with real part exactly 0, where the
     // canonical-representative rule (real >= 0) accepts both lifts. Coset
     // equality must still hold there.
-    let q = S3(Sphere::<3, Coords<R64, 3>>::new(
+    let q = S3::new(Sphere::<Coords<R64, 3>>::new(
         R64::zero(),
         [R64::one(), R64::zero(), R64::zero()].into(),
     ));
-    let neg_q = S3(Sphere::new(-q.0.real(), -q.0.imag()));
+    let neg_q = S3::new(Sphere::new(-q.inner().real(), -q.inner().imag()));
     assert!(So3::new(q.clone()) == So3::new(neg_q));
 
     // and a 180° rotation about an arbitrary-ish axis
     let axis: Coords<R64, 3> = [R64(1.0), R64(2.0), R64(-0.5)].into();
     let axis = axis * (R64(1.0) / axis.norm());
     let half_turn = S3::identity_exp(axis * R64(std::f64::consts::PI));
-    let neg = S3(Sphere::new(-half_turn.0.real(), -half_turn.0.imag()));
+    let neg = S3::new(Sphere::new(
+        -half_turn.inner().real(),
+        -half_turn.inner().imag(),
+    ));
     assert!(So3::new(half_turn) == So3::new(neg));
 }
 

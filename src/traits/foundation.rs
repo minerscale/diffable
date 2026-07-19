@@ -2,7 +2,8 @@
 use num_traits::Zero;
 
 use crate::{
-    complex::Complex, traits::{Field, FieldExp, NatZero, NonZero},
+    complex::Complex,
+    traits::{Field, FieldExp, NatZero, NonZero},
 };
 use num_traits::{Euclid, Inv, real::Real as _};
 

@@ -6,7 +6,8 @@ use std::{
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 
 use crate::{
-    coords::array_zip_map, traits::{
+    coords::array_zip_map,
+    traits::{
         DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Metric, NatZero, NonZero, Vector,
     },
 };
@@ -232,10 +233,7 @@ impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
     /// This improves numerical stability for approximate fields.
     ///
     /// Assumes A is invertible.
-    pub fn solve_pivoted(&self, rhs: Self) -> Self
-    where
-        F: Metric,
-    {
+    pub fn solve_pivoted(&self, rhs: Self) -> Self {
         let mut mat = self.0;
         let mut out = rhs.0;
 
@@ -464,10 +462,7 @@ pub fn nth_root_near_one<F: Field + Metric>(a: &F, n: usize) -> F {
     for _ in 0..32 {
         let y_pow = y.pow(n - 1);
 
-        let next = (
-            (F::from_nat(n - 1) * y)
-            + a.div(y_pow)
-        ).div(n_f);
+        let next = ((F::from_nat(n - 1) * y) + a.div(y_pow)).div(n_f);
 
         let diff = next - y;
 

@@ -77,7 +77,7 @@
 //!   and `impl_group_via_mul!` connect them to `Group`.
 //!
 //!   [`traits::Rig`], [`traits::Ring`], [`traits::DivRing`],
-//!   and `Field` combine both operations.
+//!   and [`traits::Field`] combine both operations.
 //! - [`traits::LieGroup`] — a group with a smooth exponential map at the
 //!   identity; automatically derives `Smooth` (and therefore the whole chart
 //!   bundle) via left translation

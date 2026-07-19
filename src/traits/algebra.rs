@@ -1,5 +1,6 @@
 use crate::{
-    impl_group_via_mul, traits::{ExactCmp, FromReal, Interval, Metric, Real, Vector},
+    impl_group_via_mul,
+    traits::{ExactCmp, FromReal, Interval, Metric, Real, Vector},
 };
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 use std::ops::{Add, Mul, Neg, Sub};
@@ -446,6 +447,9 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     /// The fixed field under `[Self::conj]`, where x.conj() = x.
     type Fixed: Field;
 
+    // Mathematically: The Fixed Field (F^σ) where σ(x) = x
+    fn conj(&self) -> Self;
+
     /// The field's characteristic, as a type-level [`Nat`]. `NatZero` means
     /// characteristic zero (ℚ embeds). Callers that need `1/k` — the matrix
     /// exponential, [`from_nat`](Field::from_nat) — bound on `Characteristic =
@@ -489,8 +493,6 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
         result
     }
 
-    // Mathematically: The Fixed Field (F^σ) where σ(x) = x
-    fn conj(&self) -> Self;
     fn norm_squared(self) -> Self::Fixed {
         Self::to_fixed(self * self.conj())
     }
@@ -673,9 +675,10 @@ impl<N: Nat> Nat for Succ<N> {
 /// It shares every algebraic and analytic fact with the inner `F` except the
 /// involution: arithmetic, characteristic, and any forwarded metric all delegate
 /// straight through. Note that `Fixed = Self` means its fixed field is *not*
-/// `R`, so it is deliberately excluded from anything that requires a real fixed
-/// field (e.g. the matrix exponential).
+/// `R`, so fields that wish to have analysis done on it should use [`Metric`],
+/// which is guaranteed to be a field norm via coherence.
 ///
+/// [`Metric`]: crate::traits::Metric
 /// [`Bilinear`]: crate::traits::Bilinear
 /// [`Sesquilinear`]: crate::traits::Sesquilinear
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -875,6 +878,10 @@ impl<V: Vector, const N: usize> LieGroup<V> for RootOfUnity<V::F, N> {
 impl<F: Field, const N: usize> RootOfUnity<F, N> {
     pub fn new(x: F) -> Option<Self> {
         ((1..N).fold(x, |acc, _| acc * x).is_one()).then_some(Self(x))
+    }
+
+    pub fn inner(self) -> F {
+        self.0
     }
 }
 
