@@ -245,6 +245,7 @@ fn diagonalise(mat: &mut [Vec<i64>], row_transform: &mut [Vec<i64>]) {
                     for j in t..m {
                         mat[i][j] -= q * mat[t][j];
                     }
+
                     for j in 0..n {
                         row_transform[i][j] -= q * row_transform[t][j];
                     }
@@ -1339,7 +1340,7 @@ pub trait NerveComplex<
     /// The point a fraction `t` along, by arc length. `O(log len)` plus one `log`.
     fn sample(ap: &ArcPoly<P, V::F>, t: V::F) -> Option<P> {
         let total = ap.total();
-        if !(total > V::F::zero()) {
+        if total <= V::F::zero() {
             return ap.pts.first().cloned();
         }
         let target = total * t;
@@ -1698,7 +1699,7 @@ pub trait NerveComplex<
             // Arithmetic has run out. Sixteen ulps, not one — at the rounding floor
             // `d` is noise of magnitude `~ε·len` and random sign, so a one-ulp test
             // is a coin flip that keeps the loop alive until the iteration cap.
-            if !(eps * len * scalar(16) < (prev - len).abs()) {
+            if eps * len * scalar(16) >= (prev - len).abs() {
                 return Err(match length(pts) {
                     Ok(x) => StraighteningResult::ArithmeticFloor(x),
                     Err(e) => e,
@@ -1863,7 +1864,7 @@ pub trait NerveComplex<
         for k in 1..n {
             let t = scalar::<V::F>(k) / scalar::<V::F>(n);
             let d = Self::hop(&Self::sample(a, t)?, &Self::sample(b, t)?)?;
-            if !(d < rho) {
+            if d >= rho {
                 return Some(false);
             }
         }
@@ -2357,15 +2358,12 @@ pub trait NerveComplex<
             };
 
             debug_assert!(
-                !(graph_opt > kappa * b + c),
+                graph_opt <= kappa * b + c,
                 "overestimation bound violated: graph_opt {graph_opt:?} > κ·{b:?} + C"
             );
         }
 
-        match best {
-            Some(b) => Some((b, exhaustive, straighten_result)),
-            None => None,
-        }
+        best.map(|b| (b, exhaustive, straighten_result))
     }
 
     // ---------------------------------------------------------------

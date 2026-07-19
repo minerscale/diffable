@@ -167,7 +167,7 @@ where
     Matrix<Coords<F, 2>, 2>: MatrixExponential,
 {
     fn identity_exp(v: SlAlgebra<F, 2, 3>) -> Self {
-        Self(Matrix::exp(&v.to_matrix()))
+        Self(Matrix::exp(&v.matrix()))
     }
 
     fn identity_log(p: &Self) -> Option<SlAlgebra<F, 2, 3>> {
@@ -269,7 +269,7 @@ impl<F: Field, const N: usize, const D: usize> IndexMut<usize> for SlAlgebra<F, 
 }
 
 impl<F: Field, const N: usize, const D: usize> SlAlgebra<F, N, D> {
-    fn to_matrix(&self) -> Matrix<Coords<F, N>, N> {
+    fn matrix(&self) -> Matrix<Coords<F, N>, N> {
         let mut out = [[F::zero(); N]; N];
 
         let mut index = 0;

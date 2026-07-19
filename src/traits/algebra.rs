@@ -802,11 +802,9 @@ pub struct RootOfUnityPrimitive<F: Field, const N: usize>(RootOfUnity<F, N>);
 impl<F: Field, const N: usize> RootOfUnityPrimitive<F, N> {
     pub fn new(x: F) -> Option<Self> {
         (1..N)
-            .fold(Some(x), |c, _| {
-                c.and_then(|root| {
-                    let power = root * x;
-                    (power != F::one()).then(|| power)
-                })
+            .try_fold(x, |root, _| {
+                let power = root * x;
+                (power != F::one()).then_some(power)
             })
             .map(|x| Self(RootOfUnity(x)))
     }

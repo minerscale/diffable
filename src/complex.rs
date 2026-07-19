@@ -171,7 +171,7 @@ impl<R: Real> Interval for NonZero<Complex<R>> {
     type R = R;
 
     fn interval_squared(&self, other: &Self) -> R {
-        self.log(other).unwrap().norm_squared().into()
+        self.log(other).unwrap().norm_squared()
     }
 }
 

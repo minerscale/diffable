@@ -179,6 +179,8 @@
 //! - `testing` — property-testing macros and tolerance-based scalar types
 //! - `all` — enables all features
 
+#![allow(clippy::needless_range_loop, clippy::type_complexity)]
+
 pub mod coords;
 pub mod hypersphere;
 pub mod traits;

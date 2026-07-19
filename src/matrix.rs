@@ -128,7 +128,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
     /// directly.
     pub fn destructure<const M: usize>(&self) -> [[F; M]; M] {
         const { assert!(N == M) }
-        from_fn(|i| from_fn(|j| self.0[i][j].clone()))
+        from_fn(|i| from_fn(|j| self.0[i][j]))
     }
 
     /// Solves A * X = B by Gauss–Jordan elimination.
@@ -148,13 +148,13 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
 
             // Scale pivot row so the diagonal entry becomes one.
             let pivot_inv =
-                <F as DivRing>::Mul::inv(NonZero::new(mat[i][i].clone()).unwrap().into())
+                <F as DivRing>::Mul::inv(NonZero::new(mat[i][i]).unwrap().into())
                     .into()
                     .0;
 
             for j in 0..N {
-                mat[i][j] = mat[i][j].clone() * pivot_inv.clone();
-                out[i][j] = out[i][j].clone() * pivot_inv.clone();
+                mat[i][j] = mat[i][j] * pivot_inv;
+                out[i][j] = out[i][j] * pivot_inv;
             }
 
             // Eliminate the pivot column from every other row.
@@ -163,12 +163,12 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
                     continue;
                 }
 
-                let factor = mat[k][i].clone();
+                let factor = mat[k][i];
 
                 for j in 0..N {
-                    mat[k][j] = mat[k][j].clone() - factor.clone() * mat[i][j].clone();
+                    mat[k][j] = mat[k][j] - factor * mat[i][j];
 
-                    out[k][j] = out[k][j].clone() - factor.clone() * out[i][j].clone();
+                    out[k][j] = out[k][j] - factor * out[i][j];
                 }
             }
         }
@@ -262,13 +262,13 @@ impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
 
             // Normalize pivot row.
             let pivot_inv =
-                <F as DivRing>::Mul::inv(NonZero::new(mat[i][i].clone()).unwrap().into())
+                <F as DivRing>::Mul::inv(NonZero::new(mat[i][i]).unwrap().into())
                     .into()
                     .0;
 
             for j in 0..N {
-                mat[i][j] = mat[i][j].clone() * pivot_inv.clone();
-                out[i][j] = out[i][j].clone() * pivot_inv.clone();
+                mat[i][j] = mat[i][j] * pivot_inv;
+                out[i][j] = out[i][j] * pivot_inv;
             }
 
             // Eliminate this column everywhere else.
@@ -277,12 +277,11 @@ impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
                     continue;
                 }
 
-                let factor = mat[r][i].clone();
+                let factor = mat[r][i];
 
                 for j in 0..N {
-                    mat[r][j] = mat[r][j].clone() - factor.clone() * mat[i][j].clone();
-
-                    out[r][j] = out[r][j].clone() - factor.clone() * out[i][j].clone();
+                    mat[r][j] = mat[r][j] - factor * mat[i][j];
+                    out[r][j] = out[r][j] - factor * out[i][j];
                 }
             }
         }
