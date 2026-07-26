@@ -624,10 +624,8 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
 pub trait CField: Field {
     #[cfg(feature = "testing")]
     fn check_commutativity(a: Self, b: Self) -> bool
-    where
-        Self: PartialEq,
     {
-        a.clone() * b.clone() == b * a
+        a * b == b * a
     }
 }
 
@@ -1028,7 +1026,7 @@ pub trait Group: Point {
     where
         Self: PartialEq,
     {
-        Self::identity().compose(&self) == *self
+        Self::identity().compose(self) == *self
     }
 
     #[cfg(feature = "testing")]

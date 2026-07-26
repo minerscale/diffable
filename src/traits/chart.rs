@@ -61,7 +61,7 @@ pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
         V: Form,
     {
         self.to_local(&self.base_point())
-            .map_or(false, |c| c.self_dot() == V::F::zero())
+            .is_some_and(|c| c.self_dot() == V::F::zero())
     }
 
     // Tests that log(exp(0)) == 0, i.e. that the
@@ -74,7 +74,7 @@ pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
         let zero = V::zero();
         let exp_zero = self.to_global(zero);
         self.to_local(&exp_zero)
-            .map_or(false, |c| c.self_dot() == V::F::zero())
+            .is_some_and(|c| c.self_dot() == V::F::zero())
     }
 
     /// If a chart centred at `p` exists, `chart_at(p)` returns it.

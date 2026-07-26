@@ -52,12 +52,10 @@ pub trait Euclidean: Bilinear<F: Real> + InnerProduct {
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
     fn check_pythagorean(a: &Self, b: &Self) -> bool
-    where
-        Self: Sub<Output = Self> + Clone,
     {
         let dist_sq = a.distance(b);
         let dist_sq = dist_sq * dist_sq;
-        let diff = a.clone() - b.clone();
+        let diff = *a - *b;
         let norm_sq = diff.norm_squared();
         dist_sq == norm_sq
     }
@@ -356,11 +354,9 @@ pub trait Form: Vector {
     // ((a+c) - (b+c) = a - b), so the form agrees exactly.
     #[cfg(feature = "testing")]
     fn check_translation_invariance(a: &Self, b: &Self, c: &Self) -> bool
-    where
-        Self: Add<Output = Self> + Sub<Output = Self> + Clone,
     {
-        let diff = a.clone() - b.clone();
-        let diff_translated = (a.clone() + c.clone()) - (b.clone() + c.clone());
+        let diff = *a - *b;
+        let diff_translated = (*a + *c) - (*b + *c);
         diff.self_dot() == diff_translated.self_dot()
     }
 }
@@ -494,10 +490,8 @@ pub trait Sesquilinear: Form {
 
     #[cfg(feature = "testing")]
     fn check_additivity(a: Self, b: Self, c: Self) -> bool
-    where
-        Self: Add<Output = Self> + Clone,
     {
-        (a.clone() + b.clone()).dot(&c) == a.dot(&c) + b.dot(&c)
+        (a + b).dot(&c) == a.dot(&c) + b.dot(&c)
     }
 
     #[cfg(feature = "testing")]
@@ -505,7 +499,7 @@ pub trait Sesquilinear: Form {
     where
         Self: Mul<Self::F, Output = Self> + Clone,
     {
-        (a.clone() * k).dot(&c) == a.dot(&c) * k
+        (a * k).dot(&c) == a.dot(&c) * k
     }
 }
 
