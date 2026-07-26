@@ -219,15 +219,44 @@ pub trait Vector:
 
     /// The canonical evaluation pairing `(V, V*) -> F`, `⟨v, ω⟩ = ω(v)`.
     ///
-    /// Fixed to the coordinate dot product `Σ vᵢ ωᵢ`, and **must stay that
-    /// way**: [`flat`](Form::flat), [`sharp`](Nondegenerate::sharp), and
-    /// [`collapse`](Vector::collapse) all rely on the dual basis being
-    /// identified with the primal basis component-wise. Overriding it to a
-    /// different (even valid) pairing would silently break every one of them.
+    /// If `V` is a right `F`-module and
+    ///
+    /// ```text
+    /// v = Σ eᵢ vᵢ,       ωᵢ = ω(eᵢ),
+    /// ```
+    ///
+    /// then right-linearity of `ω` requires
+    ///
+    /// ```text
+    /// ω(v) = ω(Σ eᵢ vᵢ)
+    ///      = Σ ω(eᵢ) vᵢ
+    ///      = Σ ωᵢ vᵢ.
+    /// ```
+    ///
+    /// Consequently, the dual coordinate must multiply the vector coordinate
+    /// on the left. Although the iterators below encounter `vᵢ` first, the
+    /// product is deliberately `ωᵢ * vᵢ`, not `vᵢ * ωᵢ`. The two orders agree
+    /// over commutative fields but differ over a noncommutative division ring.
+    ///
+    /// This order must not be changed: [`flat`](Form::flat),
+    /// [`sharp`](Nondegenerate::sharp), and [`collapse`](Vector::collapse)
+    /// rely on this being the canonical evaluation of a right-module vector
+    /// by its dual covector.
     fn pairing(&self, rhs: &Dual<Self>) -> Self::F {
         self.iter()
             .zip(rhs.iter())
-            .fold(Self::F::zero(), |acc, (&a, &b)| acc + a * b)
+            .fold(Self::F::zero(), |acc, (&v, &omega)| acc + omega * v)
+    }
+
+    /// Left-multiplies a covector by `scalar`.
+    ///
+    /// This is the canonical left action induced by evaluation:
+    /// `(rω)(v) = rω(v)`. It differs from the ordinary right action
+    /// `ω * r` on [`Dual<Self>`] when scalar multiplication is noncommutative.
+    /// The scalar belongs to `Self::F`, not its opposite, so it is neither
+    /// reversed nor conjugated.
+    fn dual_left_mul(scalar: Self::F, covector: Dual<Self>) -> Dual<Self> {
+        Dual(Self::from_fn(|i| scalar * covector[i]))
     }
 
     /// The canonical identification `V** ≅ V`, collapsing a twice-dualised
@@ -457,7 +486,7 @@ pub trait Sesquilinear: Form {
     where
         Self: Mul<Self::F, Output = Self> + Clone,
     {
-        (a.clone() * k).dot(&c) == k * a.dot(&c)
+        (a.clone() * k).dot(&c) == a.dot(&c) * k
     }
 }
 

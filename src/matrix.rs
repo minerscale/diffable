@@ -147,10 +147,9 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
             );
 
             // Scale pivot row so the diagonal entry becomes one.
-            let pivot_inv =
-                <F as DivRing>::Mul::inv(NonZero::new(mat[i][i]).unwrap().into())
-                    .into()
-                    .0;
+            let pivot_inv = <F as DivRing>::Mul::inv(NonZero::new(mat[i][i]).unwrap().into())
+                .into()
+                .0;
 
             for j in 0..N {
                 mat[i][j] = mat[i][j] * pivot_inv;
@@ -261,10 +260,9 @@ impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
             out.swap(i, pivot);
 
             // Normalize pivot row.
-            let pivot_inv =
-                <F as DivRing>::Mul::inv(NonZero::new(mat[i][i]).unwrap().into())
-                    .into()
-                    .0;
+            let pivot_inv = <F as DivRing>::Mul::inv(NonZero::new(mat[i][i]).unwrap().into())
+                .into()
+                .0;
 
             for j in 0..N {
                 mat[i][j] = mat[i][j] * pivot_inv;

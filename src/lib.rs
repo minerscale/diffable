@@ -17,7 +17,9 @@
 //! - [`traits::Point`] — The underlying set: an element of a manifold, group, or
 //!   metric space. Anything can be a Point, in fact; anything that is `Clone` is
 //!   a `Point`.
-//! - [`traits::Field`] — The scalar field of a vector space. Follows the field axioms.
+//! - [`traits::Field`] — A (possibly non-commutative) scalar field of 
+//!   vector space equipped with a possibly trivial involution. Follows the field axioms.
+//! - [`traits::CField`] — The commutative refinement of a field.
 //! - [`traits::Real`] — An ordered real-number field, used as a
 //!   coordinate scalar and as the target of intervals and metrics. See
 //!   [`traits::ExactCmp`] for the strict order that convergence tests need

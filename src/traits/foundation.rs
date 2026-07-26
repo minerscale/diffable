@@ -3,7 +3,7 @@ use num_traits::Zero;
 
 use crate::{
     complex::Complex,
-    traits::{Field, FieldExp, NatZero, NonZero},
+    traits::{CField, Field, FieldExp, NatZero, NonZero},
 };
 use num_traits::{Euclid, Inv, real::Real as _};
 
@@ -98,6 +98,9 @@ where
     }
 }
 
+// Real multiplication is commutative
+impl<R: RealNum + Field> CField for R {}
+
 /// A real-number field: totally ordered, and its own involution fixed field
 /// (`Fixed = Self`, so `conj = id`).
 ///
@@ -109,8 +112,8 @@ where
 /// transitive order an iterative algorithm needs to decide convergence — hence
 /// [`ExactCmp`], which recovers the genuine order from the sign bit instead of
 /// the tolerant comparison.
-pub trait Real: RealNum + Field<Fixed = Self> {}
-impl<R: RealNum + Field<Fixed = Self>> Real for R {}
+pub trait Real: RealNum + CField<Fixed = Self> {}
+impl<R: RealNum + CField<Fixed = Self>> Real for R {}
 
 impl<R: Real<Characteristic = NatZero> + Metric> FieldExp for R {
     fn exp(&self) -> Self {

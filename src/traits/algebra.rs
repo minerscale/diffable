@@ -422,6 +422,7 @@ impl<R: CGroup + Rig> Ring for R {}
 /// A division ring.
 ///
 /// A ring whose nonzero elements have inverses.
+/// Purely algebraic fact: every nonzero value is multiplicatively invertible.
 pub trait DivRing: Ring {
     fn div(self, rhs: Self) -> Self {
         self * Self::Mul::from(NonZero::new(rhs).expect("division by zero"))
@@ -442,12 +443,15 @@ where
 
 /// A field.
 ///
-/// A division ring whose multiplication is abelian.
+/// A division ring equipped with the scalar structure used by the library:
+/// an elected involution, fixed field, characteristic, etc.
+///
+/// “Field” here includes skew/noncommutative fields.
 pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     /// The fixed field under `[Self::conj]`, where x.conj() = x.
     type Fixed: Field;
-
-    // Mathematically: The Fixed Field (F^σ) where σ(x) = x
+    
+    /// The conjugation operation. 
     fn conj(&self) -> Self;
 
     /// The field's characteristic, as a type-level [`Nat`]. `NatZero` means
@@ -511,7 +515,7 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     // conj respects multiplication.
     #[cfg(feature = "testing")]
     fn check_conj_multiplicative(a: Self, b: Self) -> bool {
-        (a * b).conj() == a.conj() * b.conj()
+        (a * b).conj() == b.conj() * a.conj()
     }
 
     #[cfg(feature = "testing")]
@@ -563,14 +567,6 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
         y.conj() == y
     }
 
-    #[cfg(feature = "testing")]
-    fn check_commutativity(a: Self, b: Self) -> bool
-    where
-        Self: PartialEq,
-    {
-        a.clone() * b.clone() == b * a
-    }
-
     // Audits the declared characteristic against the
     // field's actual arithmetic, as far as `bound` allows.
     #[cfg(feature = "testing")]
@@ -595,6 +591,16 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
             // didn't probe far enough / characteristic is 0
             acc + Self::one() != Self::zero()
         }
+    }
+}
+
+pub trait CField: Field {
+    #[cfg(feature = "testing")]
+    fn check_commutativity(a: Self, b: Self) -> bool
+    where
+        Self: PartialEq,
+    {
+        a.clone() * b.clone() == b * a
     }
 }
 
@@ -789,6 +795,11 @@ impl<F: Field<Fixed: Real>> FromReal for Symmetrized<F> {
 }
 
 impl<F: Field + Metric> Metric for Symmetrized<F> {}
+
+// Since conjugation is anti-multiplicative and
+// F::Fixed = Self => conj(a) = a, then
+// ab = conj(ab) = conj(b)conj(a) = ba. Therefore
+impl<F: Field> CField for Symmetrized<F> {}
 
 /// A *primitive* `N`-th root of unity — one that generates all of `μ_N`.
 ///

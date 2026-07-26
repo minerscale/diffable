@@ -1,3 +1,4 @@
 /target
 *.sublime-workspace
 Cargo.lock
+/latex

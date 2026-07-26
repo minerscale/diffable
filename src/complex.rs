@@ -6,7 +6,8 @@ use crate::{
     coords::Coords,
     impl_group_via_add,
     traits::{
-        Field, FieldExp, Interval, LieGroup, Metric, NatZero, NonZero, Real, Sesquilinear, Smooth,
+        CField, Field, FieldExp, Interval, LieGroup, Metric, NatZero, NonZero, Real, Sesquilinear,
+        Smooth,
     },
 };
 
@@ -194,3 +195,5 @@ impl<R: Real> Field for Complex<R> {
         [x, R::zero()].into()
     }
 }
+
+impl<R: Real> CField for Complex<R> {}

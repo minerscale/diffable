@@ -524,7 +524,27 @@ macro_rules! test_div_ring {
     };
 }
 
-/// Tests the `Field` axioms: that we have a commutative division ring.
+/// Tests the `CField` axioms: that we have a commutative field.
+#[macro_export]
+macro_rules! test_cfield {
+    ($mod_name:ident, $point:ty, $arb_point:expr, $arb_fixed:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::{test_field, traits::CField};
+
+            test_field!(field, $point, $arb_point, $arb_fixed);
+
+            proptest! {
+                #[test]
+                fn commutativity(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_commutativity(a, b));
+                }
+            }
+        }
+    };
+}
+
+/// Tests the `Field` axioms: that we have a division ring with proper involution.
 #[macro_export]
 macro_rules! test_field {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_fixed:expr) => {
@@ -572,11 +592,6 @@ macro_rules! test_field {
                 #[test]
                 fn from_fixed_is_fixed(x in $arb_fixed) {
                     prop_assert!(<$point>::check_from_fixed_is_fixed(x));
-                }
-
-                #[test]
-                fn commutativity(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_commutativity(a, b));
                 }
             }
 
