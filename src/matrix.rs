@@ -8,7 +8,8 @@ use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 use crate::{
     coords::array_zip_map,
     traits::{
-        DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Metric, NatZero, NonZero, Vector,
+        CField, DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Metric, NatZero, NonZero,
+        Vector,
     },
 };
 
@@ -152,8 +153,8 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
                 .0;
 
             for j in 0..N {
-                mat[i][j] = mat[i][j] * pivot_inv;
-                out[i][j] = out[i][j] * pivot_inv;
+                mat[i][j] = pivot_inv * mat[i][j];
+                out[i][j] = pivot_inv * out[i][j];
             }
 
             // Eliminate the pivot column from every other row.
@@ -173,12 +174,6 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         }
 
         Matrix(out)
-    }
-
-    fn swap_rows(&mut self, a: usize, b: usize) {
-        if a != b {
-            self.0.swap(a, b);
-        }
     }
 
     /// Inverts the matrix by Gauss–Jordan elimination.
@@ -265,8 +260,8 @@ impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
                 .0;
 
             for j in 0..N {
-                mat[i][j] = mat[i][j] * pivot_inv;
-                out[i][j] = out[i][j] * pivot_inv;
+                mat[i][j] = pivot_inv * mat[i][j];
+                out[i][j] = pivot_inv * out[i][j];
             }
 
             // Eliminate this column everywhere else.
@@ -289,6 +284,14 @@ impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
 
     pub fn inverse_pivoted(&self) -> Self {
         self.solve_pivoted(Self::one())
+    }
+}
+
+impl<F: CField + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
+    fn swap_rows(&mut self, a: usize, b: usize) {
+        if a != b {
+            self.0.swap(a, b);
+        }
     }
 
     pub fn det(&self) -> F {

@@ -99,7 +99,7 @@ where
 }
 
 // Real multiplication is commutative
-impl<R: RealNum + Field> CField for R {}
+impl<R: RealNum> CField for R where NonZero<R>: Inv<Output = NonZero<R>> {}
 
 /// A real-number field: totally ordered, and its own involution fixed field
 /// (`Fixed = Self`, so `conj = id`).

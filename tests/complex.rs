@@ -8,13 +8,13 @@ use common::*;
 use diffable::{
     complex::Complex,
     epsilon_metric::R64,
-    test_field, test_metric, test_pseudo_riemannian, test_tangent_bundle,
+    test_cfield, test_metric, test_pseudo_riemannian, test_tangent_bundle,
     traits::{NonZero, Symmetrized},
 };
 
 use proptest::prelude::*;
 
-test_field!(
+test_cfield!(
     complex_field,
     Complex<R64>,
     arb_vec::<2>().prop_map(|x| Complex::<R64>::from(x)),
@@ -26,7 +26,7 @@ test_metric!(
     arb_vec::<2>().prop_map(|x| Complex::<R64>::from(x))
 );
 
-test_field!(
+test_cfield!(
     symmetrized_complex_field,
     Symmetrized<Complex<R64>>,
     arb_vec::<2>().prop_map(|x| Symmetrized(Complex::<R64>::from(x))),

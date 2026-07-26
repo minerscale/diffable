@@ -450,8 +450,8 @@ where
 pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     /// The fixed field under `[Self::conj]`, where x.conj() = x.
     type Fixed: Field;
-    
-    /// The conjugation operation. 
+
+    /// The conjugation operation.
     fn conj(&self) -> Self;
 
     /// The field's characteristic, as a type-level [`Nat`]. `NatZero` means
@@ -684,13 +684,17 @@ impl<N: Nat> Nat for Succ<N> {
 /// `R`, so fields that wish to have analysis done on it should use [`Metric`],
 /// which is guaranteed to be a field norm via coherence.
 ///
+/// Since conjugation is anti-multiplicative and `F::Fixed = Self => conj(a) = a`,
+/// `ab = conj(ab) = conj(b)conj(a) = ba`. Therefore this construction is only valid
+/// for commutative fields hence the trait bound.
+///
 /// [`Metric`]: crate::traits::Metric
 /// [`Bilinear`]: crate::traits::Bilinear
 /// [`Sesquilinear`]: crate::traits::Sesquilinear
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Symmetrized<F: Field>(pub F);
+pub struct Symmetrized<F: CField>(pub F);
 
-impl<F: Field> Sub for Symmetrized<F> {
+impl<F: CField> Sub for Symmetrized<F> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -698,7 +702,7 @@ impl<F: Field> Sub for Symmetrized<F> {
     }
 }
 
-impl<F: Field> Add for Symmetrized<F> {
+impl<F: CField> Add for Symmetrized<F> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -706,7 +710,7 @@ impl<F: Field> Add for Symmetrized<F> {
     }
 }
 
-impl<F: Field> Neg for Symmetrized<F> {
+impl<F: CField> Neg for Symmetrized<F> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -714,7 +718,7 @@ impl<F: Field> Neg for Symmetrized<F> {
     }
 }
 
-impl<F: Field> Mul for Symmetrized<F> {
+impl<F: CField> Mul for Symmetrized<F> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -722,7 +726,7 @@ impl<F: Field> Mul for Symmetrized<F> {
     }
 }
 
-impl<F: Field> One for Symmetrized<F> {
+impl<F: CField> One for Symmetrized<F> {
     fn one() -> Self {
         Self(F::one())
     }
@@ -732,7 +736,7 @@ impl<F: Field> One for Symmetrized<F> {
     }
 }
 
-impl<F: Field> Zero for Symmetrized<F> {
+impl<F: CField> Zero for Symmetrized<F> {
     fn zero() -> Self {
         Self(F::zero())
     }
@@ -742,7 +746,7 @@ impl<F: Field> Zero for Symmetrized<F> {
     }
 }
 
-impl<F: Field> Inv for NonZero<Symmetrized<F>> {
+impl<F: CField> Inv for NonZero<Symmetrized<F>> {
     type Output = Self;
 
     fn inv(self) -> Self::Output {
@@ -755,7 +759,7 @@ impl<F: Field> Inv for NonZero<Symmetrized<F>> {
     }
 }
 
-impl<F: Field> Field for Symmetrized<F> {
+impl<F: CField> Field for Symmetrized<F> {
     type Fixed = Self;
     type Characteristic = F::Characteristic;
 
@@ -772,15 +776,7 @@ impl<F: Field> Field for Symmetrized<F> {
     }
 }
 
-impl<R: Real, F: Field<Fixed = R>> Interval for F {
-    type R = R;
-
-    fn interval_squared(&self, other: &Self) -> R {
-        (*self - *other).norm_squared()
-    }
-}
-
-impl<F: Field + Interval> Interval for Symmetrized<F> {
+impl<F: CField + Interval> Interval for Symmetrized<F> {
     type R = F::R;
 
     fn interval_squared(&self, other: &Self) -> F::R {
@@ -788,18 +784,22 @@ impl<F: Field + Interval> Interval for Symmetrized<F> {
     }
 }
 
-impl<F: Field<Fixed: Real>> FromReal for Symmetrized<F> {
+impl<F: CField<Fixed: Real>> FromReal for Symmetrized<F> {
     fn from_real(r: Self::R) -> Self {
         Self(F::from_fixed(r))
     }
 }
 
-impl<F: Field + Metric> Metric for Symmetrized<F> {}
+impl<F: CField + Metric> Metric for Symmetrized<F> {}
+impl<F: CField> CField for Symmetrized<F> {}
 
-// Since conjugation is anti-multiplicative and
-// F::Fixed = Self => conj(a) = a, then
-// ab = conj(ab) = conj(b)conj(a) = ba. Therefore
-impl<F: Field> CField for Symmetrized<F> {}
+impl<R: Real, F: Field<Fixed = R>> Interval for F {
+    type R = R;
+
+    fn interval_squared(&self, other: &Self) -> R {
+        (*self - *other).norm_squared()
+    }
+}
 
 /// A *primitive* `N`-th root of unity — one that generates all of `μ_N`.
 ///

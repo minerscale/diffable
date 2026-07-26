@@ -33,9 +33,8 @@ use crate::impl_group_via_add;
 /// are straight lines, parallel transport is path-independent, and the
 /// exponential map is a global isomorphism rather than merely a local one.
 /// These properties are verified by the `check_*` methods inherited from
-/// [`TangentBundle`] and [`Vector`] (`check_global_chart`,
-/// `check_global_geodesic_scaling`, `check_translation_invariance`), together
-/// with the definite-only `check_pythagorean` below.
+/// [`TangentBundle`], [`Vector`], [`Form`], [`Nondegenerate`] and [`Sesquilinear`]
+/// together with the definite-only `check_pythagorean` below.
 ///
 /// # Implementing
 /// Use the `test_euclidean!` macro to verify that your implementation
@@ -46,6 +45,9 @@ use crate::impl_group_via_add;
 /// [`InnerProduct`]: crate::traits::InnerProduct
 /// [`Metric`]: crate::traits::Metric
 /// [`TangentBundle`]: crate::traits::TangentBundle
+/// [`Form`]: crate::traits::Form
+/// [`Nondegenerate`]: crate::traits::Nondegenerate
+/// [`Sesquilinear`]: crate::traits::Sesquilinear
 pub trait Euclidean: Bilinear<F: Real> + InnerProduct {
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
@@ -169,7 +171,7 @@ impl<V: Vector> IndexMut<usize> for Dual<V> {
     }
 }
 
-/// A finite-dimensional coordinate vector space over a [`Field`].
+/// A finite-dimensional right F-module over a [`Field`] equipped with a basis.
 ///
 /// This is the base of the linear hierarchy. A `Vector` is nothing more than
 /// `N` coordinates in `F` — it carries no metric, no notion of length or angle.
@@ -217,21 +219,10 @@ pub trait Vector:
     /// constructor — most other constructors reduce to this.
     fn from_fn(f: impl Fn(usize) -> Self::F) -> Self;
 
-    /// The canonical evaluation pairing `(V, V*) -> F`, `⟨v, ω⟩ = ω(v)`.
+    /// The canonical right-linear evaluation pairing `(V, V*) -> F`, `⟨v, ω⟩ = ω(v)`.
     ///
-    /// If `V` is a right `F`-module and
-    ///
-    /// ```text
-    /// v = Σ eᵢ vᵢ,       ωᵢ = ω(eᵢ),
-    /// ```
-    ///
-    /// then right-linearity of `ω` requires
-    ///
-    /// ```text
-    /// ω(v) = ω(Σ eᵢ vᵢ)
-    ///      = Σ ω(eᵢ) vᵢ
-    ///      = Σ ωᵢ vᵢ.
-    /// ```
+    /// If `V` is a right `F`-module and `v = Σ eᵢ vᵢ, ωᵢ = ω(eᵢ),`
+    /// then right-linearity of `ω` requires `ω(v) = ω(Σ eᵢ vᵢ) = Σ ω(eᵢ) vᵢ = Σ ωᵢ vᵢ`.
     ///
     /// Consequently, the dual coordinate must multiply the vector coordinate
     /// on the left. Although the iterators below encounter `vᵢ` first, the
@@ -246,6 +237,24 @@ pub trait Vector:
         self.iter()
             .zip(rhs.iter())
             .fold(Self::F::zero(), |acc, (&v, &omega)| acc + omega * v)
+    }
+
+    /// The canonical left-linear evaluation pairing `(V*, V**) -> F`.
+    ///
+    /// Since the dual of a right `F`-module `V` is naturally a left
+    /// `F`-module, its double dual consists of left-linear functionals. Thus,
+    /// writing `ω = Σ ωᵢ εⁱ` and `Ψᵢ = Ψ(εⁱ)`,
+    ///
+    /// `Ψ(ω) = Σ ωᵢ Ψᵢ`.
+    ///
+    /// This is distinct from [`Vector::pairing`] on `Dual<Self>`, which treats
+    /// `Dual<Self>` merely as an ordinary right-module vector and constructs
+    /// its right-linear dual.
+    fn dual_pairing(covector: &Dual<Self>, double_dual: &Dual<Dual<Self>>) -> Self::F {
+        covector
+            .iter()
+            .zip(double_dual.iter())
+            .fold(Self::F::zero(), |acc, (&omega, &psi)| acc + omega * psi)
     }
 
     /// Left-multiplies a covector by `scalar`.
@@ -295,6 +304,24 @@ pub trait Vector:
         let chart = Self::chart_at(p);
         chart.to_local(q).is_some()
     }
+
+    // Geodesic scaling holds globally (infinite injectivity radius):
+    // to_global(v * t) is parallel to to_global(v) AND scaled by t exactly
+    #[cfg(feature = "testing")]
+    fn check_global_geodesic_scaling(p: &Self, v: Self, t: <Self::F as Field>::Fixed) -> bool
+    where
+        Self: PartialEq,
+    {
+        let t = Self::F::from_fixed(t);
+        let chart = Self::chart_at(p);
+        match (
+            chart.to_local(&chart.to_global(v * t)),
+            chart.to_local(&chart.to_global(v)),
+        ) {
+            (Some(tv_local), Some(v_local)) => tv_local == v_local * t,
+            _ => false,
+        }
+    }
 }
 
 /// A vector space equipped with a *lowering map* `♭: V → V*`.
@@ -336,23 +363,6 @@ pub trait Form: Vector {
         let diff_translated = (a.clone() + c.clone()) - (b.clone() + c.clone());
         diff.self_dot() == diff_translated.self_dot()
     }
-
-    // Geodesic scaling holds globally (infinite injectivity radius):
-    // to_global(v * t) is parallel to to_global(v) AND scaled by t exactly
-    #[cfg(feature = "testing")]
-    fn check_global_geodesic_scaling(p: &Self, v: Self, t: Self::F) -> bool
-    where
-        Self: PartialEq,
-    {
-        let chart = Self::chart_at(p);
-        match (
-            chart.to_local(&chart.to_global(v * t)),
-            chart.to_local(&chart.to_global(v)),
-        ) {
-            (Some(tv_local), Some(v_local)) => tv_local == v_local * t,
-            _ => false,
-        }
-    }
 }
 
 /// A [`Form`] whose lowering map is invertible — a nondegenerate form.
@@ -363,6 +373,15 @@ pub trait Form: Vector {
 /// the purely dimensional evaluation iso.
 pub trait Nondegenerate: Form {
     fn sharp(v: Dual<Self>) -> Self;
+
+    fn dual_dot(a: &Dual<Self>, b: &Dual<Self>) -> Self::F {
+        Self::sharp(*b).pairing(a)
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_dual_dot_agrees_with_pairing(a: &Dual<Self>, b: &Dual<Self>) -> bool {
+        Self::sharp(*b).pairing(a) == Self::dual_dot(a, b)
+    }
 
     // check flat/sharp inverse functions
     #[cfg(feature = "testing")]

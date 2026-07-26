@@ -8,7 +8,7 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient,
     matrix::{Matrix, MatrixExponential},
     traits::{
-        Dual, Field, Form, LieGroup, Nondegenerate, Quotient, Real, RootOfUnity, Sesquilinear,
+        CField, Dual, Form, LieGroup, Nondegenerate, Quotient, Real, RootOfUnity, Sesquilinear,
         Vector,
     },
 };
@@ -162,7 +162,7 @@ impl<V: Vector, const N: usize> Inv for Sl<V, N> {
 
 impl_group_via_mul!(Sl<V, N>, V: Vector, const N: usize);
 
-impl<F: Field> LieGroup<SlAlgebra<F, 2, 3>> for Sl<Coords<F, 2>, 2>
+impl<F: CField> LieGroup<SlAlgebra<F, 2, 3>> for Sl<Coords<F, 2>, 2>
 where
     Matrix<Coords<F, 2>, 2>: MatrixExponential,
 {
@@ -186,33 +186,33 @@ where
 /// implement the (normalised) Killing form `⟨X, Y⟩ = tr(XY)`,
 /// with the Cartan block carrying the `A_{N−1}` Cartan matrix and its inverse.
 #[derive(Debug, Copy, Clone)]
-pub struct SlAlgebra<F: Field, const N: usize, const D: usize>(Coords<F, D>);
+pub struct SlAlgebra<F: CField, const N: usize, const D: usize>(Coords<F, D>);
 
-impl<F: Field, const N: usize, const D: usize> PartialEq for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> PartialEq for SlAlgebra<F, N, D> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> From<Coords<F, D>> for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> From<Coords<F, D>> for SlAlgebra<F, N, D> {
     fn from(value: Coords<F, D>) -> Self {
         Self(value)
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> From<[F; D]> for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> From<[F; D]> for SlAlgebra<F, N, D> {
     fn from(value: [F; D]) -> Self {
         Coords::from(value).into()
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> From<SlAlgebra<F, N, D>> for [F; D] {
+impl<F: CField, const N: usize, const D: usize> From<SlAlgebra<F, N, D>> for [F; D] {
     fn from(value: SlAlgebra<F, N, D>) -> Self {
         value.0.into()
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> Zero for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> Zero for SlAlgebra<F, N, D> {
     fn zero() -> Self {
         Self(Coords::zero())
     }
@@ -222,7 +222,7 @@ impl<F: Field, const N: usize, const D: usize> Zero for SlAlgebra<F, N, D> {
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> Add<Self> for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> Add<Self> for SlAlgebra<F, N, D> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -230,7 +230,7 @@ impl<F: Field, const N: usize, const D: usize> Add<Self> for SlAlgebra<F, N, D> 
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> Mul<F> for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> Mul<F> for SlAlgebra<F, N, D> {
     type Output = Self;
 
     fn mul(self, rhs: F) -> Self::Output {
@@ -238,7 +238,7 @@ impl<F: Field, const N: usize, const D: usize> Mul<F> for SlAlgebra<F, N, D> {
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> Sub<Self> for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> Sub<Self> for SlAlgebra<F, N, D> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -246,7 +246,7 @@ impl<F: Field, const N: usize, const D: usize> Sub<Self> for SlAlgebra<F, N, D> 
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> Neg for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> Neg for SlAlgebra<F, N, D> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -254,7 +254,7 @@ impl<F: Field, const N: usize, const D: usize> Neg for SlAlgebra<F, N, D> {
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> Index<usize> for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> Index<usize> for SlAlgebra<F, N, D> {
     type Output = F;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -262,13 +262,13 @@ impl<F: Field, const N: usize, const D: usize> Index<usize> for SlAlgebra<F, N, 
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> IndexMut<usize> for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> IndexMut<usize> for SlAlgebra<F, N, D> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> SlAlgebra<F, N, D> {
     fn matrix(&self) -> Matrix<Coords<F, N>, N> {
         let mut out = [[F::zero(); N]; N];
 
@@ -333,7 +333,7 @@ fn offdiag_index<const N: usize>(i: usize, j: usize) -> usize {
     before + if j < i { j } else { j - 1 }
 }
 
-impl<F: Field, const N: usize, const D: usize> Form for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> Form for SlAlgebra<F, N, D> {
     fn flat(&self) -> Dual<Self> {
         let mut out = *self;
 
@@ -371,7 +371,7 @@ impl<F: Field, const N: usize, const D: usize> Form for SlAlgebra<F, N, D> {
     }
 }
 
-impl<F: Field, const N: usize, const D: usize> Nondegenerate for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> Nondegenerate for SlAlgebra<F, N, D> {
     fn sharp(v: Dual<Self>) -> Self {
         let mut out = Dual::to_raw(v);
 
@@ -407,9 +407,9 @@ impl<F: Field, const N: usize, const D: usize> Nondegenerate for SlAlgebra<F, N,
     }
 }
 
-impl<F: Field<Fixed = F>, const N: usize, const D: usize> Sesquilinear for SlAlgebra<F, N, D> {}
+impl<F: CField<Fixed = F>, const N: usize, const D: usize> Sesquilinear for SlAlgebra<F, N, D> {}
 
-impl<F: Field, const N: usize, const D: usize> Vector for SlAlgebra<F, N, D> {
+impl<F: CField, const N: usize, const D: usize> Vector for SlAlgebra<F, N, D> {
     type F = F;
 
     const N: usize = D;

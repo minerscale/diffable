@@ -6,14 +6,14 @@ mod common;
 use common::*;
 
 use diffable::{
-    complex::Complex, coords::Coords, epsilon_metric::R64, test_euclidean, test_field,
+    complex::Complex, coords::Coords, epsilon_metric::R64, test_cfield, test_euclidean,
     test_pseudo_euclidean, test_vector,
 };
 
 use proptest::prelude::*;
 
 // Ensure the underlying scalar is a field
-test_field!(field_r64, R64, arb_scalar(), arb_scalar());
+test_cfield!(field_r64, R64, arb_scalar(), arb_scalar());
 
 // Ensure that the space is actually euclidean
 test_euclidean!(euclidian_v0, R64, Coords<_, _>, arb_vec::<0>(), arb_scalar());

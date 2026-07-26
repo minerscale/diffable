@@ -13,7 +13,7 @@ macro_rules! test_vector {
             use super::*;
             use $crate::{
                 test_group, test_tangent_bundle,
-                traits::{Field, Form, Nondegenerate, Vector},
+                traits::{Field, Vector},
             };
 
             test_tangent_bundle!(
@@ -34,28 +34,8 @@ macro_rules! test_vector {
                 }
 
                 #[test]
-                fn translation_invariance(
-                    a in $arb_point,
-                    b in $arb_point,
-                    c in $arb_point,
-                ) {
-                    prop_assert!(<$space>::check_translation_invariance(&a, &b, &c));
-                }
-
-                #[test]
-                fn global_geodesic_scaling(
-                    p in $arb_point,
-                    v in $arb_point,
-                    t in $arb_scalar,
-                ) {
-                    prop_assert!(<$space>::check_global_geodesic_scaling(&p, v, t));
-                }
-
-                #[test]
-                fn check_isomorphism(
-                    p in $arb_point,
-                ) {
-                    prop_assert!(<$space>::check_isomorphism(&p))
+                fn global_geodesic_scaling(a in $arb_point, c in $arb_point, k in $arb_scalar) {
+                    prop_assert!(<$space>::check_global_geodesic_scaling(&a, c, k.to_fixed()));
                 }
             }
         }
@@ -68,12 +48,16 @@ macro_rules! test_pseudo_euclidean {
     ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_interval, test_pseudo_riemannian, test_sesquilinear, test_vector};
+            use $crate::{
+                test_interval, test_nondegenerate, test_pseudo_riemannian, test_sesquilinear,
+                test_vector,
+            };
 
             test_vector!(vector, $scalar, $space, $arb_point, $arb_scalar);
             test_interval!(interval, $space, $arb_point);
             test_pseudo_riemannian!(riemannian, $space, $arb_point, $arb_point);
             test_sesquilinear!(sesquilinear, $space, $arb_point, $arb_scalar);
+            test_nondegenerate!(nondegenerate, $space, $arb_point, $arb_scalar);
         }
     };
 }
@@ -424,6 +408,52 @@ macro_rules! test_interval {
             }
         }
     };
+}
+
+#[macro_export]
+macro_rules! test_form {
+    ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::traits::{Field, Form};
+
+            proptest! {
+                #[test]
+                fn dot_agrees_with_pairing(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_dot_agrees_with_pairing(&a, &b));
+                }
+
+                #[test]
+                fn translation_invariance(a in $arb_point, b in $arb_point, c in $arb_point) {
+                    prop_assert!(<$point>::check_translation_invariance(&a, &b, &c));
+                }
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! test_nondegenerate {
+    ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::{test_form, traits::{Nondegenerate, Dual}};
+
+            test_form!(form, $point, $arb_point, $arb_scalar);
+
+            proptest! {
+                #[test]
+                fn dual_dot_agrees_with_pairing(a in $arb_point, b in $arb_point) {
+                    prop_assert!(<$point>::check_dual_dot_agrees_with_pairing(&Dual::from_raw(a), &Dual::from_raw(b)));
+                }
+
+                #[test]
+                fn isomorphism(a in $arb_point) {
+                    prop_assert!(<$point>::check_isomorphism(&a));
+                }
+            }
+        }
+    }
 }
 
 /// Tests the `Sesquilinear` axioms: Hermitian symmetry, additivity, and
