@@ -4,6 +4,7 @@ use crate::{
     complex::Complex,
     coords::Coords,
     impl_group_via_mul, impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
+    quaternion::Quaternion,
     traits::{
         Bounded, BuildNodes, Chart, Euclidean, ExpMap, InnerProduct, Interval, LieGroup, Metric,
         NerveComplexParameters, Quotient, Real, RootOfUnity, Smooth, TangentBundle,
@@ -328,6 +329,18 @@ impl<V: Euclidean> S3<V> {
 
     pub fn inner(&self) -> &Sphere<V> {
         &self.0
+    }
+
+    /// Regard a point of `S³` as a unit quaternion.
+    pub fn to_quaternion(&self) -> Quaternion<V::F> {
+        let [i, j, k] = self.0.imag.to_array();
+        Quaternion::new(self.0.real, i, j, k)
+    }
+
+    /// Project a quaternion onto S3.
+    pub fn from_quaternion(quaternion: Quaternion<V::F>) -> Self {
+        let [real, i, j, k] = quaternion.into();
+        Self::new(Sphere::new(real, V::from_array([i, j, k])))
     }
 }
 

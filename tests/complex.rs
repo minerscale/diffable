@@ -12,6 +12,7 @@ use diffable::{
     traits::{NonZero, Symmetrized},
 };
 
+use num_traits::Zero;
 use proptest::prelude::*;
 
 test_cfield!(
@@ -52,3 +53,36 @@ test_tangent_bundle!(
     arb_vec::<2>(),
     arb_scalar()
 );
+
+proptest! {
+    #[test]
+    fn real_embedding_preserves_multiplication(
+        x in arb_scalar(),
+        y in arb_scalar(),
+    ) {
+        prop_assert_eq!(
+            Complex::from(x * y),
+            Complex::from(x) * Complex::from(y),
+        );
+    }
+
+    #[test]
+    fn real_embedding_preserves_addition(
+        x in arb_scalar(),
+        y in arb_scalar(),
+    ) {
+        prop_assert_eq!(
+            Complex::from(x + y),
+            Complex::from(x) + Complex::from(y),
+        );
+    }
+
+    #[test]
+    fn real_embedding_is_injective(r in arb_scalar()) {
+        let embedded = Complex::from(r);
+        let [re, im] = embedded.into();
+
+        prop_assert_eq!(re, r);
+        prop_assert_eq!(im, R64::zero());
+    }
+}

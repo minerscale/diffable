@@ -192,5 +192,6 @@ pub mod discrete;
 pub mod epsilon_metric;
 pub mod flat;
 pub mod matrix;
+pub mod quaternion;
 pub mod spacetime;
 pub use epsilon_metric::{R32, R64};

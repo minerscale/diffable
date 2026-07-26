@@ -623,6 +623,11 @@ macro_rules! test_field {
                 fn from_fixed_is_fixed(x in $arb_fixed) {
                     prop_assert!(<$point>::check_from_fixed_is_fixed(x));
                 }
+
+                #[test]
+                fn fixed_field_is_central(x in $arb_fixed, y in $arb_point) {
+                    prop_assert!(<$point>::check_fixed_field_is_central(x, y));
+                }
             }
 
             #[test]
@@ -633,6 +638,11 @@ macro_rules! test_field {
             #[test]
             fn conj_unit() {
                 assert!(<$point>::check_conj_unit());
+            }
+
+            #[test]
+            fn from_fixed_unit() {
+                assert!(<$point>::check_from_fixed_unit());
             }
         }
     };

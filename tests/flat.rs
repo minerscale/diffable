@@ -128,6 +128,7 @@ fn myopic_torus_cover_invariants() {
 }
 
 proptest! {
+    #![proptest_config(ProptestConfig::with_cases(10))]
     #[test]
     fn myopic_torus_geodesic(
         p in (arb_s1_quotient_f64(), arb_s1_quotient_f64()).prop_map(

@@ -444,12 +444,16 @@ where
 /// A field.
 ///
 /// A division ring equipped with the scalar structure used by the library:
-/// an elected involution, fixed field, characteristic, etc.
+/// an elected central involution, fixed field, characteristic, etc.
 ///
 /// “Field” here includes skew/noncommutative fields.
 pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
-    /// The fixed field under `[Self::conj]`, where x.conj() = x.
-    type Fixed: Field;
+    /// A distinguished central subfield fixed pointwise by [`Self::conj`].
+    ///
+    /// Its embedding through [`Self::from_fixed`] must preserve the field
+    /// operations, commute with every element of `Self`, and satisfy
+    /// `Self::from_fixed(r).conj() == Self::from_fixed(r)`.
+    type Fixed: CField<Fixed = Self::Fixed>;
 
     /// The conjugation operation.
     fn conj(&self) -> Self;
@@ -565,6 +569,29 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     fn check_from_fixed_is_fixed(x: Self::Fixed) -> bool {
         let y = Self::from_fixed(x);
         y.conj() == y
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_fixed_field_is_central(x: Self::Fixed, y: Self) -> bool {
+        let x = Self::from_fixed(x);
+        x * y == y * x
+    }
+
+    /// Checks that [`Self::from_fixed`] preserves the multiplicative identity
+    /// whenever `Self::Fixed` is nondegenerate.
+    ///
+    /// A field of characteristic one has `zero() == one()`, so its unique map into
+    /// a nondegenerate field cannot preserve both identities: preservation of zero
+    /// forces its sole element to map to `Self::zero()`. Such a degenerate fixed
+    /// field is intentionally permitted, so the unit law is waived in that case.
+    ///
+    /// For every nondegenerate fixed field, preserving the unit ensures that
+    /// `from_fixed` is nonzero and hence, together with its homomorphism laws,
+    /// injective.
+    #[cfg(feature = "testing")]
+    fn check_from_fixed_unit() -> bool {
+        <Self::Fixed as Field>::Characteristic::N == 1
+            || Self::from_fixed(Self::Fixed::one()) == Self::one()
     }
 
     // Audits the declared characteristic against the
