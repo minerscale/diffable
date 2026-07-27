@@ -623,8 +623,7 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
 
 pub trait CField: Field {
     #[cfg(feature = "testing")]
-    fn check_commutativity(a: Self, b: Self) -> bool
-    {
+    fn check_commutativity(a: Self, b: Self) -> bool {
         a * b == b * a
     }
 }

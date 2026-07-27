@@ -437,23 +437,21 @@ macro_rules! test_nondegenerate {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_form, traits::{Nondegenerate, Dual}};
+            use $crate::{
+                test_form,
+                traits::{Dual, Nondegenerate},
+            };
 
             test_form!(form, $point, $arb_point, $arb_scalar);
 
             proptest! {
-                #[test]
-                fn dual_dot_agrees_with_pairing(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_dual_dot_agrees_with_pairing(&Dual::from_raw(a), &Dual::from_raw(b)));
-                }
-
                 #[test]
                 fn isomorphism(a in $arb_point) {
                     prop_assert!(<$point>::check_isomorphism(&a));
                 }
             }
         }
-    }
+    };
 }
 
 /// Tests the `Sesquilinear` axioms: Hermitian symmetry, additivity, and

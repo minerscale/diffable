@@ -65,9 +65,7 @@ fn native_and_natural_dual_operations_are_observably_distinct() {
     let psi = Dual::<Dual<H1>>::from_array([j]);
 
     assert_eq!(H1::sharp(beta).pairing(&alpha), -k);
-    assert_eq!(H1::dual_dot(&alpha, &beta), -k);
     assert_eq!(Dual::<H1>::pairing(&alpha, &psi), -k);
-    assert_eq!(H1::dual_pairing(&alpha, &psi), k);
 }
 
 proptest! {

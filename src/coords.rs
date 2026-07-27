@@ -2,9 +2,12 @@ use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, Neg, Sub};
 
 use num_traits::{ConstZero, Zero};
 
-use crate::traits::{
-    DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate, Real, Sesquilinear,
-    Vector,
+use crate::{
+    impl_vector_ops,
+    traits::{
+        DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate, Real, Right,
+        Sesquilinear, Vector,
+    },
 };
 
 /// The canonical model of flat pseudo-Euclidean coordinate space `R^(N−M, M)`.
@@ -39,16 +42,6 @@ use crate::traits::{
 /// [`Sesquilinear`]: crate::traits::Sesquilinear
 #[derive(Debug, Copy, Clone)]
 pub struct Coords<F: Field, const N: usize, const M: usize = 0>([F; N]);
-
-impl<F: Field, const N: usize, const M: usize> Zero for Coords<F, N, M> {
-    fn zero() -> Self {
-        [F::zero(); N].into()
-    }
-
-    fn is_zero(&self) -> bool {
-        self.iter().all(|x| x == &F::zero())
-    }
-}
 
 impl<F: Field + ConstZero, const N: usize, const M: usize> ConstZero for Coords<F, N, M> {
     const ZERO: Self = Self([F::ZERO; N]);
@@ -102,41 +95,12 @@ pub(crate) fn array_zip_map<A, B, C, const N: usize>(
     std::array::from_fn(|i| f(&a[i], &b[i]))
 }
 
-impl<F: Field, const N: usize, const M: usize> Add for Coords<F, N, M> {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        array_zip_map(*self, *rhs, |&a, &b| a + b).into()
-    }
-}
-
-impl<F: Field, const N: usize, const M: usize> Sub for Coords<F, N, M> {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        array_zip_map(*self, *rhs, |&a, &b| a - b).into()
-    }
-}
-
-impl<F: Field, const N: usize, const M: usize> Mul<F> for Coords<F, N, M> {
-    type Output = Self;
-
-    fn mul(self, rhs: F) -> Self::Output {
-        self.map(|x| x * rhs).into()
-    }
-}
-
-impl<F: Field, const N: usize, const M: usize> Neg for Coords<F, N, M> {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        self.map(|x| -x).into()
-    }
-}
+impl_vector_ops!(Coords<F, N, M>, F: Field, const N: usize, const M: usize);
 
 impl<F: Field, const N: usize, const M: usize> Vector for Coords<F, N, M> {
     type F = F;
     const N: usize = N;
+    type Hand = Right;
 
     type Iter<'a>
         = std::slice::Iter<'a, F>

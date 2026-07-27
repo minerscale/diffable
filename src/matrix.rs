@@ -8,8 +8,8 @@ use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 use crate::{
     coords::array_zip_map,
     traits::{
-        CField, DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Metric, NatZero, NonZero,
-        Vector,
+        CField, DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Hand, Handedness, Metric,
+        NatZero, NonZero, Vector,
     },
 };
 
@@ -89,26 +89,37 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         Matrix(m)
     }
 
-    /// The contraction (V ⊗ V*) ⊗ (V ⊗ V*) -> (V ⊗ V*)
-    pub fn mul(&self, rhs: &Self) -> Self {
-        Self(matrix_mul(self.0, rhs.0))
-    }
-
-    /// The contraction (V ⊗ V*) ⊗ V -> V
+    /// Applies this endomorphism to `v`.
+    ///
+    /// In tensor form, the contraction is:
+    /// - `(V ⊗ V*) ⊗ V → V` for right modules;
+    /// - `V ⊗ (V* ⊗ V) → V` for left modules.
     pub fn mul_v(&self, v: &V) -> V {
-        V::from_fn(|i| (0..N).fold(V::F::zero(), |acc, j| acc + self[(i, j)] * v[j]))
+        V::from_fn(|i| {
+            (0..N).fold(V::F::zero(), |acc, j| {
+                acc + match V::Hand::H {
+                    Hand::Right => self[(i, j)] * v[j],
+                    Hand::Left => v[j] * self[(j, i)],
+                }
+            })
+        })
     }
 
     /// The contraction V* ⊗ (V ⊗ V*) -> V*
     pub fn mul_dual_v(&self, v: &Dual<V>) -> Dual<V> {
-        Dual::from_fn(|j| (0..N).fold(V::F::zero(), |acc, i| acc + v[i] * self[(i, j)]))
+        Dual::from_fn(|j| {
+            (0..N).fold(V::F::zero(), |acc, i| {
+                acc + match V::Hand::H {
+                    Hand::Right => v[i] * self[(i, j)],
+                    Hand::Left => self[(i, j)] * v[i],
+                }
+            })
+        })
     }
 
     /// The transpose V ⊗ V* -> V* ⊗ V** ≅ V* ⊗ V
     pub fn transpose(self) -> Matrix<Dual<V>, N> {
-        Matrix::new(std::array::from_fn(|i| {
-            std::array::from_fn(|j| self[(j, i)])
-        }))
+        Matrix::new(self.0)
     }
 
     /// Iterates all `N²` entries in row-major order.
@@ -136,44 +147,67 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
     ///
     /// Assumes A is invertible.
     pub fn solve(&self, rhs: Self) -> Self {
+        let get = |matrix: &[[V::F; N]; N], i: usize, j: usize| match V::Hand::H {
+            Hand::Right => matrix[i][j],
+            Hand::Left => matrix[j][i],
+        };
+
+        let set = |matrix: &mut [[V::F; N]; N], i: usize, j: usize, value: V::F| match V::Hand::H {
+            Hand::Right => matrix[i][j] = value,
+            Hand::Left => matrix[j][i] = value,
+        };
+
+        let mul = |lhs: V::F, rhs: V::F| match V::Hand::H {
+            Hand::Right => lhs * rhs,
+            Hand::Left => rhs * lhs,
+        };
+
         let mut mat = self.0;
         let mut out = rhs.0;
 
         for i in 0..N {
-            // Pivot must be non-zero according to the scalar's equality semantics.
+            let pivot = get(&mat, i, i);
+
             assert_ne!(
-                mat[i][i],
-                F::zero(),
+                pivot,
+                V::F::zero(),
                 "Matrix is singular during Gauss-Jordan elimination."
             );
 
-            // Scale pivot row so the diagonal entry becomes one.
-            let pivot_inv = <F as DivRing>::Mul::inv(NonZero::new(mat[i][i]).unwrap().into())
+            let pivot_inv = <V::F as DivRing>::Mul::inv(NonZero::new(pivot).unwrap().into())
                 .into()
                 .0;
 
+            // Normalize the pivot row—or, physically, the pivot column
+            // for a left-handed matrix.
             for j in 0..N {
-                mat[i][j] = pivot_inv * mat[i][j];
-                out[i][j] = pivot_inv * out[i][j];
+                let mat_value = mul(pivot_inv, get(&mat, i, j));
+                let out_value = mul(pivot_inv, get(&out, i, j));
+
+                set(&mut mat, i, j, mat_value);
+                set(&mut out, i, j, out_value);
             }
 
-            // Eliminate the pivot column from every other row.
+            // Eliminate this coordinate from every other row/column.
             for k in 0..N {
                 if k == i {
                     continue;
                 }
 
-                let factor = mat[k][i];
+                let factor = get(&mat, k, i);
 
                 for j in 0..N {
-                    mat[k][j] = mat[k][j] - factor * mat[i][j];
+                    let mat_value = get(&mat, k, j) - mul(factor, get(&mat, i, j));
 
-                    out[k][j] = out[k][j] - factor * out[i][j];
+                    let out_value = get(&out, k, j) - mul(factor, get(&out, i, j));
+
+                    set(&mut mat, k, j, mat_value);
+                    set(&mut out, k, j, out_value);
                 }
             }
         }
 
-        Matrix(out)
+        Self::new(out)
     }
 
     /// Inverts the matrix by Gauss–Jordan elimination.
@@ -228,58 +262,91 @@ impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
     ///
     /// Assumes A is invertible.
     pub fn solve_pivoted(&self, rhs: Self) -> Self {
+        let get = |matrix: &[[V::F; N]; N], i: usize, j: usize| match V::Hand::H {
+            Hand::Right => matrix[i][j],
+            Hand::Left => matrix[j][i],
+        };
+
+        let set = |matrix: &mut [[V::F; N]; N], i: usize, j: usize, value: V::F| match V::Hand::H {
+            Hand::Right => matrix[i][j] = value,
+            Hand::Left => matrix[j][i] = value,
+        };
+
+        let mul = |lhs: V::F, rhs: V::F| match V::Hand::H {
+            Hand::Right => lhs * rhs,
+            Hand::Left => rhs * lhs,
+        };
+
+        let swap_rows = |matrix: &mut [[V::F; N]; N], lhs: usize, rhs: usize| {
+            match V::Hand::H {
+                Hand::Right => matrix.swap(lhs, rhs),
+
+                // Virtual rows are physical columns.
+                Hand::Left => {
+                    for row in matrix {
+                        row.swap(lhs, rhs);
+                    }
+                }
+            }
+        };
+
         let mut mat = self.0;
         let mut out = rhs.0;
 
         for i in 0..N {
-            // Find the row with the largest pivot magnitude.
-            let mut pivot = i;
-            let mut pivot_norm = mat[i][i].interval_squared(&F::zero());
+            let mut pivot_index = i;
+            let mut pivot_norm = get(&mat, i, i).interval_squared(&V::F::zero());
 
-            for r in (i + 1)..N {
-                let norm = mat[r][i].interval_squared(&F::zero());
+            for k in (i + 1)..N {
+                let norm = get(&mat, k, i).interval_squared(&V::F::zero());
 
                 if norm > pivot_norm {
-                    pivot = r;
+                    pivot_index = k;
                     pivot_norm = norm;
                 }
             }
 
             assert!(
-                !mat[pivot][i].is_zero(),
+                !get(&mat, pivot_index, i).is_zero(),
                 "Matrix is singular during Gauss-Jordan elimination."
             );
 
-            // Move the pivot into place.
-            mat.swap(i, pivot);
-            out.swap(i, pivot);
+            swap_rows(&mut mat, i, pivot_index);
+            swap_rows(&mut out, i, pivot_index);
 
-            // Normalize pivot row.
-            let pivot_inv = <F as DivRing>::Mul::inv(NonZero::new(mat[i][i]).unwrap().into())
+            let pivot = get(&mat, i, i);
+
+            let pivot_inv = <V::F as DivRing>::Mul::inv(NonZero::new(pivot).unwrap().into())
                 .into()
                 .0;
 
             for j in 0..N {
-                mat[i][j] = pivot_inv * mat[i][j];
-                out[i][j] = pivot_inv * out[i][j];
+                let mat_value = mul(pivot_inv, get(&mat, i, j));
+                let out_value = mul(pivot_inv, get(&out, i, j));
+
+                set(&mut mat, i, j, mat_value);
+                set(&mut out, i, j, out_value);
             }
 
-            // Eliminate this column everywhere else.
-            for r in 0..N {
-                if r == i {
+            for k in 0..N {
+                if k == i {
                     continue;
                 }
 
-                let factor = mat[r][i];
+                let factor = get(&mat, k, i);
 
                 for j in 0..N {
-                    mat[r][j] = mat[r][j] - factor * mat[i][j];
-                    out[r][j] = out[r][j] - factor * out[i][j];
+                    let mat_value = get(&mat, k, j) - mul(factor, get(&mat, i, j));
+
+                    let out_value = get(&out, k, j) - mul(factor, get(&out, i, j));
+
+                    set(&mut mat, k, j, mat_value);
+                    set(&mut out, k, j, out_value);
                 }
             }
         }
 
-        Matrix(out)
+        Self::new(out)
     }
 
     pub fn inverse_pivoted(&self) -> Self {
@@ -386,8 +453,17 @@ impl<F: Field, V: Vector<F = F>, const N: usize> One for Matrix<V, N> {
 impl<F: Field, V: Vector<F = F>, const N: usize> Mul<Self> for Matrix<V, N> {
     type Output = Self;
 
-    fn mul(self, rhs: Self) -> Self::Output {
-        Self(matrix_mul(self.0, rhs.0))
+    fn mul(self, rhs: Self) -> Self {
+        Self::new(from_fn(|i| {
+            from_fn(|j| {
+                (0..N).fold(V::F::zero(), |acc, k| {
+                    acc + match V::Hand::H {
+                        Hand::Right => self[(i, k)] * rhs[(k, j)],
+                        Hand::Left => rhs[(i, k)] * self[(k, j)],
+                    }
+                })
+            })
+        }))
     }
 }
 
@@ -594,16 +670,4 @@ fn matrix_trace<const N: usize, F: Field>(a: [[F; N]; N]) -> F {
     a.iter()
         .enumerate()
         .fold(F::zero(), |acc, (i, v)| acc + v[i])
-}
-
-fn matrix_mul<const N: usize, F: Field>(a: [[F; N]; N], b: [[F; N]; N]) -> [[F; N]; N] {
-    let mut output = from_fn(|_| from_fn(|_| F::zero()));
-
-    for i in 0..N {
-        for j in 0..N {
-            output[i][j] = (0..N).fold(F::zero(), |acc, k| acc + a[i][k] * b[k][j])
-        }
-    }
-
-    output
 }

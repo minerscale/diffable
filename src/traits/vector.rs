@@ -5,7 +5,7 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 use super::Chart;
 
 use super::{Field, LieGroup, Metric, Real};
-use crate::impl_group_via_add;
+use crate::{impl_group_via_add, impl_vector_ops};
 
 /// A finite-dimensional Euclidean space.
 ///
@@ -51,8 +51,7 @@ use crate::impl_group_via_add;
 pub trait Euclidean: Bilinear<F: Real> + InnerProduct {
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
-    fn check_pythagorean(a: &Self, b: &Self) -> bool
-    {
+    fn check_pythagorean(a: &Self, b: &Self) -> bool {
         let dist_sq = a.distance(b);
         let dist_sq = dist_sq * dist_sq;
         let diff = *a - *b;
@@ -96,6 +95,7 @@ impl<V: Vector> Dual<V> {
 
 impl<V: Vector> Vector for Dual<V> {
     type F = V::F;
+    type Hand = <V::Hand as Handedness>::Opposite;
 
     const N: usize = V::N;
 
@@ -113,47 +113,7 @@ impl<V: Vector> Vector for Dual<V> {
     }
 }
 
-impl<V: Vector> Zero for Dual<V> {
-    fn zero() -> Self {
-        Self(V::zero())
-    }
-
-    fn is_zero(&self) -> bool {
-        V::is_zero(&self.0)
-    }
-}
-
-impl<V: Vector> Add<Self> for Dual<V> {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self(self.0 + rhs.0)
-    }
-}
-
-impl<V: Vector> Neg for Dual<V> {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Self(-self.0)
-    }
-}
-
-impl<V: Vector> Sub<Self> for Dual<V> {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self(self.0 - rhs.0)
-    }
-}
-
-impl<V: Vector> Mul<V::F> for Dual<V> {
-    type Output = Self;
-
-    fn mul(self, rhs: V::F) -> Self::Output {
-        Self(self.0 * rhs)
-    }
-}
+impl_vector_ops!(Dual<V>, V: Vector);
 
 impl<V: Vector> Index<usize> for Dual<V> {
     type Output = V::F;
@@ -167,6 +127,29 @@ impl<V: Vector> IndexMut<usize> for Dual<V> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
+}
+
+pub enum Hand {
+    Left,
+    Right,
+}
+
+pub trait Handedness {
+    type Opposite: Handedness<Opposite = Self>;
+    const H: Hand;
+}
+
+pub enum Left {}
+pub enum Right {}
+
+impl Handedness for Left {
+    type Opposite = Right;
+    const H: Hand = Hand::Left;
+}
+
+impl Handedness for Right {
+    type Opposite = Left;
+    const H: Hand = Hand::Right;
 }
 
 /// A finite-dimensional right F-module over a [`Field`] equipped with a basis.
@@ -189,8 +172,7 @@ impl<V: Vector> IndexMut<usize> for Dual<V> {
 /// coordinate-identical, which is what makes [`collapse`](Vector::collapse) a
 /// free relabel and the musical maps land in the right spaces.
 pub trait Vector:
-    LieGroup<Self>
-    + Add<Output = Self>
+    Add<Output = Self>
     + Sub<Output = Self>
     + Mul<Self::F, Output = Self>
     + Neg<Output = Self>
@@ -205,6 +187,8 @@ pub trait Vector:
 
     /// The dimension of the space — the number of coordinates.
     const N: usize;
+
+    type Hand: Handedness;
 
     type Iter<'a>: Iterator<Item = &'a Self::F>
     where
@@ -234,36 +218,12 @@ pub trait Vector:
     fn pairing(&self, rhs: &Dual<Self>) -> Self::F {
         self.iter()
             .zip(rhs.iter())
-            .fold(Self::F::zero(), |acc, (&v, &omega)| acc + omega * v)
-    }
-
-    /// The canonical left-linear evaluation pairing `(V*, V**) -> F`.
-    ///
-    /// Since the dual of a right `F`-module `V` is naturally a left
-    /// `F`-module, its double dual consists of left-linear functionals. Thus,
-    /// writing `ω = Σ ωᵢ εⁱ` and `Ψᵢ = Ψ(εⁱ)`,
-    ///
-    /// `Ψ(ω) = Σ ωᵢ Ψᵢ`.
-    ///
-    /// This is distinct from [`Vector::pairing`] on `Dual<Self>`, which treats
-    /// `Dual<Self>` merely as an ordinary right-module vector and constructs
-    /// its right-linear dual.
-    fn dual_pairing(covector: &Dual<Self>, double_dual: &Dual<Dual<Self>>) -> Self::F {
-        covector
-            .iter()
-            .zip(double_dual.iter())
-            .fold(Self::F::zero(), |acc, (&omega, &psi)| acc + omega * psi)
-    }
-
-    /// Left-multiplies a covector by `scalar`.
-    ///
-    /// This is the canonical left action induced by evaluation:
-    /// `(rω)(v) = rω(v)`. It differs from the ordinary right action
-    /// `ω * r` on [`Dual<Self>`] when scalar multiplication is noncommutative.
-    /// The scalar belongs to `Self::F`, not its opposite, so it is neither
-    /// reversed nor conjugated.
-    fn dual_left_mul(scalar: Self::F, covector: Dual<Self>) -> Dual<Self> {
-        Dual(Self::from_fn(|i| scalar * covector[i]))
+            .fold(Self::F::zero(), |acc, (&vector, &covector)| {
+                acc + match <Self::Hand as Handedness>::H {
+                    Hand::Left => vector * covector,
+                    Hand::Right => covector * vector,
+                }
+            })
     }
 
     /// The canonical identification `V** ≅ V`, collapsing a twice-dualised
@@ -322,6 +282,56 @@ pub trait Vector:
     }
 }
 
+#[macro_export]
+macro_rules! impl_vector_ops {
+    ($target:ty, $($generics:tt)*) => {
+        impl<$($generics)*> Add<Self> for $target {
+            type Output = Self;
+
+            fn add(self, rhs: Self) -> Self::Output {
+                Self::from_fn(|i| self[i] + rhs[i])
+            }
+        }
+
+        impl<$($generics)*> Sub<Self> for $target {
+            type Output = Self;
+
+            fn sub(self, rhs: Self) -> Self::Output {
+                Self::from_fn(|i| self[i] - rhs[i])
+            }
+        }
+
+        impl<$($generics)*> Neg for $target {
+            type Output = Self;
+
+            fn neg(self) -> Self::Output {
+                Self::from_fn(|i| -self[i])
+            }
+        }
+
+        impl<$($generics)*> Mul<<$target as Vector>::F> for $target {
+            type Output = Self;
+
+            fn mul(self, scalar: <$target as Vector>::F) -> Self::Output {
+                Self::from_fn(|i| match <<$target as Vector>::Hand as crate::traits::Handedness>::H {
+                    crate::traits::Hand::Left => scalar * self[i],
+                    crate::traits::Hand::Right => self[i] * scalar,
+                })
+            }
+        }
+
+        impl<$($generics)*> Zero for $target {
+            fn zero() -> Self {
+                Self::from_fn(|_| <$target as Vector>::F::zero())
+            }
+
+            fn is_zero(&self) -> bool {
+                self.iter().all(Zero::is_zero)
+            }
+        }
+    };
+}
+
 /// A vector space equipped with a *lowering map* `♭: V → V*`.
 ///
 /// This is where geometry enters: [`flat`](Form::flat) turns a vector into the
@@ -353,8 +363,7 @@ pub trait Form: Vector {
     // space has no metric: the difference is the same vector either way
     // ((a+c) - (b+c) = a - b), so the form agrees exactly.
     #[cfg(feature = "testing")]
-    fn check_translation_invariance(a: &Self, b: &Self, c: &Self) -> bool
-    {
+    fn check_translation_invariance(a: &Self, b: &Self, c: &Self) -> bool {
         let diff = *a - *b;
         let diff_translated = (*a + *c) - (*b + *c);
         diff.self_dot() == diff_translated.self_dot()
@@ -369,15 +378,6 @@ pub trait Form: Vector {
 /// the purely dimensional evaluation iso.
 pub trait Nondegenerate: Form {
     fn sharp(v: Dual<Self>) -> Self;
-
-    fn dual_dot(a: &Dual<Self>, b: &Dual<Self>) -> Self::F {
-        Self::sharp(*b).pairing(a)
-    }
-
-    #[cfg(feature = "testing")]
-    fn check_dual_dot_agrees_with_pairing(a: &Dual<Self>, b: &Dual<Self>) -> bool {
-        Self::sharp(*b).pairing(a) == Self::dual_dot(a, b)
-    }
 
     // check flat/sharp inverse functions
     #[cfg(feature = "testing")]
@@ -405,12 +405,12 @@ impl<V: Nondegenerate> Nondegenerate for Dual<V> {
 
 impl_group_via_add!(V, V: Vector);
 
-impl<E: Vector> LieGroup<E> for E {
-    fn identity_exp(v: E) -> Self {
+impl<V: Vector> LieGroup<V> for V {
+    fn identity_exp(v: V) -> Self {
         v
     }
 
-    fn identity_log(p: &Self) -> Option<E> {
+    fn identity_log(p: &Self) -> Option<V> {
         Some(*p)
     }
 }
@@ -489,8 +489,7 @@ pub trait Sesquilinear: Form {
     }
 
     #[cfg(feature = "testing")]
-    fn check_additivity(a: Self, b: Self, c: Self) -> bool
-    {
+    fn check_additivity(a: Self, b: Self, c: Self) -> bool {
         (a + b).dot(&c) == a.dot(&c) + b.dot(&c)
     }
 

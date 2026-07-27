@@ -5,11 +5,11 @@ use num_traits::{Inv, One, Zero};
 use crate::{
     complex::Complex,
     coords::Coords,
-    impl_group_via_mul, impl_lie_group_via_quotient,
+    impl_group_via_mul, impl_lie_group_via_quotient, impl_vector_ops,
     matrix::{Matrix, MatrixExponential},
     traits::{
-        CField, Dual, Form, LieGroup, Nondegenerate, Quotient, Real, RootOfUnity, Sesquilinear,
-        Vector,
+        CField, Dual, Form, LieGroup, Nondegenerate, Quotient, Real, Right, RootOfUnity,
+        Sesquilinear, Vector,
     },
 };
 
@@ -212,47 +212,7 @@ impl<F: CField, const N: usize, const D: usize> From<SlAlgebra<F, N, D>> for [F;
     }
 }
 
-impl<F: CField, const N: usize, const D: usize> Zero for SlAlgebra<F, N, D> {
-    fn zero() -> Self {
-        Self(Coords::zero())
-    }
-
-    fn is_zero(&self) -> bool {
-        self.0.is_zero()
-    }
-}
-
-impl<F: CField, const N: usize, const D: usize> Add<Self> for SlAlgebra<F, N, D> {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self(self.0 + rhs.0)
-    }
-}
-
-impl<F: CField, const N: usize, const D: usize> Mul<F> for SlAlgebra<F, N, D> {
-    type Output = Self;
-
-    fn mul(self, rhs: F) -> Self::Output {
-        Self(self.0 * rhs)
-    }
-}
-
-impl<F: CField, const N: usize, const D: usize> Sub<Self> for SlAlgebra<F, N, D> {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self(self.0 - rhs.0)
-    }
-}
-
-impl<F: CField, const N: usize, const D: usize> Neg for SlAlgebra<F, N, D> {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Self(-self.0)
-    }
-}
+impl_vector_ops!(SlAlgebra<F, N, D>, F: CField, const N: usize, const D: usize);
 
 impl<F: CField, const N: usize, const D: usize> Index<usize> for SlAlgebra<F, N, D> {
     type Output = F;
@@ -411,6 +371,7 @@ impl<F: CField<Fixed = F>, const N: usize, const D: usize> Sesquilinear for SlAl
 
 impl<F: CField, const N: usize, const D: usize> Vector for SlAlgebra<F, N, D> {
     type F = F;
+    type Hand = Right;
 
     const N: usize = D;
 
