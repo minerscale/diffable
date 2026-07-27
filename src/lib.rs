@@ -52,39 +52,37 @@
 //!
 //! ## Handedness, duality, and geometry
 //!
-//! Diffable permits scalar fields to be noncommutative, so it cannot quietly
-//! exchange left and right scalar multiplication. Every [`Vector`](traits::Vector)
-//! is, by convention, a **right** module over its field:
+//! Diffable permits noncommutative scalar fields, so every
+//! [`Vector`](traits::Vector) explicitly elects whether its field acts on the
+//! left or on the right. Concrete coordinate spaces conventionally elect
+//! [`Right`](traits::Right); [`Dual<V>`](traits::Dual) elects the opposite hand:
 //!
 //! ```text
-//! v = Σ eᵢvᵢ
+//! V right-handed  ⇒ V* left-handed  ⇒ V** right-handed
+//! V left-handed   ⇒ V* right-handed ⇒ V** left-handed
 //! ```
 //!
-//! Its dual `V*`, however, is naturally a left module. A right-linear covector
-//! therefore evaluates a vector as
+//! The ordinary `Mul<F>` operation always follows the elected hand. Thus `v * k`
+//! means `vk` on a right module and `kv` on a left module; no separate dual
+//! scalar API is needed.
+//!
+//! Canonical evaluation follows the same choice. For coordinates `vᵢ` and
+//! `ωᵢ`,
 //!
 //! ```text
-//! ω(v) = Σ ωᵢvᵢ
+//! right-handed V:  ω(v) = Σ ωᵢvᵢ
+//! left-handed  V:  ω(v) = Σ vᵢωᵢ
 //! ```
 //!
-//! with the covector coordinate on the left. This order is invisible over the
-//! reals or complexes, but essential over the quaternions.
-//! [`Vector::pairing`](traits::Vector::pairing),
-//! [`Vector::dual_pairing`](traits::Vector::dual_pairing), and
-//! [`Vector::dual_left_mul`](traits::Vector::dual_left_mul) expose the two handed
-//! actions explicitly rather than relying on commutativity to erase the
-//! distinction.
+//! This order is invisible over the reals or complexes but observable over the
+//! quaternions. [`Vector::pairing`](traits::Vector::pairing) selects it from
+//! [`Vector::Hand`](traits::Vector::Hand), while `Dual<Dual<V>>` restores the
+//! hand of `V`.
 //!
-//! Rust still needs one uniform representation for vector-like coordinate
-//! spaces. [`Dual<V>`](traits::Dual) is consequently also represented as a
-//! `Vector`—and hence has the library's ordinary right action—while its
-//! canonical left action as the genuine dual of `V` remains separately
-//! available. The wrapper is coordinate-identical to `V`, but prevents a vector
-//! and covector from being substituted for one another merely because their
-//! arrays happen to look the same.
-//!
-//! There is no geometric identification between them at the `Vector` level.
-//! Finite dimensionality supplies only the evaluation isomorphism
+//! The [`Dual<V>`](traits::Dual) wrapper is coordinate-identical to `V`, but raw
+//! coordinates do not carry a geometric identification between the two spaces.
+//! [`Dual::from_raw`](traits::Dual::from_raw) merely declares covector
+//! coordinates. Finite dimensionality supplies only the evaluation isomorphism
 //!
 //! ```text
 //! V** ≅ V
@@ -105,11 +103,10 @@
 //! ♯ : V* → V.
 //! ```
 //!
-//! These are the musical isomorphisms. They do not merely convert between two
-//! storage formats: they encode the space's chosen geometric relationship with
-//! its dual. The dual space then inherits the corresponding form through those
-//! maps, so left-handed covector geometry remains accessible without making
-//! left modules a second, parallel trait hierarchy.
+//! These are the musical isomorphisms. They are not coordinate
+//! reinterpretations: they encode the space's chosen geometric relationship
+//! with its dual. The dual space inherits the corresponding form through those
+//! maps.
 //!
 //! ## Invariants are representation choices
 //!
@@ -197,8 +194,10 @@
 //!   their elected involution. [`traits::Symmetrized`] elects the bilinear rather
 //!   than Hermitian form.
 //! - [`quaternion::Quaternion`] provides the quaternion division algebra.
-//! - [`matrix::Matrix`] is interpreted as `V ⊗ V*`, with tensor variance carried
-//!   by the types. [`matrix::MatrixExponential`] supplies matrix `exp` and `log`.
+//! - [`matrix::Matrix`] represents an endomorphism of `V`: as `V ⊗ V*` when
+//!   `V` is right-handed and `V* ⊗ V` when it is left-handed. Tensor variance
+//!   and handedness are carried by the types.
+//!   [`matrix::MatrixExponential`] supplies matrix `exp` and `log`.
 //!
 //! ### Manifolds and Lie groups
 //!

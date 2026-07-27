@@ -26,12 +26,12 @@ pub type Minkowski<R> = Coords<R, 4, 1>;
 /// genuinely in the group; membership is a theorem about reachability, not a
 /// runtime check.
 #[derive(Debug, Copy, Clone)]
-pub struct Sl<V: Vector, const N: usize>(Matrix<V, N>);
+pub struct Sl<V: Vector<F: CField>, const N: usize>(Matrix<V, N>);
 
 /// `SL(2, ℂ)` — the double cover of the restricted Lorentz group. See [`Lorentz`].
 pub type Sl2c<R> = Sl<Coords<Complex<R>, 2>, 2>;
 
-impl<V: Vector, const N: usize> PartialEq for Sl<V, N> {
+impl<V: Vector<F: CField>, const N: usize> PartialEq for Sl<V, N> {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq(&other.0)
     }
@@ -116,19 +116,19 @@ impl<R: Real> Quotient<Sl2c<R>, RootOfUnity<Complex<R>, 2>, SlAlgebra<Complex<R>
 
 impl_lie_group_via_quotient!(Lorentz<R>, Sl2c<R>, RootOfUnity<Complex<R>,2>, SlAlgebra<Complex<R>, 2, 3>, R: Real);
 
-impl<V: Vector, const N: usize> Sl<V, N> {
+impl<V: Vector<F: CField>, const N: usize> Sl<V, N> {
     pub fn trace(&self) -> V::F {
         self.0.trace()
     }
 }
 
-impl<V: Vector, const N: usize> One for Sl<V, N> {
+impl<V: Vector<F: CField>, const N: usize> One for Sl<V, N> {
     fn one() -> Self {
         Self(Matrix::one())
     }
 }
 
-impl<V: Vector, const N: usize> Mul for Sl<V, N> {
+impl<V: Vector<F: CField>, const N: usize> Mul for Sl<V, N> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -136,7 +136,7 @@ impl<V: Vector, const N: usize> Mul for Sl<V, N> {
     }
 }
 
-impl<V: Vector, const N: usize> Inv for Sl<V, N> {
+impl<V: Vector<F: CField>, const N: usize> Inv for Sl<V, N> {
     type Output = Self;
 
     fn inv(self) -> Self::Output {
@@ -160,7 +160,7 @@ impl<V: Vector, const N: usize> Inv for Sl<V, N> {
     }
 }
 
-impl_group_via_mul!(Sl<V, N>, V: Vector, const N: usize);
+impl_group_via_mul!(Sl<V, N>, V: Vector<F: CField>, const N: usize);
 
 impl<F: CField> LieGroup<SlAlgebra<F, 2, 3>> for Sl<Coords<F, 2>, 2>
 where

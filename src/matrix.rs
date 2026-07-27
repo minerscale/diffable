@@ -8,12 +8,21 @@ use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 use crate::{
     coords::array_zip_map,
     traits::{
-        CField, DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Hand, Handedness, Metric,
-        NatZero, NonZero, Vector,
+        CField, DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Hand, Handedness, Interval,
+        Metric, NatZero, NonZero, Vector,
     },
 };
 
-/// A matrix, interpreted as the (1, 1) tensor V ⊗ V*.
+/// An endomorphism of `V`, represented as a `(1, 1)` tensor.
+///
+/// Its tensor interpretation follows the handedness of `V`:
+///
+/// - right-handed: `V ⊗ V*`;
+/// - left-handed: `V* ⊗ V`.
+///
+/// The same raw array therefore has different index semantics on opposite
+/// hands. Matrix multiplication and application preserve abstract composition
+/// order in both cases.
 /// N must be equal to V::N. This is enforced by all constructors
 /// at compile time. This is due to limitations in Rust's const generics.
 #[derive(Debug, Copy, Clone)]
@@ -89,6 +98,15 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         Matrix(m)
     }
 
+    /// Scales every component by an element of the field's fixed subfield.
+    ///
+    /// The fixed subfield embeds into the centre of `V::F`, so this operation
+    /// preserves the represented endomorphism even when `V::F` is
+    /// noncommutative.
+    pub fn scale_fixed(self, fixed: <V::F as Field>::Fixed) -> Self {
+        Self(self.0.map(|v| v.map(|x| x * V::F::from_fixed(fixed))))
+    }
+
     /// Applies this endomorphism to `v`.
     ///
     /// In tensor form, the contraction is:
@@ -105,19 +123,27 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         })
     }
 
-    /// The contraction V* ⊗ (V ⊗ V*) -> V*
+    /// Applies the induced dual endomorphism to `v`.
+    ///
+    /// This contracts `V* ⊗ (V ⊗ V*) → V*` when `V` is right-handed, or
+    /// `(V* ⊗ V) ⊗ V* → V*` when `V` is left-handed.
     pub fn mul_dual_v(&self, v: &Dual<V>) -> Dual<V> {
         Dual::from_fn(|j| {
             (0..N).fold(V::F::zero(), |acc, i| {
                 acc + match V::Hand::H {
                     Hand::Right => v[i] * self[(i, j)],
-                    Hand::Left => self[(i, j)] * v[i],
+                    Hand::Left => self[(j, i)] * v[i],
                 }
             })
         })
     }
 
-    /// The transpose V ⊗ V* -> V* ⊗ V** ≅ V* ⊗ V
+    /// Reinterprets this endomorphism as one on the opposite-handed dual space.
+    ///
+    /// Abstractly this is
+    /// `V ⊗ V* → V* ⊗ V** ≅ V* ⊗ V` (or the handedness-reversed analogue).
+    /// It does **not** physically transpose the stored array: changing from `V`
+    /// to `Dual<V>` changes which raw index represents the input and output.
     pub fn transpose(self) -> Matrix<Dual<V>, N> {
         Matrix::new(self.0)
     }
@@ -130,8 +156,11 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         self.0.as_flattened().iter()
     }
 
-    /// The trace `Σᵢ Mᵢᵢ` — the contraction `V ⊗ V* -> F`.
-    pub fn trace(&self) -> F {
+    /// The trace `Σᵢ Mᵢᵢ` — contraction of the input and output indices.
+    ///
+    /// This is `V ⊗ V* → F` for right-handed `V` and
+    /// `V* ⊗ V → F` for left-handed `V`.
+    pub fn trace(&self) -> F where F: CField {
         matrix_trace(self.0)
     }
 
@@ -143,7 +172,12 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         from_fn(|i| from_fn(|j| self.0[i][j]))
     }
 
-    /// Solves A * X = B by Gauss–Jordan elimination.
+    /// Solves the abstract composition equation `A ∘ X = B` by Gauss–Jordan
+    /// elimination.
+    ///
+    /// In the raw representation this is `AX = B` for right-handed matrices
+    /// and `XA = B` for left-handed matrices. Virtual rows are therefore
+    /// physical rows on the right and physical columns on the left.
     ///
     /// Assumes A is invertible.
     pub fn solve(&self, rhs: Self) -> Self {
@@ -244,7 +278,12 @@ impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
             let mut sum = F::R::zero();
 
             for row in 0..N {
-                sum = sum + self[(row, col)].distance(&F::zero());
+                sum = sum
+                    + match V::Hand::H {
+                        Hand::Right => self[(row, col)],
+                        Hand::Left => self[(col, row)],
+                    }
+                    .distance(&F::zero());
             }
 
             if sum > max {
@@ -255,10 +294,14 @@ impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         max
     }
 
-    /// Solves A * X = B using Gauss–Jordan elimination with partial pivoting.
+    /// Solves the abstract composition equation `A ∘ X = B` using
+    /// Gauss–Jordan elimination with partial pivoting.
     ///
-    /// Pivot rows are chosen by maximizing the scalar metric magnitude.
-    /// This improves numerical stability for approximate fields.
+    /// In the raw representation this is `AX = B` for right-handed matrices
+    /// and `XA = B` for left-handed matrices. Pivot rows are physical rows on
+    /// the right and physical columns on the left. They are chosen by maximizing
+    /// the scalar metric magnitude, improving numerical stability for
+    /// approximate fields.
     ///
     /// Assumes A is invertible.
     pub fn solve_pivoted(&self, rhs: Self) -> Self {
@@ -495,7 +538,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Neg for Matrix<V, N> {
     }
 }
 
-impl<F: Field, V: Vector<F = F>, const N: usize> Mul<F> for Matrix<V, N> {
+impl<F: CField, V: Vector<F = F>, const N: usize> Mul<F> for Matrix<V, N> {
     type Output = Self;
 
     fn mul(self, rhs: F) -> Self::Output {
@@ -503,7 +546,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Mul<F> for Matrix<V, N> {
     }
 }
 
-impl<F: Field, V: Vector<F = F>, const N: usize> Div<F> for Matrix<V, N> {
+impl<F: CField, V: Vector<F = F>, const N: usize> Div<F> for Matrix<V, N> {
     type Output = Self;
 
     fn div(self, rhs: F) -> Self::Output {
@@ -519,6 +562,12 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Div<F> for Matrix<V, N> {
 /// Because the series needs `1/k!`, this is only implemented for scalar fields
 /// of characteristic zero with a real metric — see the impl's bounds.
 pub trait MatrixExponential: Sized {
+    /// Computes the matrix exponential using scaling and squaring with a
+    /// degree-13 Padé approximant.
+    ///
+    /// This operation is total, but—as with any finite-precision matrix
+    /// exponential—large or ill-conditioned inputs may suffer substantial
+    /// numerical error through rounding, cancellation, and repeated squaring.
     fn exp(&self) -> Self;
     fn log(&self) -> Option<Self>;
 }
@@ -554,7 +603,7 @@ pub fn nth_root_near_one<F: Field + Metric>(a: &F, n: usize) -> F {
 
 impl<
     const N: usize,
-    F: Field<Characteristic = NatZero> + Metric + FromReal + FieldExp,
+    F: Field<Characteristic = NatZero, Fixed: FromReal + Metric> + Metric + FromReal + FieldExp,
     V: Vector<F = F>,
 > MatrixExponential for Matrix<V, N>
 {
@@ -581,7 +630,8 @@ impl<
             ]
         };
 
-        let b = B.map(|x| F::from_real(<F::R as NumCast>::from(x).unwrap()));
+        let b = B
+            .map(|x| F::Fixed::from_real(<<F::Fixed as Interval>::R as NumCast>::from(x).unwrap()));
 
         let norm = self.one_norm();
 
@@ -591,10 +641,11 @@ impl<
             <usize as NumCast>::from((norm / theta).log2().ceil()).unwrap()
         };
 
-        let two = F::one() + F::one();
+        let fone = F::Fixed::one();
+        let half = fone.div(fone + fone);
         let mut a = *self;
         for _ in 0..s {
-            a = a / two;
+            a = a.scale_fixed(half);
         }
 
         let a2 = a * a;
@@ -604,17 +655,17 @@ impl<
         let i = Matrix::one();
 
         let u = a
-            * (a6 * (a6 * b[13] + a4 * b[11] + a2 * b[9])
-                + a6 * b[7]
-                + a4 * b[5]
-                + a2 * b[3]
-                + i * b[1]);
+            * (a6 * (a6.scale_fixed(b[13]) + a4.scale_fixed(b[11]) + a2.scale_fixed(b[9]))
+                + a6.scale_fixed(b[7])
+                + a4.scale_fixed(b[5])
+                + a2.scale_fixed(b[3])
+                + i.scale_fixed(b[1]));
 
-        let v = a6 * (a6 * b[12] + a4 * b[10] + a2 * b[8])
-            + a6 * b[6]
-            + a4 * b[4]
-            + a2 * b[2]
-            + i * b[0];
+        let v = a6 * (a6.scale_fixed(b[12]) + a4.scale_fixed(b[10]) + a2.scale_fixed(b[8]))
+            + a6.scale_fixed(b[6])
+            + a4.scale_fixed(b[4])
+            + a2.scale_fixed(b[2])
+            + i.scale_fixed(b[0]);
 
         let mut r = (v - u).solve_pivoted(v + u);
 
@@ -640,13 +691,14 @@ impl<
         let mut result = x;
         let mut term = x;
 
-        let mut k_as_f = F::one() + F::one();
+        let fone = F::Fixed::one();
+        let mut k_as_f = fone + fone;
         for k in 2.. {
             term = term * x;
 
-            let next = term * (if k % 2 == 0 { -F::one() } else { F::one() }).div(k_as_f);
+            let next = term.scale_fixed((if k % 2 == 0 { -fone } else { fone }).div(k_as_f));
 
-            k_as_f = k_as_f + F::one();
+            k_as_f = k_as_f + fone;
 
             result = result + next;
 

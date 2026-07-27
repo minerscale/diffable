@@ -114,8 +114,9 @@ impl<R: RealNum> CField for R where NonZero<R>: Inv<Output = NonZero<R>> {}
 /// the tolerant comparison.
 pub trait Real: RealNum + CField<Fixed = Self> {}
 impl<R: RealNum + CField<Fixed = Self>> Real for R {}
+impl<R: Real> Metric for R {}
 
-impl<R: Real<Characteristic = NatZero> + Metric> FieldExp for R {
+impl<R: Real<Characteristic = NatZero>> FieldExp for R {
     fn exp(&self) -> Self {
         <Self as num_traits::real::Real>::exp(*self)
     }

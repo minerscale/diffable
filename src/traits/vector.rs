@@ -67,9 +67,15 @@ pub trait Euclidean: Bilinear<F: Real> + InnerProduct {
 /// basis component-wise. A `Dual<V>` is therefore coordinate-identical to the
 /// `V` holding its components — the wrapper exists purely so the type system
 /// keeps covariant and contravariant vectors apart. That separation is what
-/// lets [`Matrix`](crate::matrix::Matrix) enforce index variance (`V ⊗ V*`) and
-/// the musical maps [`flat`](Form::flat)/[`sharp`](Nondegenerate::sharp) land in
-/// the correct space.
+/// lets [`Matrix`](crate::matrix::Matrix) enforce index variance and the musical
+/// maps [`flat`](Form::flat)/[`sharp`](Nondegenerate::sharp) land in the correct
+/// space.
+///
+/// Dualisation reverses handedness: if `V` is a right module, `Dual<V>` is a
+/// left module, and conversely. Its ordinary `Mul<V::F>` implementation uses
+/// that opposite action. In particular, constructing a `Dual<V>` from raw
+/// coordinates does not apply [`flat`](Form::flat); it merely declares that the
+/// supplied coordinates are covector coordinates.
 ///
 /// Obtain a covector with a geometric meaning through [`flat`](Form::flat), not
 /// [`from_raw`](Dual::from_raw) — the latter is a bare relabel that ignores the
@@ -129,17 +135,28 @@ impl<V: Vector> IndexMut<usize> for Dual<V> {
     }
 }
 
+/// The runtime witness for a module's elected scalar-action side.
 pub enum Hand {
     Left,
     Right,
 }
 
+/// A type-level choice of left- or right-handed scalar action.
+///
+/// [`Vector::Hand`] uses this trait to determine both ordinary scalar
+/// multiplication and canonical evaluation order.
 pub trait Handedness {
+    /// The hand elected by the dual module.
     type Opposite: Handedness<Opposite = Self>;
+
+    /// The runtime value corresponding to this type-level hand.
     const H: Hand;
 }
 
+/// Type-level left scalar action.
 pub enum Left {}
+
+/// Type-level right scalar action.
 pub enum Right {}
 
 impl Handedness for Left {
@@ -152,7 +169,8 @@ impl Handedness for Right {
     const H: Hand = Hand::Right;
 }
 
-/// A finite-dimensional right F-module over a [`Field`] equipped with a basis.
+/// A finite-dimensional left or right module over a [`Field`], equipped with a
+/// basis.
 ///
 /// This is the base of the linear hierarchy. A `Vector` is nothing more than
 /// `N` coordinates in `F` — it carries no metric, no notion of length or angle.
@@ -166,11 +184,17 @@ impl Handedness for Right {
 /// what lets a flat coordinate space and a curved manifold share the same chart
 /// machinery.
 ///
+/// [`Hand`](Vector::Hand) elects which side the field acts on. Concrete
+/// coordinate spaces conventionally elect [`Right`]; [`Dual<V>`](Dual) always
+/// elects the opposite hand. The ordinary `Mul<Self::F>` operation follows that
+/// election, so the same vector API represents either kind of module without
+/// silently commuting scalars.
+///
 /// The dual space `V*` is [`Dual<Self>`](Dual), and the canonical evaluation
 /// pairing between them is [`pairing`](Vector::pairing). Because that pairing is
-/// pinned to the coordinate dot product, `V`, `V*`, and `V**` are all
+/// pinned to the coordinate dot product, `V`, `V*`, and `V**` are
 /// coordinate-identical, which is what makes [`collapse`](Vector::collapse) a
-/// free relabel and the musical maps land in the right spaces.
+/// free relabel. Double dualisation restores the original hand.
 pub trait Vector:
     Add<Output = Self>
     + Sub<Output = Self>
@@ -188,6 +212,8 @@ pub trait Vector:
     /// The dimension of the space — the number of coordinates.
     const N: usize;
 
+    /// The side on which `F` acts. [`Dual<Self>`](Dual) elects the opposite
+    /// hand, and `Dual<Dual<Self>>` therefore restores this one.
     type Hand: Handedness;
 
     type Iter<'a>: Iterator<Item = &'a Self::F>
@@ -201,20 +227,16 @@ pub trait Vector:
     /// constructor — most other constructors reduce to this.
     fn from_fn(f: impl Fn(usize) -> Self::F) -> Self;
 
-    /// The canonical right-linear evaluation pairing `(V, V*) -> F`, `⟨v, ω⟩ = ω(v)`.
+    /// The canonical evaluation pairing `(V, V*) -> F`, `⟨v, ω⟩ = ω(v)`.
     ///
-    /// If `V` is a right `F`-module and `v = Σ eᵢ vᵢ, ωᵢ = ω(eᵢ),`
-    /// then right-linearity of `ω` requires `ω(v) = ω(Σ eᵢ vᵢ) = Σ ω(eᵢ) vᵢ = Σ ωᵢ vᵢ`.
+    /// Evaluation follows the elected hand:
     ///
-    /// Consequently, the dual coordinate must multiply the vector coordinate
-    /// on the left. Although the iterators below encounter `vᵢ` first, the
-    /// product is deliberately `ωᵢ * vᵢ`, not `vᵢ * ωᵢ`. The two orders agree
-    /// over commutative fields but differ over a noncommutative division ring.
+    /// - for a right module, `ω(v) = Σ ωᵢvᵢ`;
+    /// - for a left module, `ω(v) = Σ vᵢωᵢ`.
     ///
-    /// This order must not be changed: [`flat`](Form::flat),
-    /// [`sharp`](Nondegenerate::sharp), and [`collapse`](Vector::collapse)
-    /// rely on this being the canonical evaluation of a right-module vector
-    /// by its dual covector.
+    /// Thus the covector coordinate is placed on the side opposite the vector's
+    /// scalar action. The two orders agree over commutative fields but differ
+    /// over a noncommutative division ring.
     fn pairing(&self, rhs: &Dual<Self>) -> Self::F {
         self.iter()
             .zip(rhs.iter())
@@ -335,7 +357,7 @@ macro_rules! impl_vector_ops {
 /// A vector space equipped with a *lowering map* `♭: V → V*`.
 ///
 /// This is where geometry enters: [`flat`](Form::flat) turns a vector into the
-/// covector `⟨v, ·⟩`, and [`dot`](Form::dot) is the induced form
+/// covector `⟨·, b⟩`, and [`dot`](Form::dot) is the induced form
 /// `⟨a, b⟩ = pairing(a, b♭)`. No invertibility, definiteness, or symmetry is
 /// assumed here — a general (even indefinite or degenerate) form is a `Form`.
 /// The refinements add those: [`Nondegenerate`] (invertible), [`Sesquilinear`]
@@ -402,6 +424,8 @@ impl<V: Nondegenerate> Nondegenerate for Dual<V> {
         v.0.0.flat()
     }
 }
+
+impl<V: Nondegenerate + Sesquilinear> Sesquilinear for Dual<V> {}
 
 impl_group_via_add!(V, V: Vector);
 
@@ -498,7 +522,13 @@ pub trait Sesquilinear: Form {
     where
         Self: Mul<Self::F, Output = Self> + Clone,
     {
-        (a * k).dot(&c) == a.dot(&c) * k
+        let dot = a.dot(&c);
+
+        (a * k).dot(&c)
+            == match <Self as Vector>::Hand::H {
+                Hand::Right => dot * k,
+                Hand::Left => k * dot,
+            }
     }
 }
 

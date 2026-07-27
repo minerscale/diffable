@@ -22,6 +22,18 @@ impl<R: Real> Quaternion<R> {
     pub fn new(real: R, i: R, j: R, k: R) -> Self {
         [real, i, j, k].into()
     }
+
+    pub fn i() -> Self {
+        Self::new(R::zero(), R::one(), R::zero(), R::zero())
+    }
+
+    pub fn j() -> Self {
+        Self::new(R::zero(), R::zero(), R::one(), R::zero())
+    }
+
+    pub fn k() -> Self {
+        Self::new(R::zero(), R::zero(), R::zero(), R::one())
+    }
 }
 
 impl<R: Real> From<R> for Quaternion<R> {

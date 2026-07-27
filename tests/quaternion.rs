@@ -12,7 +12,7 @@ use diffable::{
     hypersphere::S3,
     quaternion::Quaternion,
     test_field, test_nondegenerate, test_sesquilinear, test_vector,
-    traits::{Dual, Field, Nondegenerate, Vector},
+    traits::{Dual, Field, Form, Nondegenerate, Vector},
 };
 use num_traits::{One, Zero};
 use proptest::prelude::*;
@@ -40,6 +40,26 @@ test_vector!(quaternion_vector, H, H41, arb_h41(), arb_quaternion());
 test_sesquilinear!(quaternion_form, H41, arb_h41(), arb_quaternion());
 test_nondegenerate!(quaternion_nondegenerate, H41, arb_h41(), arb_quaternion());
 
+test_vector!(
+    quaternion_dual_vector,
+    H,
+    Dual<H41>,
+    arb_h41().prop_map(|x| x.flat()),
+    arb_quaternion()
+);
+test_sesquilinear!(
+    quaternion_dual_form,
+    Dual<H41>,
+    arb_h41().prop_map(|x| x.flat()),
+    arb_quaternion()
+);
+test_nondegenerate!(
+    quaternion_dual_nondegenerate,
+    Dual<H41>,
+    arb_h41().prop_map(|x| x.flat()),
+    arb_quaternion()
+);
+
 #[test]
 fn hamilton_basis_products_are_noncommutative() {
     let zero = R64::zero();
@@ -53,19 +73,23 @@ fn hamilton_basis_products_are_noncommutative() {
 }
 
 #[test]
-fn native_and_natural_dual_operations_are_observably_distinct() {
-    let zero = R64::zero();
-    let one = R64::one();
-    let i = H::new(zero, one, zero, zero);
-    let j = H::new(zero, zero, one, zero);
-    let k = H::new(zero, zero, zero, one);
+fn dual_pairing_distinguishes_musical_and_raw_coordinates() {
+    let i = H::i();
+    let j = H::j();
+    let k = H::k();
 
-    let alpha = Dual::<H1>::from_array([i]);
-    let beta = Dual::<H1>::from_array([j]);
-    let psi = Dual::<Dual<H1>>::from_array([j]);
+    let alpha = H1::from_array([i]).flat();
+    let beta = H1::from_array([j]).flat();
+    let alpha_direct = Dual::<H1>::from_array([i]);
+    let beta_direct = Dual::<H1>::from_array([j]);
+    let psi_direct = Dual::<Dual::<H1>>::from_array([j]);
+
+    let psi = beta.flat();
 
     assert_eq!(H1::sharp(beta).pairing(&alpha), -k);
+    assert_eq!(H1::sharp(beta_direct).pairing(&alpha_direct), -k);
     assert_eq!(Dual::<H1>::pairing(&alpha, &psi), -k);
+    assert_eq!(Dual::<H1>::pairing(&alpha_direct, &psi_direct), k);
 }
 
 proptest! {
