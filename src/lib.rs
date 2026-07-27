@@ -1,186 +1,297 @@
-//! # Diffable
+//! Diffable is a differential-geometry framework for Rust. Its
+//! central idea is that mathematical structure should be executable:
 //!
-//! A differential geometry framework for Rust. Each trait represents a
-//! mathematical structure—group, vector space, smooth atlas, metric, and
-//! so on. Implementing a trait certifies that a type carries that structure,
-//! while blanket implementations derive the structures that follow from it.
-//! In practice, implementing a single high-level trait often gives
-//! you the surrounding geometry for free.
+//! - a type supplies the underlying values;
+//! - a trait implementation certifies what mathematical structure those values
+//!   carry;
+//! - blanket implementations encode theorems relating those structures; and
+//! - property tests check the axioms Rust's type system cannot prove.
 //!
-//! ### Structure
+//! Generic code can therefore ask for what its argument *is*, rather than for an
+//! incidental collection of methods. A function that needs a nondegenerate form
+//! can say so without requiring an inner product. A function that works in
+//! spacetime can request a signed interval without pretending it has a metric.
+//! And when one structure mathematically entails another, the consequence is
+//! implemented once for every type.
 //!
-//! The library is organised around a hierarchy of traits that mirror the
-//! mathematical structure of differential geometry.
+//! > **Traits are mathematical certificates. Blanket implementations are
+//! > theorems.**
 //!
-//! #### Foundation — points, scalars, separation
+//! ## Geometry from one local implementation
 //!
-//! - [`traits::Point`] — The underlying set: an element of a manifold, group, or
-//!   metric space. Anything can be a Point, in fact; anything that is `Clone` is
-//!   a `Point`.
-//! - [`traits::Field`] — A (possibly non-commutative) scalar field of
-//!   vector space equipped with a possibly trivial involution. Follows the field axioms.
-//! - [`traits::CField`] — The commutative refinement of a field.
-//! - [`traits::Real`] — An ordered real-number field, used as a
-//!   coordinate scalar and as the target of intervals and metrics. See
-//!   [`traits::ExactCmp`] for the strict order that convergence tests need
-//!   when an implementor's equality is tolerance-based.
-//! - [`traits::Interval`] — A *signed* squared interval `s²: M × M → R`
-//!   (negative timelike, zero null, positive spacelike); the pseudo-metric
-//!   base, claiming no metric-space axioms. `interval_squared` is the
-//!   primitive, `interval` its signed square root, returning `Complex<R: Real>`
-//! - [`traits::Metric`] — the *definite* refinement: a genuine non-negative
-//!   distance `d = √(interval_squared)`. Independent of any coordinate
-//!   structure
+//! A Lie group is homogeneous: its geometry at the identity can be transported
+//! to every other point by left translation. Diffable writes that argument as a
+//! blanket implementation:
 //!
-//! #### Vector spaces and forms
+//! ```rust
+//! impl<V: Vector, L: LieGroup<V>> Smooth<V> for L {
+//!     fn exp(&self, coord: V) -> Self {
+//!         self.compose(&Self::identity_exp(coord))
+//!     }
 //!
-//! - [`traits::Vector`] — A finite-dimensional coordinate vector space over a
-//!   `Field`. It is the local model a [`traits::Chart`] maps into and the
-//!   tangent space of every manifold, and is its own additive
-//!   [`traits::LieGroup`]. [`traits::Dual`] is the dual space `V*`.
-//! - A bare `Vector` carries no metric. Scalar products are induced by
-//!   progressively stronger traits:
-//!     - [`traits::Form`] gives a lowering map `♭: V → V*`
-//!       and the induced pairing `dot`.
-//!     - [`traits::Nondegenerate`] makes `♭` invertible by adding `♯`.
-//!     - [`traits::Sesquilinear`] specialises to Hermitian forms.
-//!     - [`traits::Bilinear`] specialises further to symmetric bilinear forms.
-//!     - [`traits::InnerProduct`] adds positive definiteness.
-//! - [`traits::Euclidean`] — The canonical flat `Rⁿ` that is simultaneously an
-//!   inner-product space, its own tangent bundle, and an additive Lie group.
+//!     fn log(&self, point: &Self) -> Option<V> {
+//!         Self::identity_log(&self.inverse().compose(point))
+//!     }
+//! }
+//! ```
 //!
-//! #### Charts — local coordinate structure
+//! An implementor of [`LieGroup<V>`](traits::LieGroup) provides the group operation and the
+//! exponential and logarithmic maps at the identity. Left translation then
+//! supplies [`Smooth<V>`](traits::Smooth), from which the full chart bundle follows:
 //!
-//! - [`traits::Chart`] — A coordinate chart mapping points of a manifold to a
-//!   flat coordinate space and back.
-//! - [`traits::ExpMap`] — A chart whose coordinate lines are geodesics and
-//!   whose coordinate distances are (signed) arc lengths.
-//! - [`traits::TangentBundle`] — The tangent bundle `TM`: an `ExpMap` chart
-//!   centred at *every* point. This is the working surface of a smooth
-//!   manifold — `exp` and `log`, geodesics, geodesic distance, and sectional
-//!   curvature are all read off it, so most geometric computation is written
-//!   against this trait.
-//! - [`traits::PseudoRiemannian`] — Certifies that the exponential map and the
-//!   tangent-space form agree: the geodesic interval equals `⟨v,v⟩`.
-//!   Signature-agnostic; reduces to the usual `d(p, exp_p v) = ‖v‖` in the
-//!   definite case.
-//! - [`traits::Smooth`] — A helper trait for manifolds that charts themselves,
-//!   providing `exp` and `log` at every point. Implement this one trait and the
-//!   full chart bundle `Chart`, `ExpMap`, `TangentBundle` for free.
+//! ```text
+//! LieGroup<V>
+//!     ⇒ Smooth<V>
+//!     ⇒ Chart<Self, V>
+//!     ⇒ ExpMap<Self, V>
+//!     ⇒ TangentBundle<Self, V>
+//! ```
 //!
-//! #### Algebra — groups and Lie groups
+//! This is the pattern throughout Diffable: implement the smallest structure
+//! that characterises an object, then inherit its mathematical consequences.
 //!
-//! - [`traits::Group`] — an operator-agnostic group interface, using named
-//!   methods rather than `+` or `*`.
+//! ## Handedness, duality, and geometry
 //!
-//!   [`traits::CMonoid`]/[`traits::CGroup`] and
-//!   [`traits::Monoid`]/[`traits::MulGroup`] are the additive and multiplicative
-//!   presentations used by concrete types. The helper macros `impl_group_via_add!`
-//!   and `impl_group_via_mul!` connect them to `Group`.
+//! Diffable permits scalar fields to be noncommutative, so it cannot quietly
+//! exchange left and right scalar multiplication. Every [`Vector`](traits::Vector)
+//! is, by convention, a **right** module over its field:
 //!
-//!   [`traits::Rig`], [`traits::Ring`], [`traits::DivRing`],
-//!   and [`traits::Field`] combine both operations.
-//! - [`traits::LieGroup`] — a group with a smooth exponential map at the
-//!   identity; automatically derives `Smooth` (and therefore the whole chart
-//!   bundle) via left translation
-//! - [`traits::Quotient`] — a quotient `G/H` of a Lie group by a subgroup,
-//!   inheriting Lie group structure from the parent
+//! ```text
+//! v = Σ eᵢvᵢ
+//! ```
 //!
-//! #### Global topology — covers, nerve complexes, fundamental groups and global geodesic minimisation
+//! Its dual `V*`, however, is naturally a left module. A right-linear covector
+//! therefore evaluates a vector as
 //!
-//! - [`traits::Bounded`] — a `TangentBundle` chart with a bounded, open domain,
-//!   expressed via a signed distance field.
-//! - [`traits::NerveComplex`] — a finite cover of a manifold by `Bounded`
-//!   charts whose overlap pattern forms a simplicial complex; computes global
-//!   geodesic distance by graph search and recovers the fundamental group
-//!   `π₁(M)` from the nerve. Since the cover finite and open,
-//!   NerveComplex serves as a proof that the implemented manifold is compact.
-//! - [`traits::GroupPresentation`] — a group described by generators and
-//!   relations; the output of `NerveComplex::fundamental_group`. Group presentation
-//!   does not implement `Group` because the
-//!   [word problem](https://en.wikipedia.org/wiki/Word_problem_(mathematics))
-//!   is uncomputable in general.
+//! ```text
+//! ω(v) = Σ ωᵢvᵢ
+//! ```
 //!
-//! #### Blanket chains
+//! with the covector coordinate on the left. This order is invisible over the
+//! reals or complexes, but essential over the quaternions.
+//! [`Vector::pairing`](traits::Vector::pairing),
+//! [`Vector::dual_pairing`](traits::Vector::dual_pairing), and
+//! [`Vector::dual_left_mul`](traits::Vector::dual_left_mul) expose the two handed
+//! actions explicitly rather than relying on commutativity to erase the
+//! distinction.
 //!
-//! Implement one trait; receive the these for free:
+//! Rust still needs one uniform representation for vector-like coordinate
+//! spaces. [`Dual<V>`](traits::Dual) is consequently also represented as a
+//! `Vector`—and hence has the library's ordinary right action—while its
+//! canonical left action as the genuine dual of `V` remains separately
+//! available. The wrapper is coordinate-identical to `V`, but prevents a vector
+//! and covector from being substituted for one another merely because their
+//! arrays happen to look the same.
 //!
-//! | Trait                               | Blaket impls                       |
-//! | ----------------------------------- | ---------------------------------- |
-//! | `Smooth<V>`                         | `Chart`, `ExpMap`, `TangentBundle` |
-//! | `LieGroup<V>`                       | `Smooth<V>` → ...                  |
-//! | `Vector`                            | `Group`, `LieGroup<Self>` → ...    |
-//! | `Quotient<G, H, V>` (via macro)     | `Group`, `LieGroup<V>` → ...       |
-//! | `Sesquilinear<F: Field<Fixed = F>>` | `Bilinear`                         |
+//! There is no geometric identification between them at the `Vector` level.
+//! Finite dimensionality supplies only the evaluation isomorphism
 //!
+//! ```text
+//! V** ≅ V
+//! ```
 //!
-//! `Group` itself is reached via a one-line macro rather than a blanket impl
-//! (`CMonoid`/`Monoid` can't both blanket-impl the same trait without
-//! overlapping), so every `LieGroup` implementor pairs its `+`/`*` structure
-//! with `impl_group_via_add!`/`impl_group_via_mul!` before joining the chain.
+//! implemented by [`Vector::collapse`](traits::Vector::collapse). Geometry enters when [`Form`](traits::Form)
+//! chooses a lowering map
 //!
-//! ### Implementations
+//! ```text
+//! ♭ : V → V*
+//! ```
 //!
-//! - [`coords::Coords`] — the canonical flat space `R^(N−M, M)`, a fixed-size
-//!   array parameterised by a signature `M` (the count of timelike
-//!   directions). `M = 0` is ordinary Euclidean `Rⁿ` (with a norm and metric);
-//!   `M > 0` is indefinite (`Coords<R, 4, 1>` is Minkowski spacetime),
-//!   carrying only a `Bilinear` form
-//! - [`complex::Complex`] — the complex numbers as a `Field`, with `conj` the
-//!   Hermitian involution. [`traits::Symmetrized`] wraps a field to select its
-//!   *bilinear* rather than Hermitian form
-//! - [`matrix::Matrix`] — an `N×N` matrix, interpreted as the tensor
-//!   `V ⊗ V*`, with variance encoded in the type so only variance-correct
-//!   contractions typecheck. [`matrix::MatrixExponential`] provides `exp`/`log`.
-//! - [`hypersphere::Sphere`] — the unit hypersphere `Sⁿ` as a smooth manifold
-//!   with geodesic structure for any dimension
-//! - [`hypersphere::S0`], [`hypersphere::UnitComplex`], [`hypersphere::S3`] —
-//!   the Lie group structures on the three parallelizable spheres (signs, the
-//!   unit complex numbers `U(1)`, the unit quaternions `SU(2)`), as newtypes
-//!   of `Sphere` that add the group operation
-//! - [`hypersphere::So3`] — the rotation group `SO(3)` as the quotient
-//!   `S³/{±1}`, a newtype of `S3`
-//! - [`hypersphere::Stereographic`] — stereographic projection charts, an
-//!   external atlas independent of the geodesic self-charts
-//! - [`spacetime::Minkowski`] — `Coords<R, 4, 1>`, spacetime with signature
-//!   `(−,+,+,+)`; [`spacetime::Sl`]/[`spacetime::Sl2c`] the special linear
-//!   group (`SL(2,ℂ)` double-covering the Lorentz group);
-//!   [`spacetime::SlAlgebra`] its traceless Lie algebra with the Killing form;
-//!   and [`spacetime::Lorentz`] the restricted Lorentz group `SO⁺(1,3)` as
-//!   `SL(2,ℂ)/{±1}`
-//! - [`discrete::Z`] — the integers, as the Grothendieck completion of the
-//!   naturals [`discrete::N`]; also the covering lattice for `flat::S1`
-//! - [`flat::S1`] — the circle as the flat quotient `R/Z`, a more performant
-//!   model of `S¹` than `hypersphere::UnitComplex`;
-//!   [`flat::Torus`]/[`flat::KleinBottle`] glue two circles straight (a group)
-//!   or with a fibre-flipping twist (the library's only non-orientable
-//!   manifold)
+//! and defines `dot(a, b)` by evaluating `b♭` on `a`. A degenerate form may
+//! collapse distinct vectors to the same covector; [`Nondegenerate`](traits::Nondegenerate)
+//! certifies that `♭` is invertible and supplies the raising map
 //!
-//! The newtype layering reflects the mathematical structure: `Sphere` is the
-//! bare manifold (geometry only), `S3` adds the quaternion group operation,
-//! and `So3` adds the antipodal identification. Each wrapper is zero-cost and
-//! peelable — `.0` is the forgetful functor dropping one layer of structure.
+//! ```text
+//! ♯ : V* → V.
+//! ```
 //!
-//! ### Testing
+//! These are the musical isomorphisms. They do not merely convert between two
+//! storage formats: they encode the space's chosen geometric relationship with
+//! its dual. The dual space then inherits the corresponding form through those
+//! maps, so left-handed covector geometry remains accessible without making
+//! left modules a second, parallel trait hierarchy.
 //!
-//! Diffable takes the philosophy that any axiom which is assumed true of a type
-//! but not directly enforcable by the compiler should be emperically verified
-//! via property testing. Enable the `testing` feature to access the `test_*`
-//! macros, which verify that your implementations satisfy the mathematical
-//! invariants certified by each trait. The `Real` types `R64` and `R32` provide
-//! tolerance-based equality suitable for property testing with floating point,
-//! since the library assumes that its real numbers are perfect.
+//! ## Invariants are representation choices
+//!
+//! [`Sl<V, N>`](spacetime::Sl) represents the special linear group. Its matrix is private, and
+//! there is no constructor from an arbitrary matrix. Values can be reached
+//! through operations that preserve determinant one: identity, composition,
+//! inverse, and exponentiation from the traceless Lie algebra.
+//!
+//! Likewise, [`SlAlgebra<F, N, D>`](spacetime::SlAlgebra) stores coordinates in a basis whose elements
+//! are traceless. A non-traceless matrix is not an invalid value to be detected
+//! later; it is not a value the representation can express.
+//!
+//! Consequently, exponentiation has the meaningful type
+//!
+//! ```text
+//! exp : sl(N) → SL(N)
+//! ```
+//!
+//! rather than returning an arbitrary matrix accompanied by a runtime claim that
+//! it probably belongs to the group. Membership is a theorem about reachability.
+//!
+//! The same principle appears at smaller scales. [`NonZero<T>`](traits::NonZero) certifies that a
+//! value lies in the multiplicative group, [`Dual<V>`](traits::Dual) distinguishes covectors
+//! from vectors even when their coordinates coincide, and matrix variance is
+//! encoded so that only variance-correct contractions typecheck.
+//!
+//! ## Constructions propagate structure
+//!
+//! Diffable's concrete spaces are deliberately built from reusable mathematical
+//! constructions:
+//!
+//! ```text
+//! S³ / {±1}       ⇒ SO(3)
+//! SL(2, ℂ) / {±1} ⇒ SO⁺(1, 3)
+//! ℝ / ℤ           ⇒ S¹
+//! S¹ × S¹         ⇒ T²
+//! ```
+//!
+//! The quotient machinery does not know about rotations or relativity. It knows
+//! that a suitable quotient of a Lie group inherits Lie-group structure. The
+//! same implementation therefore gives both `SO(3)` and the restricted Lorentz
+//! group their group operations, exponential maps, charts, and tangent bundles.
+//!
+//! The torus and Klein bottle make the distinction equally clear. Both are made
+//! by gluing two circles; straight gluing produces a Lie group, while twisted
+//! gluing produces a smooth non-orientable manifold without falsely granting it
+//! group structure.
+//!
+//! The type hierarchy records these differences instead of flattening every
+//! space into coordinates and asking the programmer to remember what remains
+//! valid.
+//!
+//! ## Trait Heirachy
+//!
+//! The trait graph is intentionally fine-grained. Generic algorithms should
+//! state the weakest honest assumptions their proofs require.
+//!
+//! - [`Field`](traits::Field) permits noncommutative division rings;
+//!   [`CField`](traits::CField) adds
+//!   commutativity.
+//! - [`Form`](traits::Form) provides the lowering map `♭: V → V*`;
+//!   [`Nondegenerate`](traits::Nondegenerate) adds its inverse `♯`.
+//! - [`Sesquilinear`](traits::Sesquilinear) certifies a Hermitian form;
+//!   [`Bilinear`](traits::Bilinear) is the fixed-field specialisation;
+//!   [`InnerProduct`](traits::InnerProduct) adds positive definiteness.
+//! - [`Interval`](traits::Interval) provides a signed squared separation and
+//!   accommodates pseudo-Riemannian geometry; [`Metric`](traits::Metric) adds
+//!   genuine metric-space distance.
+//! - [`Chart`](traits::Chart) provides coordinates; [`ExpMap`](traits::ExpMap)
+//!   says those coordinates are geodesic; [`TangentBundle`](traits::TangentBundle)
+//!   supplies such a chart at every point.
+//!
+//! Degenerate and indefinite cases are not malformed approximations to
+//! Euclidean geometry. They are first-class structures with precisely the
+//! operations their axioms justify.
+//!
+//! ## Implementations
+//!
+//! ### Scalars, vectors, and tensors
+//!
+//! - [`coords::Coords`] is the canonical fixed-dimensional coordinate space
+//!   `R^(N−M, M)`, parameterised by the number `M` of timelike directions.
+//!   `M = 0` is Euclidean; `Coords<R, 4, 1>` is Minkowski spacetime.
+//! - [`complex::Complex`] implements the complex numbers with conjugation as
+//!   their elected involution. [`traits::Symmetrized`] elects the bilinear rather
+//!   than Hermitian form.
+//! - [`quaternion::Quaternion`] provides the quaternion division algebra.
+//! - [`matrix::Matrix`] is interpreted as `V ⊗ V*`, with tensor variance carried
+//!   by the types. [`matrix::MatrixExponential`] supplies matrix `exp` and `log`.
+//!
+//! ### Manifolds and Lie groups
+//!
+//! - [`hypersphere::Sphere`] provides `Sⁿ` with its intrinsic geodesic structure.
+//! - [`hypersphere::S0`], [`hypersphere::UnitComplex`], and [`hypersphere::S3`]
+//!   add the Lie-group structures on
+//!   the three group spheres: signs, unit complex numbers, and unit quaternions.
+//! - [`hypersphere::So3`] constructs `SO(3)` as `S³/{±1}`.
+//! - [`hypersphere::Stereographic`] provides an external stereographic atlas,
+//!   independently of the sphere's intrinsic exponential charts.
+//! - [`flat::S1`] constructs the circle as `R/Z`; [`flat::Torus`] and
+//!   [`flat::KleinBottle`] provide straight and twisted gluings of two circles.
+//! - [`spacetime::Sl`] and [`spacetime::SlAlgebra`] implement the special linear
+//!   group and its traceless Lie algebra; [`spacetime::Lorentz`] constructs `SO⁺(1,3)` as
+//!   `SL(2,C)/{±1}`.
+//! - [`discrete::N`] and [`discrete::Z`] implement the naturals and their
+//!   Grothendieck group completion; [`discrete::Z`] also supplies the lattice
+//!   used by [`flat::S1`].
+//!
+//! The newtypes add mathematical meaning one layer at a time. `Sphere` is a
+//! manifold, `S3` equips that manifold with quaternion multiplication, and
+//! `So3` adds the antipodal quotient. Forgetting a wrapper drops structure
+//! without changing the underlying object.
+//!
+//! ## Global geometry and topology
+//!
+//! [`Bounded`](traits::Bounded) describes a bounded open exponential-chart
+//! domain by a signed distance field. [`NerveComplex`](traits::NerveComplex)
+//! assembles a finite cover from those domains
+//! and records their overlap as a simplicial complex.
+//!
+//! That finite global description supports:
+//!
+//! - certified global geodesic minimisation by graph search;
+//! - recovery of the fundamental group from the nerve; and
+//! - a compactness certificate for the implemented manifold.
+//!
+//! [`GroupPresentation`](traits::GroupPresentation) represents the resulting
+//! fundamental group by generators and relations. It deliberately does not
+//! implement [`Group`](traits::Group): equality of words
+//! in an arbitrary finite presentation is undecidable in general.
+//!
+//! ## Axioms are tested
+//!
+//! Rust can enforce that a [`Group`](traits::Group) has the required operations, but it cannot
+//! prove that composition is associative. Diffable treats every such
+//! unenforceable axiom as a property-testing obligation.
+//!
+//! Enable the `testing` feature to use the `test_*` macros for groups, fields,
+//! forms, charts, tangent bundles, quotients, and the other certified
+//! structures:
 //!
 //! ```toml
 //! [dev-dependencies]
-//! diffable = { version = "...", features = ["testing"] }
+//! diffable = { version = "0.2", features = ["testing"] }
 //! ```
 //!
-//! ### Optional features
+//! The testing module includes tolerance-aware [`R32`] and [`R64`] scalar types so
+//! that floating-point implementations can be tested against the exact
+//! mathematics they approximate.
 //!
-//! - `testing` — property-testing macros and tolerance-based scalar types
-//! - `all` — enables all features
-
+//! ## Trait map
+//!
+//! The principal derivation chains are:
+//!
+//! | Implement | Derived structure |
+//! | --- | --- |
+//! | `Smooth<V>` | `Chart<Self, V>`, `ExpMap<Self, V>`, `TangentBundle<Self, V>` |
+//! | `LieGroup<V>` | `Smooth<V>` and the complete chart chain |
+//! | `Vector` | additive `Group`, `LieGroup<Self>`, and flat tangent geometry |
+//! | `Quotient<G, H, V>` via `impl_lie_group_via_quotient!` | quotient `Group`, `LieGroup<V>`, and the complete chart chain |
+//! | `Sesquilinear<F = F::Fixed>` | `Bilinear` |
+//!
+//! `Group` is connected to additive or multiplicative operator syntax with
+//! `impl_group_via_add!` and `impl_group_via_mul!`. These are one-line macros
+//! rather than blanket implementations because the two blanket cases would
+//! overlap under Rust's coherence rules.
+//!
+//! ## Status
+//!
+//! Diffable is an experimental library and an exploration of how faithfully
+//! Rust's trait system can express differential geometry. The API is still
+//! evolving, and the project currently prioritises structural correctness and
+//! compositional design over broad algorithm coverage or compatibility
+//! stability.
+//!
+//! Optional features:
+//!
+//! - `testing` — property-testing macros and tolerance-aware real scalars
+//! - `all` — all optional features
+//!
+//! Licensed under either MIT or Apache-2.0.
+//!
 #![allow(clippy::needless_range_loop, clippy::type_complexity)]
 
 pub mod coords;
