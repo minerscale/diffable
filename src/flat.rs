@@ -148,6 +148,8 @@ impl<I: ICompatible<V>, V: VCompatible<I>> KleinBottle<I, V> {
 }
 
 impl<I: ICompatible<V>, V: VCompatible<I>> Smooth<V> for KleinBottle<I, V> {
+    type Global = Self;
+
     fn exp(&self, v: V) -> Self {
         let (x, y) = self.coords();
         let vx: I::F = v[0].into();

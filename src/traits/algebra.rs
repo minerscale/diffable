@@ -1113,6 +1113,8 @@ pub trait LieGroup<V: Vector>: Group {
 
 // left translation
 impl<V: Vector, L: LieGroup<V>> Smooth<V> for L {
+    type Global = Self;
+
     fn exp(&self, coord: V) -> Self {
         let translated = Self::identity_exp(coord);
         self.compose(&translated)

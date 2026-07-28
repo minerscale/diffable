@@ -4,6 +4,45 @@ use super::Point;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
+mod sealed {
+    pub trait Sealed<T> {}
+    impl<T> Sealed<T> for T {}
+    impl<T> Sealed<T> for Option<T> {}
+}
+
+/// A value which is either statically present or dynamically optional.
+///
+/// For each `T`, this sealed trait is implemented only by `T` and
+/// `Option<T>`. It allows an associated type to preserve the distinction
+/// between an operation which always returns a value and one which may
+/// fail, while still permitting generic code to consume either result
+/// uniformly.
+///
+/// The trait is deliberately sealed and provides only an eliminator:
+/// constructing the result remains the responsibility of the operation
+/// which selected `T` or `Option<T>`.
+pub trait OptionallyOption<T>: sealed::Sealed<T> {
+    /// Converts either permitted representation into `Option<T>`.
+    ///
+    /// A statically present `T` becomes `Some(T)`, while an `Option<T>` is
+    /// returned unchanged. This deliberately forgets any static guarantee
+    /// of presence so that polymorphic code can handle both representations
+    /// through the ordinary `Option` interface.
+    fn into_option(self) -> Option<T>;
+}
+
+impl<T> OptionallyOption<T> for T {
+    fn into_option(self) -> Option<T> {
+        Some(self)
+    }
+}
+
+impl<T> OptionallyOption<T> for Option<T> {
+    fn into_option(self) -> Option<T> {
+        self
+    }
+}
+
 /// A chart in an atlas of a manifold.
 ///
 /// The space of all values of a type `C: Chart<P, V>` is interpreted
@@ -14,10 +53,26 @@ use num_traits::{One, Zero};
 /// any given point.
 ///
 /// `to_local` and `to_global` are the coordinate maps, with `to_local`
-/// returning `None` at the singularities of the chart.
+/// returning `None` at the singularities of the chart, and `to_global`
+/// returning `None` at genuine singularities of the manifold. If
+/// the charted manifold is geodesically complete, then to_global returns
+/// `P` rather than `Option<P>`.
 pub trait Chart<P: Point, V: Vector>: Sized {
+    /// The result of mapping local coordinates back onto the manifold.
+    ///
+    /// This is either `P` or `Option<P>`. Choosing `P` certifies that
+    /// [`Chart::to_global`] is defined for every coordinate; choosing
+    /// `Option<P>` permits the chart's coordinate domain to be a proper
+    /// subset of `V`.
+    ///
+    /// Encoding this distinction in the return type preserves totality as
+    /// static information. Generic algorithms can accept either form through
+    /// [`OptionallyOption`], while algorithms requiring a global chart can
+    /// express that stronger requirement with `Global = P`.
+    type Global: OptionallyOption<P>;
+
     fn to_local(&self, point: &P) -> Option<V>;
-    fn to_global(&self, coord: V) -> P;
+    fn to_global(&self, coord: V) -> Self::Global;
     fn chart_at(p: &P) -> Self;
 
     /// Calculates the distance between `self` and `other`
@@ -36,7 +91,10 @@ pub trait Chart<P: Point, V: Vector>: Sized {
     {
         let chart = Self::chart_at(p);
         match chart.to_local(p) {
-            Some(local) => p == &chart.to_global(local),
+            Some(local) => chart
+                .to_global(local)
+                .into_option()
+                .is_some_and(|x| p == &x),
             None => false,
         }
     }
@@ -49,7 +107,7 @@ pub trait Chart<P: Point, V: Vector>: Sized {
 /// Additionally, you certify that Self::chart_at(&self.base_point()) == self
 pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
     fn base_point(&self) -> P {
-        self.to_global(V::zero())
+        self.to_global(V::zero()).into_option().unwrap()
     }
 
     // Tests that base_point() is consistent with to_local.
@@ -71,10 +129,12 @@ pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
     where
         V: Form,
     {
-        let zero = V::zero();
-        let exp_zero = self.to_global(zero);
-        self.to_local(&exp_zero)
-            .is_some_and(|c| c.self_dot() == V::F::zero())
+        self.to_global(V::zero())
+            .into_option()
+            .is_some_and(|exp_zero| {
+                self.to_local(&exp_zero)
+                    .is_some_and(|c| c.iter().all(|&x| x == V::F::zero()))
+            })
     }
 
     /// If a chart centred at `p` exists, `chart_at(p)` returns it.
@@ -94,27 +154,6 @@ pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
         Self::chart_at(&self.base_point()).check_preservation_of_origin()
     }
 
-    // geodesics are reversible: log(exp(v)) == -log(exp(-v))
-    #[cfg(feature = "testing")]
-    fn check_geodesic_symmetry(&self, v: V) -> bool
-    where
-        V: Form + PartialEq,
-    {
-        let fwd = match self.to_local(&self.to_global(v)) {
-            Some(x) => x,
-            None => return true,
-        };
-        let bwd = match self.to_local(&self.to_global(-v)) {
-            Some(x) => x,
-            None => return true,
-        };
-        // gate: skip if either geodesic wrapped (folded norm ≠ input norm)
-        if fwd.self_dot() != v.self_dot() || bwd.self_dot() != (-v).self_dot() {
-            return true;
-        }
-        fwd == -bwd
-    }
-
     // geodesics are straight lines: exp(tv) lies on the same geodesic as exp(v),
     // i.e. log(exp(tv)) and log(exp(v)) are parallel in local coords.
     #[cfg(feature = "testing")]
@@ -123,22 +162,31 @@ pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
         V: Form,
     {
         let t_as_f = V::F::from_fixed(t);
-        let v_local = match self.to_local(&self.to_global(v)) {
-            Some(x) => x,
-            None => return true,
-        };
-        let tv_local = match self.to_local(&self.to_global(v * t_as_f)) {
-            Some(x) => x,
-            None => return true,
-        };
-        // Gate: did either geodesic wrap? exp parametrises by arc length, so
-        // ‖log(exp(w))‖ ≤ ‖w‖ always, with equality iff no wrapping. If the
-        // folded coord is shorter than the input, it wrapped — skip.
-        if v_local.self_dot() != v.dot(&v) || tv_local.self_dot() != (v * t_as_f).self_dot() {
-            return true;
+
+        if let Some((gv, gtv)) = self.to_global(v).into_option().and_then(|gv| {
+            self.to_global(v * t_as_f)
+                .into_option()
+                .map(|gtv| (gv, gtv))
+        }) {
+            let v_local = match self.to_local(&gv) {
+                Some(x) => x,
+                None => return true,
+            };
+            let tv_local = match self.to_local(&gtv) {
+                Some(x) => x,
+                None => return true,
+            };
+            // Gate: did either geodesic wrap? exp parametrises by arc length, so
+            // ‖log(exp(w))‖ ≤ ‖w‖ always, with equality iff no wrapping. If the
+            // folded coord is shorter than the input, it wrapped — skip.
+            if v_local.self_dot() != v.dot(&v) || tv_local.self_dot() != (v * t_as_f).self_dot() {
+                return true;
+            }
+            let dot = tv_local.dot(&v_local);
+            dot * dot == tv_local.self_dot() * v_local.self_dot()
+        } else {
+            true
         }
-        let dot = tv_local.dot(&v_local);
-        dot * dot == tv_local.self_dot() * v_local.self_dot()
     }
 }
 
@@ -167,7 +215,10 @@ pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
 pub trait PseudoRiemannian<V: Bilinear<F: Real>>: ExpMap<Self, V> + Interval<R = V::F> {
     #[cfg(feature = "testing")]
     fn check_isometry(&self, v: V) -> bool {
-        let global = self.to_global(v);
+        let global = match self.to_global(v).into_option() {
+            Some(x) => x,
+            None => return true,
+        };
         // Re-log: the wrapped representative, guaranteed inside the injectivity
         // domain. On compact manifolds exp isn't injective, so |v| itself may
         // exceed the injectivity radius and NOT equal the interval — but
@@ -220,7 +271,7 @@ pub trait TangentBundle<P: Point, V: Vector>: ExpMap<P, V> {
         // Deviation vector: how the exp-image of the perturbed direction differs
         // from the flat prediction, pulled back to the tangent space.
         //   δ = log_p( exp_p(v + ε w) ) − v
-        let perturbed = self.to_global(v + w * epsilon);
+        let perturbed = self.to_global(v + w * epsilon).into_option()?;
         let delta = self.to_local(&perturbed)? - v; // None if outside injectivity domain
 
         // Second-order metric defect. In flat space Q(δ) = ε²·Q(w) exactly;
@@ -260,6 +311,18 @@ pub trait TangentBundle<P: Point, V: Vector>: ExpMap<P, V> {
     }
 }
 
+pub trait PartialSmooth<V: Vector>: Point {
+    /// The exponential map at `self`: sends a tangent vector `v` to the
+    /// point reached by following the geodesic from `self` in direction
+    /// `v` for unit time.
+    fn exp(&self, v: V) -> Option<Self>;
+
+    /// The logarithmic map at `self`: recovers the tangent vector whose
+    /// geodesic reaches `other`, or `None` at the cut locus (e.g. the
+    /// antipode on a sphere).
+    fn log(&self, other: &Self) -> Option<V>;
+}
+
 /// Intrinsic smooth structure on a manifold.
 ///
 /// A type implementing `Smooth<V>` carries its own smooth structure:
@@ -283,10 +346,23 @@ pub trait TangentBundle<P: Point, V: Vector>: ExpMap<P, V> {
 /// [`TangentBundle<Self, V>`]: crate::traits::TangentBundle
 /// [`LieGroup`]: crate::traits::LieGroup
 pub trait Smooth<V: Vector>: Point {
+    /// The result of applying the exponential map.
+    ///
+    /// This is either `Self` or `Option<Self>`. Choosing `Self` certifies that
+    /// every tangent vector can be exponentiated for unit time; choosing
+    /// `Option<Self>` permits geodesics which cannot be continued that far.
+    ///
+    /// The associated type allows [`Smooth`] to provide the same ergonomic
+    /// blanket implementations of [`Chart`], [`ExpMap`], and [`TangentBundle`]
+    /// for both geodesically complete and potentially incomplete manifolds.
+    /// Code which requires completeness can state that requirement explicitly
+    /// with `Global = Self`.
+    type Global: OptionallyOption<Self>;
+
     /// The exponential map at `self`: sends a tangent vector `v` to the
     /// point reached by following the geodesic from `self` in direction
     /// `v` for unit time.
-    fn exp(&self, v: V) -> Self;
+    fn exp(&self, v: V) -> Self::Global;
 
     /// The logarithmic map at `self`: recovers the tangent vector whose
     /// geodesic reaches `other`, or `None` at the cut locus (e.g. the
@@ -295,11 +371,13 @@ pub trait Smooth<V: Vector>: Point {
 }
 
 impl<V: Vector, S: Smooth<V>> Chart<Self, V> for S {
+    type Global = S::Global;
+
     fn to_local(&self, point: &Self) -> Option<V> {
         self.log(point)
     }
 
-    fn to_global(&self, coord: V) -> Self {
+    fn to_global(&self, coord: V) -> S::Global {
         self.exp(coord)
     }
 

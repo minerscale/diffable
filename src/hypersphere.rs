@@ -53,6 +53,8 @@ enum StereographicPole {
 pub const EPSILON: f64 = 1e-3;
 
 impl<V: Euclidean> Chart<Sphere<V>, V> for Stereographic<V> {
+    type Global = Sphere<V>;
+
     fn to_local(&self, point: &Sphere<V>) -> Option<V> {
         let first = match self.0 {
             StereographicPole::NorthPole => point.real,
@@ -138,6 +140,8 @@ impl<V: Euclidean> Sphere<V> {
 }
 
 impl<V: Euclidean> Smooth<V> for Sphere<V> {
+    type Global = Self;
+
     fn exp(&self, v: V) -> Self {
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
 
@@ -611,6 +615,8 @@ impl
 pub struct So3Cover(So3<Coords<R64, 3>>);
 
 impl Chart<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {
+    type Global = So3<Coords<R64, 3>>;
+
     fn to_local(&self, point: &So3<Coords<R64, 3>>) -> Option<Coords<R64, 3>> {
         self.0.to_local(point)
     }

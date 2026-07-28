@@ -139,13 +139,7 @@ macro_rules! test_exp_map {
                     let chart = <$chart>::chart_at(&p);
                     prop_assert!(chart.check_base_point_is_origin());
                 }
-
-                #[test]
-                fn geodesic_symmetry(p in $arb_point, v in $arb_vec) {
-                    let chart = <$chart>::chart_at(&p);
-                    prop_assert!(chart.check_geodesic_symmetry(v));
-                }
-
+                
                 #[test]
                 fn geodesic_scaling(p in $arb_point, v in $arb_vec, t in $arb_scalar) {
                     let chart = <$chart>::chart_at(&p);

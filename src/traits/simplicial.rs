@@ -2,6 +2,8 @@ use std::collections::{BinaryHeap, HashMap};
 
 use num_traits::{NumCast, One, ToPrimitive, Zero, real::Real as _};
 
+use crate::traits::OptionallyOption;
+
 use super::{Euclidean, Point, Real, TangentBundle};
 
 /// A presentation of a group by generators and relations.
@@ -863,12 +865,13 @@ impl<
 /// intersection pattern of the cover.
 ///
 /// # Compactness
-/// When implemented with [`Bounded`] nodes (charts with explicitly bounded
-/// domains), `NerveComplex` provides a constructive proof that `P` is
-/// compact — finitely many bounded open sets cover `P` if and only if `P`
-/// is compact. With unbounded nodes (e.g. on flat manifolds where the exp
-/// map is globally defined), `NerveComplex` can be implemented for
-/// non-compact manifolds and makes no compactness claim.
+/// If the underlying manifold is geodesically complet
+/// (see `[Chart::Global](crate::traits::Chart::Global)`) `NerveComplex`
+/// provides a constructive proof that `P` is compact — finitely many bounded
+/// open sets cover `P` if and only if `P` is compact. With unbounded nodes
+/// (e.g. on flat manifolds where the exp map is globally defined),
+/// `NerveComplex` can be implemented for non-compact
+/// manifolds and makes no compactness claim.
 ///
 /// # The covering invariant
 /// The implementor certifies that for every point `p: P`, at least one
@@ -1364,7 +1367,7 @@ pub trait NerveComplex<
         };
         let chart = T::chart_at(&ap.pts[lo]);
         let v = chart.to_local(&ap.pts[hi])?;
-        Some(chart.to_global(v * s))
+        Some(chart.to_global(v * s).into_option()?)
     }
 
     /// Sample spacing must be finer than the covering radius: a bump narrower
@@ -1545,10 +1548,10 @@ pub trait NerveComplex<
     fn midpoint(a: &P, b: &P) -> Option<P> {
         let ca = T::chart_at(a);
         if let Some(v) = ca.to_local(b) {
-            return Some(ca.to_global(v * half()));
+            return Some(ca.to_global(v * half()).into_option()?);
         }
         let cb = T::chart_at(b);
-        cb.to_local(a).map(|v| cb.to_global(v * half()))
+        cb.to_local(a).and_then(|v| cb.to_global(v * half()).into_option())
     }
 
     /// Total length, as a sum of exact geodesic hops.
@@ -1563,26 +1566,6 @@ pub trait NerveComplex<
             total = total + Self::hop(&w[0], &w[1])?;
         }
         Some(total)
-    }
-
-    /// One relaxation at an interior vertex `b` between `a` and `c`.
-    ///
-    /// The discrete energy `E(b) = d(a,b)² + d(b,c)²` has gradient
-    /// `∇E = −2(log_b a + log_b c)`, so descending with step `1/2` sends `b` to
-    /// the geodesic midpoint. The returned magnitude is the residual kink: zero
-    /// exactly when `log_b a` and `log_b c` are antiparallel, i.e. when `b` sits
-    /// straight on the geodesic through `a` and `c`.
-    ///
-    /// Note this needs both `log`s *from `b`'s chart* — unlike [`Self::hop`],
-    /// which may borrow either endpoint's. `relax` is therefore strictly the
-    /// more demanding operation, and it is where a too-coarse polyline first
-    /// fails.
-    fn relax(a: &P, b: &P, c: &P) -> Option<(P, V::F)> {
-        let chart = T::chart_at(b);
-        let va = chart.to_local(a)?;
-        let vc = chart.to_local(c)?;
-        let delta = (va + vc) * half();
-        Some((chart.to_global(delta), delta.norm()))
     }
 
     /// One Gauss–Seidel sweep. Returns `(worst kink, lagged length)`.
@@ -1615,7 +1598,7 @@ pub trait NerveComplex<
 
             let delta = (va + vc) * half();
             let kink = delta.norm();
-            mid[0] = chart.to_global(delta);
+            mid[0] = chart.to_global(delta).into_option().ok_or(StraighteningResult::Stalled(i))?;
             if kink > worst {
                 worst = kink;
             }
@@ -2450,11 +2433,13 @@ pub trait Bounded<T: TangentBundle<P, V>, P: Point, V: Euclidean>:
 macro_rules! impl_tangent_bundle_via_bounded {
     ($chart:ty, $ambient:ty, $manifold:ty, $v:ty, $($generics:tt)*) => {
         impl<$($generics)*> Chart<$manifold, $v> for $chart {
+            type Global = <$ambient as crate::traits::Chart<$manifold, $v>>::Global;
+
             fn to_local(&self, p: &$manifold) -> Option<$v> {
                 <$ambient as Chart<$manifold, $v>>::to_local(self.as_ref(), p)
                     .filter(|v| self.sdf(v) < <$v as $crate::traits::Vector>::F::zero())
             }
-            fn to_global(&self, c: $v) -> $manifold {
+            fn to_global(&self, c: $v) -> Self::Global {
                 <$ambient as Chart<$manifold, $v>>::to_global(self.as_ref(), c)
             }
             fn chart_at(p: &$manifold) -> Self {

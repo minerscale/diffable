@@ -160,7 +160,10 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
     ///
     /// This is `V ⊗ V* → F` for right-handed `V` and
     /// `V* ⊗ V → F` for left-handed `V`.
-    pub fn trace(&self) -> F where F: CField {
+    pub fn trace(&self) -> F
+    where
+        F: CField,
+    {
         matrix_trace(self.0)
     }
 
