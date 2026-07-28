@@ -36,13 +36,12 @@ fn arb_h41() -> impl Strategy<Value = H41> {
 }
 
 test_field!(quaternion_field, H, arb_quaternion(), arb_scalar());
-test_vector!(quaternion_vector, H, H41, arb_h41(), arb_quaternion());
+test_vector!(quaternion_vector, H41, arb_h41(), arb_quaternion());
 test_sesquilinear!(quaternion_form, H41, arb_h41(), arb_quaternion());
 test_nondegenerate!(quaternion_nondegenerate, H41, arb_h41(), arb_quaternion());
 
 test_vector!(
     quaternion_dual_vector,
-    H,
     Dual<H41>,
     arb_h41().prop_map(|x| x.flat()),
     arb_quaternion()

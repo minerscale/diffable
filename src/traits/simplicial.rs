@@ -865,13 +865,13 @@ impl<
 /// intersection pattern of the cover.
 ///
 /// # Compactness
-/// If the underlying manifold is geodesically complet
-/// (see `[Chart::Global](crate::traits::Chart::Global)`) `NerveComplex`
-/// provides a constructive proof that `P` is compact — finitely many bounded
-/// open sets cover `P` if and only if `P` is compact. With unbounded nodes
-/// (e.g. on flat manifolds where the exp map is globally defined),
-/// `NerveComplex` can be implemented for non-compact
-/// manifolds and makes no compactness claim.
+/// A finite cover by bounded nodes, together with geodesic completeness,
+/// certifies that the manifold is compact. The finite bounded cover makes the
+/// manifold itself bounded, while geodesic completeness allows Hopf–Rinow to
+/// imply that every closed and bounded subset is compact. Since the manifold
+/// is closed as a subset of itself, it is therefore compact. Both conditions
+/// are necessary for this certificate: geodesic completeness alone does not
+/// imply boundedness, while a bounded incomplete manifold need not be compact.
 ///
 /// # The covering invariant
 /// The implementor certifies that for every point `p: P`, at least one
@@ -1551,7 +1551,8 @@ pub trait NerveComplex<
             return Some(ca.to_global(v * half()).into_option()?);
         }
         let cb = T::chart_at(b);
-        cb.to_local(a).and_then(|v| cb.to_global(v * half()).into_option())
+        cb.to_local(a)
+            .and_then(|v| cb.to_global(v * half()).into_option())
     }
 
     /// Total length, as a sum of exact geodesic hops.
@@ -1598,7 +1599,10 @@ pub trait NerveComplex<
 
             let delta = (va + vc) * half();
             let kink = delta.norm();
-            mid[0] = chart.to_global(delta).into_option().ok_or(StraighteningResult::Stalled(i))?;
+            mid[0] = chart
+                .to_global(delta)
+                .into_option()
+                .ok_or(StraighteningResult::Stalled(i))?;
             if kink > worst {
                 worst = kink;
             }
@@ -1615,7 +1619,7 @@ pub trait NerveComplex<
     /// candidate, to fix a problem confined to two segments.
     ///
     /// [`Self::midpoint`] tries both endpoints' charts, so it can succeed where
-    /// [`Self::relax`] failed — the failure was `b` not seeing `a`, and `a` may
+    /// [`Self::relax_sweep`] failed — the failure was `b` not seeing `a`, and `a` may
     /// well see `b`. When even that fails the polyline is `Disconnected`.
     fn rescue(mut pts: Vec<P>, i: usize) -> Vec<P> {
         let mid_bc = Self::midpoint(&pts[i], &pts[i + 1])
@@ -2433,7 +2437,7 @@ pub trait Bounded<T: TangentBundle<P, V>, P: Point, V: Euclidean>:
 macro_rules! impl_tangent_bundle_via_bounded {
     ($chart:ty, $ambient:ty, $manifold:ty, $v:ty, $($generics:tt)*) => {
         impl<$($generics)*> Chart<$manifold, $v> for $chart {
-            type Global = <$ambient as crate::traits::Chart<$manifold, $v>>::Global;
+            type Global = <$ambient as $crate::traits::Chart<$manifold, $v>>::Global;
 
             fn to_local(&self, p: &$manifold) -> Option<$v> {
                 <$ambient as Chart<$manifold, $v>>::to_local(self.as_ref(), p)

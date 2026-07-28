@@ -33,21 +33,13 @@ pub fn arb_sl2c() -> impl Strategy<Value = Sl2c<R64>> {
 
 test_vector!(
     minkowski,
-    R64,
     Minkowski<_>,
     arb_vec::<4>().prop_map(|x| <Coords<R64, 4, 0> as Into<[R64; 4]>>::into(x).into()),
     arb_scalar()
 );
 
 test_group!(lie_group_sl2c, Sl2c<R64>, arb_sl2c());
-test_tangent_bundle!(
-    tangent_bundle_sl2c,
-    Complex<R64>,
-    Sl2c<R64>,
-    arb_sl2c(),
-    arb_sl_algebra_2c(),
-    arb_vec::<2>().prop_map(|x| Complex::<R64>::from(x))
-);
+test_tangent_bundle!(tangent_bundle_sl2c, Sl2c<R64>, arb_sl2c());
 
 test_quotient!(
     quotient_lorentz,
@@ -58,9 +50,6 @@ test_quotient!(
 );
 test_tangent_bundle!(
     tangent_bundle_lorentz,
-    Complex<R64>,
     Lorentz<R64>,
-    arb_sl2c().prop_map(|x| Lorentz::new(x)),
-    arb_sl_algebra_2c(),
-    arb_vec::<2>().prop_map(|x| Complex::<R64>::from(x))
+    arb_sl2c().prop_map(|x| Lorentz::new(x))
 );

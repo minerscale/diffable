@@ -15,12 +15,5 @@ test_cmonoid!(
     N,
     arb_z().prop_map(|x| N(x.0.abs().try_into().unwrap()))
 );
-test_tangent_bundle!(
-    tangent_bundle_z,
-    _,
-    Z<_>,
-    arb_z(),
-    arb_vec::<1>(),
-    arb_scalar()
-);
+test_tangent_bundle!(tangent_bundle_z, Z<_>, arb_z());
 test_ring!(ring_z, Z<_>, arb_z());

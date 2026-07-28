@@ -47,11 +47,8 @@ test_pseudo_riemannian!(
 );
 test_tangent_bundle!(
     complex_exp_log,
-    R64,
     NonZero<Complex<R64>>,
-    arb_vec::<2>().prop_filter_map("must be nonzero", |x| NonZero::new(Complex::<R64>::from(x))),
-    arb_vec::<2>(),
-    arb_scalar()
+    arb_vec::<2>().prop_filter_map("must be nonzero", |x| NonZero::new(Complex::<R64>::from(x)))
 );
 
 proptest! {

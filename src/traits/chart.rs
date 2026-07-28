@@ -153,41 +153,6 @@ pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
     {
         Self::chart_at(&self.base_point()).check_preservation_of_origin()
     }
-
-    // geodesics are straight lines: exp(tv) lies on the same geodesic as exp(v),
-    // i.e. log(exp(tv)) and log(exp(v)) are parallel in local coords.
-    #[cfg(feature = "testing")]
-    fn check_geodesic_scaling(&self, v: V, t: <V::F as Field>::Fixed) -> bool
-    where
-        V: Form,
-    {
-        let t_as_f = V::F::from_fixed(t);
-
-        if let Some((gv, gtv)) = self.to_global(v).into_option().and_then(|gv| {
-            self.to_global(v * t_as_f)
-                .into_option()
-                .map(|gtv| (gv, gtv))
-        }) {
-            let v_local = match self.to_local(&gv) {
-                Some(x) => x,
-                None => return true,
-            };
-            let tv_local = match self.to_local(&gtv) {
-                Some(x) => x,
-                None => return true,
-            };
-            // Gate: did either geodesic wrap? exp parametrises by arc length, so
-            // ‖log(exp(w))‖ ≤ ‖w‖ always, with equality iff no wrapping. If the
-            // folded coord is shorter than the input, it wrapped — skip.
-            if v_local.self_dot() != v.dot(&v) || tv_local.self_dot() != (v * t_as_f).self_dot() {
-                return true;
-            }
-            let dot = tv_local.dot(&v_local);
-            dot * dot == tv_local.self_dot() * v_local.self_dot()
-        } else {
-            true
-        }
-    }
 }
 
 /// A manifold whose exponential map agrees with its scalar product — a
@@ -309,18 +274,6 @@ pub trait TangentBundle<P: Point, V: Vector>: ExpMap<P, V> {
         let chart = Self::chart_at(&p);
         chart.check_preservation_of_origin() && chart.check_base_point_is_origin()
     }
-}
-
-pub trait PartialSmooth<V: Vector>: Point {
-    /// The exponential map at `self`: sends a tangent vector `v` to the
-    /// point reached by following the geodesic from `self` in direction
-    /// `v` for unit time.
-    fn exp(&self, v: V) -> Option<Self>;
-
-    /// The logarithmic map at `self`: recovers the tangent vector whose
-    /// geodesic reaches `other`, or `None` at the cut locus (e.g. the
-    /// antipode on a sphere).
-    fn log(&self, other: &Self) -> Option<V>;
 }
 
 /// Intrinsic smooth structure on a manifold.

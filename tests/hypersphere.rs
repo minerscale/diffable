@@ -103,78 +103,27 @@ test_pseudo_riemannian!(
 
 test_tangent_bundle!(
     tangent_bundle_sphere0,
-    R64,
     Sphere<_>,
-    arb_sphere0().prop_map(|x| x.to_inner()),
-    arb_vec0(),
-    arb_scalar()
+    arb_sphere0().prop_map(|x| x.to_inner())
 );
 test_tangent_bundle!(
     tangent_bundle_sphere1,
-    R64,
     Sphere<_>,
-    arb_sphere1().prop_map(|x| x.to_inner()),
-    arb_vec1(),
-    arb_scalar()
+    arb_sphere1().prop_map(|x| x.to_inner())
 );
-test_tangent_bundle!(
-    tangent_bundle_sphere2,
-    R64,
-    Sphere<_>,
-    arb_sphere2(),
-    arb_vec2(),
-    arb_scalar()
-);
+test_tangent_bundle!(tangent_bundle_sphere2, Sphere<_>, arb_sphere2());
 test_tangent_bundle!(
     tangent_bundle_sphere3,
-    R64,
     Sphere<_>,
-    arb_sphere3().prop_map(|x| x.to_inner()),
-    arb_vec3(),
-    arb_scalar()
+    arb_sphere3().prop_map(|x| x.to_inner())
 );
-test_tangent_bundle!(
-    tangent_bundle_sphere4,
-    R64,
-    Sphere<_>,
-    arb_sphere4(),
-    arb_vec4(),
-    arb_scalar()
-);
+test_tangent_bundle!(tangent_bundle_sphere4, Sphere<_>, arb_sphere4());
 
 // Sphere as TangentBundle (via blanket LieGroup impl; includes all ExpMap tests)
-test_tangent_bundle!(
-    tangent_bundle_s0,
-    R64,
-    S0<Coords<_, _>>,
-    arb_sphere0(),
-    arb_vec0(),
-    arb_scalar()
-);
-test_tangent_bundle!(
-    tangent_bundle_s1,
-    R64,
-    UnitComplex<Coords<_, _>>,
-    arb_sphere1(),
-    arb_vec1(),
-    arb_scalar()
-);
-test_tangent_bundle!(
-    tangent_bundle_s3,
-    R64,
-    S3<Coords<_, _>>,
-    arb_sphere3(),
-    arb_vec3(),
-    arb_scalar()
-);
-test_tangent_bundle!(
-    tangent_bundle_so3,
-    R64,
-    So3<Coords<_, _>>,
-    arb_so3(),
-    arb_vec3(),
-    arb_scalar()
-);
+test_tangent_bundle!(tangent_bundle_s0, S0<Coords<_, _>>, arb_sphere0());
+test_tangent_bundle!(tangent_bundle_s1, UnitComplex<Coords<_, _>>, arb_sphere1());
+test_tangent_bundle!(tangent_bundle_s3, S3<Coords<_, _>>, arb_sphere3());
+test_tangent_bundle!(tangent_bundle_so3, So3<Coords<_, _>>, arb_so3());
 
 // Lie group axioms
 test_group!(lie_group_s0, S0<_>, arb_sphere0());
@@ -189,14 +138,7 @@ test_quotient!(
     arb_root_of_unity()
 );
 
-test_exp_map!(
-    so3_cover,
-    R64,
-    So3Cover,
-    arb_so3(),
-    arb_vec3(),
-    arb_scalar()
-);
+test_exp_map!(so3_cover, So3Cover, arb_so3());
 
 // ---------------------------------------------------------------------------
 // Bespoke tests: properties specific to these manifolds, not general laws

@@ -8,7 +8,7 @@
 /// Tests that a vector space is a vector space
 #[macro_export]
 macro_rules! test_vector {
-    ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
+    ($mod_name:ident, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
             use $crate::{
@@ -16,14 +16,7 @@ macro_rules! test_vector {
                 traits::{Field, Vector},
             };
 
-            test_tangent_bundle!(
-                tangent_bundle,
-                $scalar,
-                $space,
-                $arb_point,
-                $arb_point,
-                $arb_scalar
-            );
+            test_tangent_bundle!(tangent_bundle, $space, $arb_point);
 
             test_group!(group, $space, $arb_point);
 
@@ -45,7 +38,7 @@ macro_rules! test_vector {
 /// Tests that a space claiming to be a pseudo-Euclidean space is a pseudo-Euclidean space
 #[macro_export]
 macro_rules! test_pseudo_euclidean {
-    ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
+    ($mod_name:ident, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
             use $crate::{
@@ -53,7 +46,7 @@ macro_rules! test_pseudo_euclidean {
                 test_vector,
             };
 
-            test_vector!(vector, $scalar, $space, $arb_point, $arb_scalar);
+            test_vector!(vector, $space, $arb_point, $arb_scalar);
             test_interval!(interval, $space, $arb_point);
             test_pseudo_riemannian!(riemannian, $space, $arb_point, $arb_point);
             test_sesquilinear!(sesquilinear, $space, $arb_point, $arb_scalar);
@@ -65,14 +58,14 @@ macro_rules! test_pseudo_euclidean {
 /// Tests that a space claiming to be a euclidean space is a euclidean space
 #[macro_export]
 macro_rules! test_euclidean {
-    ($mod_name:ident, $scalar:ty, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
+    ($mod_name:ident, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
         mod $mod_name {
             use super::*;
             use $crate::{
                 test_inner_product, test_metric, test_pseudo_euclidean, traits::Euclidean,
             };
 
-            test_pseudo_euclidean!(pseudo_euclidean, $scalar, $space, $arb_point, $arb_scalar);
+            test_pseudo_euclidean!(pseudo_euclidean, $space, $arb_point, $arb_scalar);
             test_inner_product!(inner_product, $space, $arb_point, $arb_scalar);
             test_metric!(metric, $space, $arb_point);
 
@@ -105,17 +98,33 @@ macro_rules! test_chart {
     };
 }
 
-/// Tests the ExpMap invariants: preservation of origin, geodesic symmetry,
-/// geodesic scaling, and first-order isometry. The chart is constructed
-/// via chart_at on a generated base point.
+/// Tests the universally observable `ExpMap` laws.
+///
+/// This macro checks chart coverage and the origin/centring invariants. It does
+/// not test that radial lines in the tangent space are mapped to geodesics with
+/// the correct affine scaling, although that law remains part of the contract
+/// of [`ExpMap`].
+///
+/// Testing that law through the generic `ExpMap` interface requires knowing
+/// that the sampled tangent vectors lie within an appropriate injectivity
+/// domain, or independently observing the resulting geodesic. The interface
+/// provides neither certificate. Earlier tests attempted to infer this from
+/// the quadratic form, but that inference is not valid for every `ExpMap` and
+/// can reject correct implementations.
+///
+/// Implementations should therefore test the geodesic-scaling law separately
+/// whenever they can generate tangent vectors with the necessary
+/// implementation-specific guarantees.
+///
+/// [`ExpMap`]: crate::traits::ExpMap
 #[macro_export]
 macro_rules! test_exp_map {
-    ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr, $arb_scalar:expr) => {
+    ($mod_name:ident, $chart:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
             use $crate::{
                 test_chart,
-                traits::{Chart, ExpMap, Field},
+                traits::{Chart, ExpMap},
             };
 
             // inherit all Chart tests
@@ -138,12 +147,6 @@ macro_rules! test_exp_map {
                 fn base_point_is_origin(p in $arb_point) {
                     let chart = <$chart>::chart_at(&p);
                     prop_assert!(chart.check_base_point_is_origin());
-                }
-                
-                #[test]
-                fn geodesic_scaling(p in $arb_point, v in $arb_vec, t in $arb_scalar) {
-                    let chart = <$chart>::chart_at(&p);
-                    prop_assert!(chart.check_geodesic_scaling(v, t.to_fixed()));
                 }
             }
         }
@@ -172,13 +175,13 @@ macro_rules! test_pseudo_riemannian {
 /// Tests the TangentBundle invariant on top of all ExpMap invariants.
 #[macro_export]
 macro_rules! test_tangent_bundle {
-    ($mod_name:ident, $scalar:ty, $chart:ty, $arb_point:expr, $arb_vec:expr, $arb_scalar: expr) => {
+    ($mod_name:ident, $chart:ty, $arb_point:expr) => {
         mod $mod_name {
             use super::*;
             use $crate::{test_exp_map, traits::TangentBundle};
 
             // inherit all ExpMap tests
-            test_exp_map!(exp_map, $scalar, $chart, $arb_point, $arb_vec, $arb_scalar);
+            test_exp_map!(exp_map, $chart, $arb_point);
 
             proptest! {
                 // The TangentFibre invariant: chart_at(&p).to_global(zero) == p
