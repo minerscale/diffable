@@ -9,7 +9,10 @@ use diffable::{
     epsilon_metric::R64,
     flat::{KleinBottle, KleinBottleCover, MyopicTorus, MyopicTorusCover, S1, Torus, TorusCover},
     group_presentation, test_pseudo_riemannian, test_quotient, test_tangent_bundle,
-    traits::{Chart, GroupPresentation, InnerProduct, NerveComplex, NerveComplexParameters, Nodes},
+    traits::{
+        Abelianisation, Chart, GroupPresentation, InnerProduct, NerveComplex,
+        NerveComplexParameters, Nodes,
+    },
 };
 
 use proptest::prelude::*;
@@ -148,4 +151,31 @@ proptest! {
         prop_assert!(certificate.is_global(), "not certified as global minimum {certificate:?}");
         prop_assert_eq!(R64(length), R64(expected_distance));
     }
+}
+
+#[test]
+fn invariant_factor_reporting_preserves_generator_images() {
+    // ℤ² / ⟨(2, 0), (0, 3)⟩ ≅ ℤ/2 ⊕ ℤ/3 ≅ ℤ/6.
+    let abel = Abelianisation::from_relations(2, vec![vec![2, 0], vec![0, 3]]);
+
+    let zero = abel.identity();
+
+    let a = abel.extend(&zero, Some((0, false)));
+    let b = abel.extend(&zero, Some((1, false)));
+
+    // Neither original generator is zero.
+    assert_ne!(a, zero);
+    assert_ne!(b, zero);
+
+    // The first generator has order two.
+    let two_a = abel.extend(&a, Some((0, false)));
+    assert_eq!(two_a, zero);
+
+    // The second generator has order three.
+    let two_b = abel.extend(&b, Some((1, false)));
+    let three_b = abel.extend(&two_b, Some((1, false)));
+    assert_eq!(three_b, zero);
+
+    // Public reporting remains canonical.
+    assert_eq!(abel.torsion(), vec![6]);
 }

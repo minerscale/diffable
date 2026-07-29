@@ -121,7 +121,7 @@ impl<V: Euclidean> Sphere<V> {
     }
 
     fn is_identity(&self) -> bool {
-        self.real.is_zero() && self.imag.is_zero()
+        self.real.is_one() && self.imag.is_zero()
     }
 
     pub fn new(real: V::F, imag: V) -> Self {

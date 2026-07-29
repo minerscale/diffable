@@ -836,12 +836,18 @@ pub struct RootOfUnityPrimitive<F: Field, const N: usize>(RootOfUnity<F, N>);
 
 impl<F: Field, const N: usize> RootOfUnityPrimitive<F, N> {
     pub fn new(x: F) -> Option<Self> {
-        (1..N)
-            .try_fold(x, |root, _| {
+        const { assert!(N != 0) }
+
+        (0..N)
+            .try_fold(F::one(), |root, n| {
                 let power = root * x;
-                (power != F::one()).then_some(power)
+                match n {
+                    x if x == N - 1 => power == F::one(),
+                    _ => power != F::one(),
+                }
+                .then_some(power)
             })
-            .map(|x| Self(RootOfUnity(x)))
+            .map(|_| Self(RootOfUnity(x)))
     }
 
     pub fn inner(&self) -> RootOfUnity<F, N> {
@@ -870,6 +876,7 @@ pub struct RootOfUnity<F: Field, const N: usize>(F);
 
 impl<F: Field, const N: usize> One for RootOfUnity<F, N> {
     fn one() -> Self {
+        const { assert!(N != 0) }
         // One is always a root of unity
         Self(F::one())
     }
@@ -900,6 +907,7 @@ impl_group_via_mul!(RootOfUnity<F, N>, F: Field, const N: usize);
 
 impl<V: Vector, const N: usize> LieGroup<V> for RootOfUnity<V::F, N> {
     fn identity_exp(_: V) -> Self {
+        const { assert!(N != 0) }
         Self::one()
     }
 
@@ -910,6 +918,7 @@ impl<V: Vector, const N: usize> LieGroup<V> for RootOfUnity<V::F, N> {
 
 impl<F: Field, const N: usize> RootOfUnity<F, N> {
     pub fn new(x: F) -> Option<Self> {
+        const { assert!(N != 0) }
         ((1..N).fold(x, |acc, _| acc * x).is_one()).then_some(Self(x))
     }
 

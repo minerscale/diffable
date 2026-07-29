@@ -35,8 +35,8 @@ test_cfield!(
 );
 test_metric!(
     symmetrized_complex_metric,
-    Complex<R64>,
-    arb_vec::<2>().prop_map(|x| Complex::<R64>::from(x))
+    Symmetrized<Complex<R64>>,
+    arb_vec::<2>().prop_map(|x| Symmetrized(Complex::<R64>::from(x)))
 );
 
 test_pseudo_riemannian!(

@@ -79,7 +79,8 @@ pub struct NerveTopology {
 }
 
 /// The abelianisation `G^ab = G/[G,G]` of a finitely presented group,
-/// together with the change of basis that puts it in canonical form.
+/// together with diagonal coordinates for the images of its original
+/// generators.
 ///
 /// By Hurewicz this is `H₁(M; ℤ)` when `G = π₁(M)`, which is the point: homology
 /// is computable and homotopy is not. Two edge-paths whose images here differ are
@@ -103,13 +104,18 @@ pub struct NerveTopology {
 /// which pairs are worth the geometric check. It never prunes alone.
 #[derive(Debug, Clone)]
 pub struct Abelianisation {
-    /// Coordinates with `dᵢ ≠ 1`, in order. The others are identically zero.
+    /// Live coordinates in the diagonal decomposition paired with
+    /// `row_transform`.
     live: Vec<usize>,
-    /// `invariants[live[i]]`, hoisted. `0` for free, `> 1` for torsion.
+
+    /// Diagonal invariants for the live key coordinates.
+    /// `0` for free coordinates and `> 1` for torsion.
     live_invariants: Vec<i64>,
-    /// `gen_images[g]` restricted to the live coordinates. Length `live.len()`.
+
+    /// Images of the original generators in the live diagonal coordinates.
     gen_images: Vec<Vec<i64>>,
-    /// Kept for reporting only.
+
+    /// Canonical invariant factors, kept for reporting only.
     invariants: Vec<i64>,
 }
 
@@ -128,26 +134,43 @@ impl Abelianisation {
             .collect();
         diagonalise(&mut mat, &mut row_transform);
 
-        let mut invariants: Vec<i64> = (0..n)
+        // These invariants describe the actual diagonalisation
+        //
+        //     D = R · A · C,
+        //
+        // so `row_transform` maps original generators into these coordinates.
+        // They need not yet form a divisibility chain.
+        let diagonal_invariants: Vec<i64> = (0..n)
             .map(|i| if i < m { mat[i][i].abs() } else { 0 })
             .collect();
-        make_divisibility_chain(&mut invariants);
 
-        let live: Vec<usize> = (0..n).filter(|&i| invariants[i] != 1).collect();
-        let live_invariants: Vec<i64> = live.iter().map(|&i| invariants[i]).collect();
+        // All key coordinates must use the same diagonal decomposition as
+        // `row_transform`.
+        let live: Vec<usize> = (0..n).filter(|&i| diagonal_invariants[i] != 1).collect();
 
-        // `R·e_g`, restricted to the live coordinates and reduced.
+        let live_invariants: Vec<i64> = live.iter().map(|&i| diagonal_invariants[i]).collect();
+
+        // `R · e_g`, restricted to the live diagonal coordinates and reduced
+        // modulo the corresponding diagonal invariant.
         let gen_images: Vec<Vec<i64>> = (0..n)
             .map(|g| {
                 let mut w: Vec<i64> = live.iter().map(|&i| row_transform[i][g]).collect();
+
                 for (wi, &d) in w.iter_mut().zip(&live_invariants) {
                     if d != 0 {
                         *wi = wi.rem_euclid(d);
                     }
                 }
+
                 w
             })
             .collect();
+
+        // The divisibility chain describes an isomorphic canonical
+        // decomposition, but no accompanying coordinate transformation is
+        // calculated. It is therefore used only for reporting.
+        let mut invariants = diagonal_invariants;
+        make_divisibility_chain(&mut invariants);
 
         Self {
             live,
@@ -276,13 +299,16 @@ fn diagonalise(mat: &mut [Vec<i64>], row_transform: &mut [Vec<i64>]) {
     }
 }
 
-/// Impose `d₁ | d₂ | … | d_r` on the diagonal, leaving zeros (free coordinates)
-/// at the end.
+/// Impose `d₁ | d₂ | … | d_r` on the reported invariants, leaving zeros
+/// (free coordinates) at the end.
 ///
-/// Only the *multiset* of divisors changes, never the group: `ℤ/2 ⊕ ℤ/3 ≅ ℤ/6`.
-/// The transform is not tracked, because [`Abelianisation::key`] reduces each
-/// coordinate independently and does not care which order the divisors arrive in
-/// — the chain exists so `torsion()` reports something canonical.
+/// This preserves the abstract isomorphism class but does not preserve
+/// coordinates: for example, `ℤ/2 ⊕ ℤ/3 ≅ ℤ/6`, but converting between
+/// those descriptions requires an additional change of basis.
+///
+/// Consequently this function must only be applied to a reporting copy.
+/// Invariants paired with `row_transform` or `gen_images` must remain in
+/// their original diagonal decomposition.
 fn make_divisibility_chain(inv: &mut [i64]) {
     let r = inv.iter().filter(|&&d| d != 0).count();
     let nonzero = &mut inv[..r];
@@ -903,10 +929,9 @@ impl<
 /// # Implementing
 /// Nodes should be spaced such that every point lies within the injectivity
 /// domain of at least one node. For principled node spacing, use the Rauch
-/// bound `π / √κ_max` (computable via [`TangentBundle::max_sectional_curvature`])
-/// as the cover radius at each node — this guarantees the radius stays
-/// within the injectivity domain. Sampling density must additionally satisfy
-/// `d < 2π / √κ_max` (twice the Rauch bound) to ensure adjacent nodes
+/// bound `π / √κ_max` as the cover radius at each node — this guarantees the
+/// radius stays within the injectivity domain. Sampling density must additionally
+/// satisfy `d < 2π / √κ_max` (twice the Rauch bound) to ensure adjacent nodes
 /// overlap and the nerve faithfully captures the topology. Near high-curvature
 /// regions, both the radius and the required sampling density shrink
 /// proportionally — the cover automatically adapts to the geometry.
@@ -2274,19 +2299,20 @@ pub trait NerveComplex<
             // Without `Φ` there is no covering radius, hence no argument that a saddle
             // needs room, hence nothing may be pruned.
             if let Some(r) = rho {
-                let Some(ap) = Self::smoothed_prefix(p, &nodes) else {
-                    continue; // charts unusable here; decline the prune and the expansion
-                };
-                let slot = visited.entry((u as u32, key)).or_default();
-                if slot
-                    .iter()
-                    .any(|old| Self::provably_same_basin(old, &ap, r))
-                {
-                    continue; // same class, same valley, longer: dead
-                }
-                // Cap is a memory guard. Failing to store is always sound.
-                if slot.len() < Self::max_basins_per_class() {
-                    slot.push(ap);
+                if let Some(ap) = Self::smoothed_prefix(p, &nodes) {
+                    let slot = visited.entry((u as u32, key)).or_default();
+
+                    if slot
+                        .iter()
+                        .any(|old| Self::provably_same_basin(old, &ap, r))
+                    {
+                        continue; // same class, same valley, longer: dead
+                    }
+
+                    // Cap is a memory guard. Failing to store is always sound.
+                    if slot.len() < Self::max_basins_per_class() {
+                        slot.push(ap);
+                    }
                 }
             }
 

@@ -8,7 +8,7 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient, impl_vector_ops,
     matrix::{Matrix, MatrixExponential},
     traits::{
-        CField, Dual, Form, LieGroup, Nondegenerate, Quotient, Real, Right, RootOfUnity,
+        CField, Dual, Form, LieGroup, NatZero, Nondegenerate, Quotient, Real, Right, RootOfUnity,
         Sesquilinear, Vector,
     },
 };
@@ -162,7 +162,7 @@ impl<V: Vector<F: CField>, const N: usize> Inv for Sl<V, N> {
 
 impl_group_via_mul!(Sl<V, N>, V: Vector<F: CField>, const N: usize);
 
-impl<F: CField> LieGroup<SlAlgebra<F, 2, 3>> for Sl<Coords<F, 2>, 2>
+impl<F: CField<Characteristic = NatZero>> LieGroup<SlAlgebra<F, 2, 3>> for Sl<Coords<F, 2>, 2>
 where
     Matrix<Coords<F, 2>, 2>: MatrixExponential,
 {
@@ -186,35 +186,53 @@ where
 /// implement the (normalised) Killing form `⟨X, Y⟩ = tr(XY)`,
 /// with the Cartan block carrying the `A_{N−1}` Cartan matrix and its inverse.
 #[derive(Debug, Copy, Clone)]
-pub struct SlAlgebra<F: CField, const N: usize, const D: usize>(Coords<F, D>);
+pub struct SlAlgebra<F: CField<Characteristic = NatZero>, const N: usize, const D: usize>(
+    Coords<F, D>,
+);
 
-impl<F: CField, const N: usize, const D: usize> PartialEq for SlAlgebra<F, N, D> {
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> PartialEq
+    for SlAlgebra<F, N, D>
+{
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl<F: CField, const N: usize, const D: usize> From<Coords<F, D>> for SlAlgebra<F, N, D> {
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> From<Coords<F, D>>
+    for SlAlgebra<F, N, D>
+{
     fn from(value: Coords<F, D>) -> Self {
+        const {
+            assert!(D == N * N - 1);
+        }
         Self(value)
     }
 }
 
-impl<F: CField, const N: usize, const D: usize> From<[F; D]> for SlAlgebra<F, N, D> {
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> From<[F; D]>
+    for SlAlgebra<F, N, D>
+{
     fn from(value: [F; D]) -> Self {
+        const {
+            assert!(D == N * N - 1);
+        }
         Coords::from(value).into()
     }
 }
 
-impl<F: CField, const N: usize, const D: usize> From<SlAlgebra<F, N, D>> for [F; D] {
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> From<SlAlgebra<F, N, D>>
+    for [F; D]
+{
     fn from(value: SlAlgebra<F, N, D>) -> Self {
         value.0.into()
     }
 }
 
-impl_vector_ops!(SlAlgebra<F, N, D>, F: CField, const N: usize, const D: usize);
+impl_vector_ops!(SlAlgebra<F, N, D>, F: CField<Characteristic = NatZero>, const N: usize, const D: usize);
 
-impl<F: CField, const N: usize, const D: usize> Index<usize> for SlAlgebra<F, N, D> {
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> Index<usize>
+    for SlAlgebra<F, N, D>
+{
     type Output = F;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -222,13 +240,15 @@ impl<F: CField, const N: usize, const D: usize> Index<usize> for SlAlgebra<F, N,
     }
 }
 
-impl<F: CField, const N: usize, const D: usize> IndexMut<usize> for SlAlgebra<F, N, D> {
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> IndexMut<usize>
+    for SlAlgebra<F, N, D>
+{
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-impl<F: CField, const N: usize, const D: usize> SlAlgebra<F, N, D> {
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> SlAlgebra<F, N, D> {
     fn matrix(&self) -> Matrix<Coords<F, N>, N> {
         let mut out = [[F::zero(); N]; N];
 
@@ -258,6 +278,9 @@ impl<F: CField, const N: usize, const D: usize> SlAlgebra<F, N, D> {
     }
 
     fn from_matrix(m: Matrix<Coords<F, N>, N>) -> Self {
+        const {
+            assert!(D == N * N - 1);
+        }
         let mut out = [F::zero(); D];
 
         let mut index = 0;
@@ -293,7 +316,9 @@ fn offdiag_index<const N: usize>(i: usize, j: usize) -> usize {
     before + if j < i { j } else { j - 1 }
 }
 
-impl<F: CField, const N: usize, const D: usize> Form for SlAlgebra<F, N, D> {
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> Form
+    for SlAlgebra<F, N, D>
+{
     fn flat(&self) -> Dual<Self> {
         let mut out = *self;
 
@@ -331,7 +356,9 @@ impl<F: CField, const N: usize, const D: usize> Form for SlAlgebra<F, N, D> {
     }
 }
 
-impl<F: CField, const N: usize, const D: usize> Nondegenerate for SlAlgebra<F, N, D> {
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> Nondegenerate
+    for SlAlgebra<F, N, D>
+{
     fn sharp(v: Dual<Self>) -> Self {
         let mut out = Dual::to_raw(v);
 
@@ -367,9 +394,14 @@ impl<F: CField, const N: usize, const D: usize> Nondegenerate for SlAlgebra<F, N
     }
 }
 
-impl<F: CField<Fixed = F>, const N: usize, const D: usize> Sesquilinear for SlAlgebra<F, N, D> {}
+impl<F: CField<Fixed = F, Characteristic = NatZero>, const N: usize, const D: usize> Sesquilinear
+    for SlAlgebra<F, N, D>
+{
+}
 
-impl<F: CField, const N: usize, const D: usize> Vector for SlAlgebra<F, N, D> {
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> Vector
+    for SlAlgebra<F, N, D>
+{
     type F = F;
     type Hand = Right;
 
@@ -385,6 +417,9 @@ impl<F: CField, const N: usize, const D: usize> Vector for SlAlgebra<F, N, D> {
     }
 
     fn from_fn(f: impl Fn(usize) -> Self::F) -> Self {
+        const {
+            assert!(D == N * N - 1);
+        }
         Self(Coords::<F, D>::from_fn(f))
     }
 }

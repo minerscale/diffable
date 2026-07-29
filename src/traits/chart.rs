@@ -1,8 +1,12 @@
-use crate::traits::{Bilinear, DivRing, Euclidean, Field, Form, Interval, Real, Vector};
+#[cfg(feature = "testing")]
+use crate::traits::Form;
+
+#[cfg(feature = "testing")]
+use num_traits::Zero;
+
+use crate::traits::{Bilinear, Euclidean, Field, Interval, Real, Vector};
 
 use super::Point;
-use itertools::Itertools;
-use num_traits::{One, Zero};
 
 mod sealed {
     pub trait Sealed<T> {}
@@ -104,7 +108,7 @@ pub trait Chart<P: Point, V: Vector>: Sized {
 /// straight lines through the origin in R^N map to geodesics on M, and
 /// that distances from the origin equal arc lengths along those geodesics.
 ///
-/// Additionally, you certify that Self::chart_at(&self.base_point()) == self
+/// Additionally, you certify that `Self::chart_at(&self.base_point()) == self`
 pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
     fn base_point(&self) -> P {
         self.to_global(V::zero()).into_option().unwrap()
@@ -217,54 +221,6 @@ impl<V: Bilinear<F: Real>, E: ExpMap<Self, V> + Interval<R = V::F>> PseudoRieman
 ///
 /// Use the `test_tangent_bundle!` macro to verify this invariant.
 pub trait TangentBundle<P: Point, V: Vector>: ExpMap<P, V> {
-    fn sectional_curvature(&self, v: V, w: V, epsilon: V::F) -> Option<V::F>
-    where
-        V: Form,
-    {
-        // Denominator: signed Gram determinant of the 2-plane span(v, w).
-        //   G = Q(v)·Q(w) − ⟨v,w⟩²
-        // Zero ⟺ the plane is degenerate (contains a null direction, or v,w
-        // dependent). Sectional curvature is undefined there — return None.
-        let qv = v.self_dot();
-        let qw = w.self_dot();
-        let vw = v.dot(&w);
-        let gram = qv * qw - vw * vw;
-        if gram == V::F::zero() {
-            return None;
-        }
-
-        // Deviation vector: how the exp-image of the perturbed direction differs
-        // from the flat prediction, pulled back to the tangent space.
-        //   δ = log_p( exp_p(v + ε w) ) − v
-        let perturbed = self.to_global(v + w * epsilon).into_option()?;
-        let delta = self.to_local(&perturbed)? - v; // None if outside injectivity domain
-
-        // Second-order metric defect. In flat space Q(δ) = ε²·Q(w) exactly;
-        // curvature is the O(ε⁴) correction:
-        //   Q(δ) = ε²·Q(w) − (1/3)·ε⁴·⟨R(w,v)v,w⟩ + O(ε⁵)
-        // Solve for the numerator ⟨R(w,v)v,w⟩.
-        let q_delta = delta.self_dot();
-        let eps2 = epsilon * epsilon;
-        let three = V::F::one() + V::F::one() + V::F::one();
-        let numerator = three * (eps2 * qw - q_delta).div(eps2 * eps2);
-
-        Some(numerator.div(gram))
-    }
-
-    fn max_sectional_curvature(&self, epsilon: V::F) -> Option<V::F>
-    where
-        V: Euclidean,
-    {
-        (0..V::N)
-            .array_combinations::<2>()
-            .filter_map(|[i, j]| {
-                let v = V::from_fn(|k| if k == i { V::F::one() } else { V::F::zero() });
-                let w = V::from_fn(|k| if k == j { V::F::one() } else { V::F::zero() });
-                self.sectional_curvature(v, w, epsilon)
-            })
-            .reduce(|max, k| if k > max { k } else { max })
-    }
-
     // p is the point on the manifold which is the base point.
     #[cfg(feature = "testing")]
     fn check_universal_centring(p: P) -> bool

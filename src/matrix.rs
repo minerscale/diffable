@@ -175,14 +175,17 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         from_fn(|i| from_fn(|j| self.0[i][j]))
     }
 
-    /// Solves the abstract composition equation `A ∘ X = B` by Gauss–Jordan
-    /// elimination.
+    /// Solves the abstract composition equation `A ∘ X = B` by pivoted
+    /// Gauss–Jordan elimination.
     ///
     /// In the raw representation this is `AX = B` for right-handed matrices
     /// and `XA = B` for left-handed matrices. Virtual rows are therefore
     /// physical rows on the right and physical columns on the left.
     ///
-    /// Assumes A is invertible.
+    /// At each step, the first remaining nonzero pivot is selected. This is
+    /// purely algebraic and requires no metric or ordering.
+    ///
+    /// Assumes `A` is invertible.
     pub fn solve(&self, rhs: Self) -> Self {
         let get = |matrix: &[[V::F; N]; N], i: usize, j: usize| match V::Hand::H {
             Hand::Right => matrix[i][j],
@@ -203,20 +206,33 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         let mut out = rhs.0;
 
         for i in 0..N {
+            // Choose any nonzero pivot from the remaining virtual rows.
+            let pivot_row = (i..N)
+                .find(|&k| get(&mat, k, i) != V::F::zero())
+                .expect("Matrix is singular during Gauss-Jordan elimination.");
+
+            // Swap virtual rows in both sides of the equation. For a left-handed
+            // matrix these are physically columns.
+            if pivot_row != i {
+                for j in 0..N {
+                    let a = get(&mat, i, j);
+                    let b = get(&mat, pivot_row, j);
+                    set(&mut mat, i, j, b);
+                    set(&mut mat, pivot_row, j, a);
+
+                    let a = get(&out, i, j);
+                    let b = get(&out, pivot_row, j);
+                    set(&mut out, i, j, b);
+                    set(&mut out, pivot_row, j, a);
+                }
+            }
+
             let pivot = get(&mat, i, i);
-
-            assert_ne!(
-                pivot,
-                V::F::zero(),
-                "Matrix is singular during Gauss-Jordan elimination."
-            );
-
             let pivot_inv = <V::F as DivRing>::Mul::inv(NonZero::new(pivot).unwrap().into())
                 .into()
                 .0;
 
-            // Normalize the pivot row—or, physically, the pivot column
-            // for a left-handed matrix.
+            // Normalize the virtual pivot row.
             for j in 0..N {
                 let mat_value = mul(pivot_inv, get(&mat, i, j));
                 let out_value = mul(pivot_inv, get(&out, i, j));
@@ -225,7 +241,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
                 set(&mut out, i, j, out_value);
             }
 
-            // Eliminate this coordinate from every other row/column.
+            // Eliminate this coordinate from every other virtual row.
             for k in 0..N {
                 if k == i {
                     continue;
@@ -247,12 +263,11 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
         Self::new(out)
     }
 
-    /// Inverts the matrix by Gauss–Jordan elimination.
+    /// Inverts the matrix by pivoted Gauss–Jordan elimination.
     ///
-    /// Assumes invertibility: it `panic!`s on a zero pivot (a singular matrix).
-    /// For an [`Sl`](crate::spacetime::Sl) element that panic is unreachable —
-    /// determinant one is never singular — so this is a total operation on the
-    /// special linear group, which is where it's used.
+    /// Assumes invertibility and panics if the matrix is singular. For an
+    /// [`Sl`](crate::spacetime::Sl) element that panic is unreachable because
+    /// determinant one implies invertibility.
     pub fn inverse(&self) -> Self {
         self.solve(Matrix::one())
     }
