@@ -1392,7 +1392,7 @@ pub trait NerveComplex<
         };
         let chart = T::chart_at(&ap.pts[lo]);
         let v = chart.to_local(&ap.pts[hi])?;
-        Some(chart.to_global(v * s).into_option()?)
+        chart.to_global(v * s).into_option()
     }
 
     /// Sample spacing must be finer than the covering radius: a bump narrower
@@ -1573,7 +1573,7 @@ pub trait NerveComplex<
     fn midpoint(a: &P, b: &P) -> Option<P> {
         let ca = T::chart_at(a);
         if let Some(v) = ca.to_local(b) {
-            return Some(ca.to_global(v * half()).into_option()?);
+            return ca.to_global(v * half()).into_option();
         }
         let cb = T::chart_at(b);
         cb.to_local(a)
@@ -2298,21 +2298,21 @@ pub trait NerveComplex<
             //
             // Without `Φ` there is no covering radius, hence no argument that a saddle
             // needs room, hence nothing may be pruned.
-            if let Some(r) = rho {
-                if let Some(ap) = Self::smoothed_prefix(p, &nodes) {
-                    let slot = visited.entry((u as u32, key)).or_default();
+            if let Some(r) = rho
+                && let Some(ap) = Self::smoothed_prefix(p, &nodes)
+            {
+                let slot = visited.entry((u as u32, key)).or_default();
 
-                    if slot
-                        .iter()
-                        .any(|old| Self::provably_same_basin(old, &ap, r))
-                    {
-                        continue; // same class, same valley, longer: dead
-                    }
+                if slot
+                    .iter()
+                    .any(|old| Self::provably_same_basin(old, &ap, r))
+                {
+                    continue; // same class, same valley, longer: dead
+                }
 
-                    // Cap is a memory guard. Failing to store is always sound.
-                    if slot.len() < Self::max_basins_per_class() {
-                        slot.push(ap);
-                    }
+                // Cap is a memory guard. Failing to store is always sound.
+                if slot.len() < Self::max_basins_per_class() {
+                    slot.push(ap);
                 }
             }
 

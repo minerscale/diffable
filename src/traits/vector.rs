@@ -335,9 +335,9 @@ macro_rules! impl_vector_ops {
             type Output = Self;
 
             fn mul(self, scalar: <$target as Vector>::F) -> Self::Output {
-                Self::from_fn(|i| match <<$target as Vector>::Hand as crate::traits::Handedness>::H {
-                    crate::traits::Hand::Left => scalar * self[i],
-                    crate::traits::Hand::Right => self[i] * scalar,
+                Self::from_fn(|i| match <<$target as Vector>::Hand as $crate::traits::Handedness>::H {
+                    $crate::traits::Hand::Left => scalar * self[i],
+                    $crate::traits::Hand::Right => self[i] * scalar,
                 })
             }
         }
