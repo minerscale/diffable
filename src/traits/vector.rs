@@ -5,7 +5,7 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 use super::Chart;
 
 use super::{Field, LieGroup, Metric, Real};
-use crate::{impl_group_via_add, impl_vector_ops};
+use crate::{impl_group_via_add, impl_vector_ops, traits::Point};
 
 /// A finite-dimensional Euclidean space.
 ///
@@ -54,7 +54,7 @@ pub trait Euclidean: Bilinear<F: Real> + InnerProduct {
     fn check_pythagorean(a: &Self, b: &Self) -> bool {
         let dist_sq = a.distance(b);
         let dist_sq = dist_sq * dist_sq;
-        let diff = *a - *b;
+        let diff = a.clone() - b.clone();
         let norm_sq = diff.norm_squared();
         dist_sq == norm_sq
     }
@@ -103,7 +103,7 @@ impl<V: Vector> Vector for Dual<V> {
     type F = V::F;
     type Hand = <V::Hand as Handedness>::Opposite;
 
-    type Array<T: std::fmt::Debug + Copy> = V::Array<T>;
+    type Array<T: Point> = V::Array<T>;
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(V::from_fn(f))
@@ -172,8 +172,8 @@ impl Handedness for Right {
     const H: Hand = Hand::Right;
 }
 
-pub trait Array<T>:
-    Sized + std::fmt::Debug + Copy + Index<usize, Output = T> + IndexMut<usize> + IntoIterator<Item = T>
+pub trait Array<T: Point>:
+    Point + Sized + Index<usize, Output = T> + IndexMut<usize> + IntoIterator<Item = T>
 {
     const N: usize;
 
@@ -193,7 +193,7 @@ pub trait Array<T>:
     fn from_fn(f: impl FnMut(usize) -> T) -> Self;
 }
 
-impl<T: Copy + std::fmt::Debug, const N: usize> Array<T> for [T; N] {
+impl<T: Point, const N: usize> Array<T> for [T; N] {
     const N: usize = N;
 
     type Iter<'a>
@@ -255,8 +255,7 @@ pub trait Vector:
     + Zero
     + Index<usize, Output = Self::F>
     + IndexMut<usize>
-    + Copy
-    + std::fmt::Debug
+    + Point
     + AsRef<Self::Array<Self::F>>
     + AsMut<Self::Array<Self::F>>
 {
@@ -266,7 +265,7 @@ pub trait Vector:
     /// The dimension of the space — the number of coordinates.
     const N: usize = Self::Array::<Self::F>::N;
 
-    type Array<T: std::fmt::Debug + Copy>: Array<T>;
+    type Array<T: Point>: Array<T>;
 
     /// The side on which `F` acts. [`Dual<Self>`](Dual) elects the opposite
     /// hand, and `Dual<Dual<Self>>` therefore restores this one.
@@ -352,7 +351,7 @@ pub trait Vector:
         let t = Self::F::from_fixed(t);
         let chart = Self::chart_at(p);
         match (
-            chart.to_local(&chart.to_global(v * t)),
+            chart.to_local(&chart.to_global(v.clone() * t)),
             chart.to_local(&chart.to_global(v)),
         ) {
             (Some(tv_local), Some(v_local)) => tv_local == v_local * t,
@@ -443,8 +442,8 @@ pub trait Form: Vector {
     // ((a+c) - (b+c) = a - b), so the form agrees exactly.
     #[cfg(feature = "testing")]
     fn check_translation_invariance(a: &Self, b: &Self, c: &Self) -> bool {
-        let diff = *a - *b;
-        let diff_translated = (*a + *c) - (*b + *c);
+        let diff = a.clone() - b.clone();
+        let diff_translated = (a.clone() + c.clone()) - (b.clone() + c.clone());
         diff.self_dot() == diff_translated.self_dot()
     }
 }
@@ -466,13 +465,13 @@ pub trait Nondegenerate: Form {
     {
         let flat = a.flat();
 
-        Self::sharp(flat) == *a && Dual::<Self>::sharp(flat.flat()) == flat
+        Self::sharp(flat.clone()) == *a && Dual::<Self>::sharp(flat.flat()) == flat
     }
 }
 
 impl<V: Nondegenerate> Form for Dual<V> {
     fn flat(&self) -> Dual<Self> {
-        Dual(Dual(V::sharp(*self)))
+        Dual(Dual(V::sharp(self.clone())))
     }
 }
 
@@ -492,7 +491,7 @@ impl<V: Vector> LieGroup<V> for V {
     }
 
     fn identity_log(p: &Self) -> Option<V> {
-        Some(*p)
+        Some(p.clone())
     }
 }
 
@@ -571,7 +570,7 @@ pub trait Sesquilinear: Form {
 
     #[cfg(feature = "testing")]
     fn check_additivity(a: Self, b: Self, c: Self) -> bool {
-        (a + b).dot(&c) == a.dot(&c) + b.dot(&c)
+        (a.clone() + b.clone()).dot(&c) == a.dot(&c) + b.dot(&c)
     }
 
     #[cfg(feature = "testing")]
@@ -624,7 +623,7 @@ where
 
     #[cfg(feature = "testing")]
     fn check_metric_compatibility(a: Self, b: Self) -> bool {
-        a.sub(b).norm_squared().sqrt() == a.distance(&b)
+        a.clone().sub(b.clone()).norm_squared().sqrt() == a.distance(&b)
     }
 }
 

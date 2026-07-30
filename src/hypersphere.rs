@@ -69,7 +69,7 @@ impl<V: Euclidean> Chart<Sphere<V>, V> for Stereographic<V> {
         } // at north pole
 
         let recip = denom.recip();
-        Some(point.imag * recip)
+        Some(point.imag.clone() * recip)
     }
 
     fn to_global(&self, coord: V) -> Sphere<V> {
@@ -99,7 +99,7 @@ impl<V: Euclidean> Sphere<V> {
         self.real
     }
     pub fn imag(&self) -> V {
-        self.imag
+        self.imag.clone()
     }
 
     fn normalised(self) -> Self {
@@ -133,7 +133,7 @@ impl<V: Euclidean> Sphere<V> {
     fn geodesic_distance(&self, other: &Self) -> V::F {
         let cos_d = self.real * other.real + self.imag.dot(&other.imag);
         let w_real = other.real - cos_d * self.real;
-        let w_imag = other.imag - self.imag * cos_d;
+        let w_imag = other.imag.clone() - self.imag.clone() * cos_d;
         let sin_d = (w_real * w_real + w_imag.norm_squared()).sqrt();
         V::F::atan2(sin_d, cos_d) // θ, stable through the antipode
     }
@@ -160,7 +160,7 @@ impl<V: Euclidean> Smooth<V> for Sphere<V> {
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
 
         // transport `other` into the +e0 identity frame
-        let p = self.transport_to_identity(other.real, other.imag);
+        let p = self.transport_to_identity(other.real, other.imag.clone());
 
         // identity-frame log: invert (cos α, v · sinc α)
         if (p.real + one).abs() < eps {
@@ -224,7 +224,7 @@ impl<V: Euclidean> Sphere<V> {
     fn reflect(&self, s: V::F, x_real: V::F, x_imag: V) -> (V::F, V) {
         let two = V::F::one() + V::F::one();
         let u_real = self.real - s; // = self.real ∓ 1, but s is the FAR pole so no cancellation
-        let u_imag = self.imag;
+        let u_imag = self.imag.clone();
         let u_dot_u = u_real * u_real + u_imag.norm_squared(); // ≥ 2
         let u_dot_x = u_real * x_real + u_imag.dot(&x_imag);
         let c = two * u_dot_x / u_dot_u;
@@ -511,7 +511,7 @@ impl<V: Euclidean> LieGroup<V> for S3<V> {
         let alpha = V::F::atan2(imag_norm, p.0.real);
 
         let sinc_recip = sinc_recip(alpha, eps);
-        Some(p.0.imag * sinc_recip)
+        Some(p.0.imag.clone() * sinc_recip)
     }
 }
 

@@ -845,8 +845,8 @@ pub trait NerveComplexParameters<
                 jnode.as_ref().to_local(&ibase),
             ) {
                 (Some(v_ij), Some(v_ji))
-                    if inode.sdf(&(v_ij * half)) < V::F::zero()
-                        && jnode.sdf(&(v_ji * half)) < V::F::zero() =>
+                    if inode.sdf(&(v_ij.clone() * half)) < V::F::zero()
+                        && jnode.sdf(&(v_ji.clone() * half)) < V::F::zero() =>
                 {
                     Some(j)
                 }

@@ -8,8 +8,8 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient, impl_vector_ops,
     matrix::{Matrix, MatrixExponential},
     traits::{
-        CField, Dual, Form, LieGroup, NatZero, Nondegenerate, Quotient, Real, Right, RootOfUnity,
-        Sesquilinear, Vector,
+        CField, Dual, Form, LieGroup, NatZero, Nondegenerate, Point, Quotient, Real, Right,
+        RootOfUnity, Sesquilinear, Vector,
     },
 };
 
@@ -405,7 +405,7 @@ impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> Vector
     type F = F;
     type Hand = Right;
 
-    type Array<T: Copy + std::fmt::Debug> = [T; D];
+    type Array<T: Point> = [T; D];
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         const {

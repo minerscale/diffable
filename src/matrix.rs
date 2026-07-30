@@ -423,7 +423,7 @@ impl<F: CField + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
     }
 
     pub fn det(&self) -> F {
-        let mut lu = *self;
+        let mut lu = self.clone();
 
         let mut perm: [usize; N] = core::array::from_fn(|i| i);
         let mut odd = false;
@@ -661,34 +661,40 @@ impl<
 
         let fone = F::Fixed::one();
         let half = fone.div(fone + fone);
-        let mut a = *self;
+        let mut a = self.clone();
         for _ in 0..s {
             a = a.scale_fixed(half);
         }
 
-        let a2 = a * a;
-        let a4 = a2 * a2;
-        let a6 = a4 * a2;
+        let a2 = a.clone() * a.clone();
+        let a4 = a2.clone() * a2.clone();
+        let a6 = a4.clone() * a2.clone();
 
         let i = Matrix::one();
 
         let u = a
-            * (a6 * (a6.scale_fixed(b[13]) + a4.scale_fixed(b[11]) + a2.scale_fixed(b[9]))
-                + a6.scale_fixed(b[7])
-                + a4.scale_fixed(b[5])
-                + a2.scale_fixed(b[3])
-                + i.scale_fixed(b[1]));
+            * (a6.clone()
+                * (a6.clone().scale_fixed(b[13])
+                    + a4.clone().scale_fixed(b[11])
+                    + a2.clone().scale_fixed(b[9]))
+                + a6.clone().scale_fixed(b[7])
+                + a4.clone().scale_fixed(b[5])
+                + a2.clone().scale_fixed(b[3])
+                + i.clone().scale_fixed(b[1]));
 
-        let v = a6 * (a6.scale_fixed(b[12]) + a4.scale_fixed(b[10]) + a2.scale_fixed(b[8]))
+        let v = a6.clone()
+            * (a6.clone().scale_fixed(b[12])
+                + a4.clone().scale_fixed(b[10])
+                + a2.clone().scale_fixed(b[8]))
             + a6.scale_fixed(b[6])
             + a4.scale_fixed(b[4])
             + a2.scale_fixed(b[2])
             + i.scale_fixed(b[0]);
 
-        let mut r = (v - u).solve_pivoted(v + u);
+        let mut r = (v.clone() - u.clone()).solve_pivoted(v + u);
 
         for _ in 0..s {
-            r = r * r;
+            r = r.clone() * r;
         }
 
         r
@@ -696,7 +702,7 @@ impl<
 
     fn log(&self) -> Option<Self> {
         let log_radius: F::R = <F::R as NumCast>::from(1.0).unwrap();
-        let x = *self - Matrix::one();
+        let x = self.clone() - Matrix::one();
 
         let norm = x.frobenius_norm();
 
@@ -706,19 +712,21 @@ impl<
 
         let epsilon = F::R::epsilon();
 
-        let mut result = x;
-        let mut term = x;
+        let mut result = x.clone();
+        let mut term = x.clone();
 
         let fone = F::Fixed::one();
         let mut k_as_f = fone + fone;
         for k in 2.. {
-            term = term * x;
+            term = term * x.clone();
 
-            let next = term.scale_fixed((if k % 2 == 0 { -fone } else { fone }).div(k_as_f));
+            let next = term
+                .clone()
+                .scale_fixed((if k % 2 == 0 { -fone } else { fone }).div(k_as_f));
 
             k_as_f = k_as_f + fone;
 
-            result = result + next;
+            result = result + next.clone();
 
             if next
                 .frobenius_norm()

@@ -44,9 +44,9 @@ impl<F: Field, H: Handedness, U: Vector<F = F, Hand = H>, V: Vector<F = F, Hand 
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct DirectSumArray<T, U: Array<T>, V: Array<T>>(U, V, PhantomData<T>);
+pub struct DirectSumArray<T: Point, U: Array<T>, V: Array<T>>(U, V, PhantomData<T>);
 
-impl<T: std::fmt::Debug + Copy, U: Array<T>, V: Array<T>> Array<T> for DirectSumArray<T, U, V> {
+impl<T: Point, U: Array<T>, V: Array<T>> Array<T> for DirectSumArray<T, U, V> {
     const N: usize = U::N + V::N;
 
     type Iter<'a>
@@ -78,7 +78,7 @@ impl<T: std::fmt::Debug + Copy, U: Array<T>, V: Array<T>> Array<T> for DirectSum
     }
 }
 
-impl<T, U: Array<T>, V: Array<T>> Index<usize> for DirectSumArray<T, U, V> {
+impl<T: Point, U: Array<T>, V: Array<T>> Index<usize> for DirectSumArray<T, U, V> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -89,7 +89,7 @@ impl<T, U: Array<T>, V: Array<T>> Index<usize> for DirectSumArray<T, U, V> {
         }
     }
 }
-impl<T, U: Array<T>, V: Array<T>> IndexMut<usize> for DirectSumArray<T, U, V> {
+impl<T: Point, U: Array<T>, V: Array<T>> IndexMut<usize> for DirectSumArray<T, U, V> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         if index < U::N {
             &mut self.0[index]
@@ -98,7 +98,7 @@ impl<T, U: Array<T>, V: Array<T>> IndexMut<usize> for DirectSumArray<T, U, V> {
         }
     }
 }
-impl<T, U: Array<T>, V: Array<T>> IntoIterator for DirectSumArray<T, U, V> {
+impl<T: Point, U: Array<T>, V: Array<T>> IntoIterator for DirectSumArray<T, U, V> {
     type Item = T;
 
     type IntoIter = std::iter::Chain<U::IntoIter, V::IntoIter>;
@@ -114,7 +114,7 @@ impl<F: Field, H: Handedness, U: Vector<F = F, Hand = H>, V: Vector<F = F, Hand 
     type F = U::F;
     type Hand = H;
 
-    type Array<T: std::fmt::Debug + Copy> = DirectSumArray<T, U::Array<T>, V::Array<T>>;
+    type Array<T: Point> = DirectSumArray<T, U::Array<T>, V::Array<T>>;
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(Self::Array::<V::F>::from_fn(f))
@@ -146,17 +146,17 @@ impl_vector_ops!(
 );
 
 #[derive(Debug, Copy, Clone)]
-pub struct TensorProductArray<T, U: Array<V>, V: Array<T>>(U, PhantomData<(T, V)>);
+pub struct TensorProductArray<T: Point, U: Array<V>, V: Array<T>>(U, PhantomData<(T, V)>);
 
-fn iter_inner<'a, T, V: Array<T>>(v: &'a V) -> V::Iter<'a> {
+fn iter_inner<'a, T: Point, V: Array<T>>(v: &'a V) -> V::Iter<'a> {
     v.iter()
 }
 
-fn iter_inner_mut<'a, T, V: Array<T>>(v: &'a mut V) -> V::IterMut<'a> {
+fn iter_inner_mut<'a, T: Point, V: Array<T>>(v: &'a mut V) -> V::IterMut<'a> {
     v.iter_mut()
 }
 
-impl<T: Copy + std::fmt::Debug, U: Array<V>, V: Array<T>> Array<T> for TensorProductArray<T, U, V> {
+impl<T: Point, U: Array<V>, V: Array<T>> Array<T> for TensorProductArray<T, U, V> {
     const N: usize = U::N * V::N;
 
     type Iter<'a>
@@ -184,7 +184,7 @@ impl<T: Copy + std::fmt::Debug, U: Array<V>, V: Array<T>> Array<T> for TensorPro
     }
 }
 
-impl<T, U: Array<V>, V: Array<T>> Index<usize> for TensorProductArray<T, U, V> {
+impl<T: Point, U: Array<V>, V: Array<T>> Index<usize> for TensorProductArray<T, U, V> {
     type Output = T;
 
     fn index(&self, index: usize) -> &T {
@@ -192,13 +192,13 @@ impl<T, U: Array<V>, V: Array<T>> Index<usize> for TensorProductArray<T, U, V> {
     }
 }
 
-impl<T, U: Array<V>, V: Array<T>> IndexMut<usize> for TensorProductArray<T, U, V> {
+impl<T: Point, U: Array<V>, V: Array<T>> IndexMut<usize> for TensorProductArray<T, U, V> {
     fn index_mut(&mut self, index: usize) -> &mut T {
         &mut self.0[index / V::N][index % V::N]
     }
 }
 
-impl<T, U: Array<V>, V: Array<T>> IntoIterator for TensorProductArray<T, U, V> {
+impl<T: Point, U: Array<V>, V: Array<T>> IntoIterator for TensorProductArray<T, U, V> {
     type Item = T;
     type IntoIter = std::iter::Flatten<U::IntoIter>;
 
@@ -215,8 +215,7 @@ pub struct TensorProduct<U: Vector<F = V::F>, V: Vector<F: CField>>(
 impl<U: Vector<F = V::F>, V: Vector<F: CField>> Vector for TensorProduct<U, V> {
     type F = V::F;
 
-    type Array<T: std::fmt::Debug + Copy> =
-        TensorProductArray<T, U::Array<V::Array<T>>, V::Array<T>>;
+    type Array<T: Point> = TensorProductArray<T, U::Array<V::Array<T>>, V::Array<T>>;
 
     // just adopt V's handedness, it doesn't matter since it's all abelian anyway.
     type Hand = V::Hand;
@@ -257,7 +256,7 @@ impl<F: CField, U: Vector<F = F>, V: Vector<F = F>> IndexMut<usize> for TensorPr
     }
 }
 
-impl_vector_ops!(TensorProduct<V, U>, U: Vector<F = V::F>, V: Vector<F: CField>);
+impl_vector_ops!(TensorProduct<U, V>, U: Vector<F = V::F>, V: Vector<F: CField>);
 
 pub trait Section {
     type BaseManifold: Point;

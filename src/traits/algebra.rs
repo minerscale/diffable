@@ -173,7 +173,7 @@ macro_rules! impl_group_via_add {
                 self.clone() + other.clone()
             }
             fn inverse(&self) -> Self {
-                -*self
+                -self.clone()
             }
         }
     };

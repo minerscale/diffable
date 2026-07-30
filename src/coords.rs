@@ -5,7 +5,7 @@ use num_traits::{ConstZero, Zero};
 use crate::{
     impl_vector_ops,
     traits::{
-        DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate, Real, Right,
+        DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate, Point, Real, Right,
         Sesquilinear, Vector,
     },
 };
@@ -101,7 +101,7 @@ impl<F: Field, const N: usize, const M: usize> Vector for Coords<F, N, M> {
     type F = F;
     type Hand = Right;
 
-    type Array<T: std::fmt::Debug + Copy> = [T; N];
+    type Array<T: Point> = [T; N];
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(std::array::from_fn(f))
