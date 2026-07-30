@@ -337,14 +337,13 @@ impl<V: Euclidean> S3<V> {
 
     /// Regard a point of `S³` as a unit quaternion.
     pub fn to_quaternion(&self) -> Quaternion<V::F> {
-        let [i, j, k] = self.0.imag.to_array();
-        Quaternion::new(self.0.real, i, j, k)
+        Quaternion::new(self.0.real, self.0.imag[0], self.0.imag[1], self.0.imag[2])
     }
 
     /// Project a quaternion onto S3.
     pub fn from_quaternion(quaternion: Quaternion<V::F>) -> Self {
         let [real, i, j, k] = quaternion.into();
-        Self::new(Sphere::new(real, V::from_array([i, j, k])))
+        Self::new(Sphere::new(real, V::from_iter([i, j, k])))
     }
 }
 
@@ -420,12 +419,12 @@ impl<V: Euclidean> Mul for UnitComplex<V> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        let (a1, [b1]) = (self.0.real, self.0.imag.to_array());
-        let (a2, [b2]) = (rhs.0.real, rhs.0.imag.to_array());
+        let (a1, b1) = (self.0.real, self.0.imag[0]);
+        let (a2, b2) = (rhs.0.real, rhs.0.imag[0]);
 
         Self(Sphere::new(
             a1 * a2 - b1 * b2,
-            V::from_array([a1 * b2 + a2 * b1]),
+            V::from_iter([a1 * b2 + a2 * b1]),
         ))
     }
 }
@@ -442,11 +441,11 @@ impl<V: Euclidean> LieGroup<V> for UnitComplex<V> {
     fn identity_exp(v: V) -> Self {
         let alpha = v[0];
 
-        Self::new(Sphere::new(alpha.cos(), V::from_array([alpha.sin()])))
+        Self::new(Sphere::new(alpha.cos(), V::from_iter([alpha.sin()])))
     }
 
     fn identity_log(p: &Self) -> Option<V> {
-        Some(V::from_array([V::F::atan2(p.0.imag[0], p.0.real)]))
+        Some(V::from_iter([V::F::atan2(p.0.imag[0], p.0.real)]))
     }
 }
 
@@ -464,11 +463,15 @@ impl<V: Euclidean> Mul for S3<V> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        let (a1, [b1, c1, d1]) = (self.0.real, self.0.imag.to_array());
-        let (a2, [b2, c2, d2]) = (rhs.0.real, rhs.0.imag.to_array());
+        let (a1, a2) = (self.0.real, rhs.0.real);
+
+        let im1 = self.0.imag;
+        let im2 = rhs.0.imag;
+        let (b1, c1, d1, b2, c2, d2) = (im1[0], im1[1], im1[2], im2[0], im2[1], im2[2]);
+
         Self(Sphere::new(
             a1 * a2 - b1 * b2 - c1 * c2 - d1 * d2,
-            V::from_array([
+            V::from_iter([
                 a1 * b2 + b1 * a2 + c1 * d2 - d1 * c2,
                 a1 * c2 - b1 * d2 + c1 * a2 + d1 * b2,
                 a1 * d2 + b1 * c2 - c1 * b2 + d1 * a2,
@@ -481,9 +484,11 @@ impl<V: Euclidean> Inv for S3<V> {
     type Output = Self;
 
     fn inv(self) -> Self::Output {
-        let (a, [b, c, d]) = (self.0.real, self.0.imag.to_array());
+        let a = self.0.real();
+        let im = self.0.imag;
+        let (b, c, d) = (im[0], im[1], im[2]);
 
-        Self(Sphere::new(a, V::from_array([-b, -c, -d])))
+        Self(Sphere::new(a, V::from_iter([-b, -c, -d])))
     }
 }
 

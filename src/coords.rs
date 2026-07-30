@@ -1,4 +1,4 @@
-use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, Neg, Sub};
+use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use num_traits::{ConstZero, Zero};
 
@@ -99,20 +99,24 @@ impl_vector_ops!(Coords<F, N, M>, F: Field, const N: usize, const M: usize);
 
 impl<F: Field, const N: usize, const M: usize> Vector for Coords<F, N, M> {
     type F = F;
-    const N: usize = N;
     type Hand = Right;
 
-    type Iter<'a>
-        = std::slice::Iter<'a, F>
-    where
-        Self: 'a;
+    type Array<T: std::fmt::Debug + Copy> = [T; N];
 
-    fn iter(&self) -> Self::Iter<'_> {
-        self.0.iter()
+    fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
+        Self(std::array::from_fn(f))
     }
+}
 
-    fn from_fn(f: impl Fn(usize) -> Self::F) -> Self {
-        std::array::from_fn(f).into()
+impl<F: Field, const N: usize, const M: usize> AsRef<[F; N]> for Coords<F, N, M> {
+    fn as_ref(&self) -> &[F; N] {
+        &self.0
+    }
+}
+
+impl<F: Field, const N: usize, const M: usize> AsMut<[F; N]> for Coords<F, N, M> {
+    fn as_mut(&mut self) -> &mut [F; N] {
+        &mut self.0
     }
 }
 

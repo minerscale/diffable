@@ -103,18 +103,9 @@ impl<V: Vector> Vector for Dual<V> {
     type F = V::F;
     type Hand = <V::Hand as Handedness>::Opposite;
 
-    const N: usize = V::N;
+    type Array<T: std::fmt::Debug + Copy> = V::Array<T>;
 
-    type Iter<'a>
-        = V::Iter<'a>
-    where
-        Self: 'a;
-
-    fn iter(&self) -> Self::Iter<'_> {
-        self.0.iter()
-    }
-
-    fn from_fn(f: impl Fn(usize) -> Self::F) -> Self {
+    fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(V::from_fn(f))
     }
 }
@@ -132,6 +123,18 @@ impl<V: Vector> Index<usize> for Dual<V> {
 impl<V: Vector> IndexMut<usize> for Dual<V> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
+    }
+}
+
+impl<V: Vector> AsRef<<Dual<V> as Vector>::Array<V::F>> for Dual<V> {
+    fn as_ref(&self) -> &<Dual<V> as Vector>::Array<V::F> {
+        self.0.as_ref()
+    }
+}
+
+impl<V: Vector> AsMut<<Dual<V> as Vector>::Array<V::F>> for Dual<V> {
+    fn as_mut(&mut self) -> &mut <Dual<V> as Vector>::Array<V::F> {
+        self.0.as_mut()
     }
 }
 
@@ -167,6 +170,55 @@ impl Handedness for Left {
 impl Handedness for Right {
     type Opposite = Left;
     const H: Hand = Hand::Right;
+}
+
+pub trait Array<T>:
+    Sized + std::fmt::Debug + Copy + Index<usize, Output = T> + IndexMut<usize> + IntoIterator<Item = T>
+{
+    const N: usize;
+
+    type Iter<'a>: Iterator<Item = &'a T>
+    where
+        Self: 'a,
+        T: 'a;
+
+    type IterMut<'a>: Iterator<Item = &'a mut T>
+    where
+        Self: 'a,
+        T: 'a;
+
+    fn iter(&self) -> Self::Iter<'_>;
+    fn iter_mut(&mut self) -> Self::IterMut<'_>;
+
+    fn from_fn(f: impl FnMut(usize) -> T) -> Self;
+}
+
+impl<T: Copy + std::fmt::Debug, const N: usize> Array<T> for [T; N] {
+    const N: usize = N;
+
+    type Iter<'a>
+        = std::slice::Iter<'a, T>
+    where
+        Self: 'a,
+        T: 'a;
+
+    type IterMut<'a>
+        = std::slice::IterMut<'a, T>
+    where
+        Self: 'a,
+        T: 'a;
+
+    fn iter(&self) -> Self::Iter<'_> {
+        self.as_slice().iter()
+    }
+
+    fn iter_mut(&mut self) -> Self::IterMut<'_> {
+        self.as_mut_slice().iter_mut()
+    }
+
+    fn from_fn(f: impl FnMut(usize) -> T) -> Self {
+        std::array::from_fn(f)
+    }
 }
 
 /// A finite-dimensional left or right module over a [`Field`], equipped with a
@@ -205,27 +257,29 @@ pub trait Vector:
     + IndexMut<usize>
     + Copy
     + std::fmt::Debug
+    + AsRef<Self::Array<Self::F>>
+    + AsMut<Self::Array<Self::F>>
 {
     /// The scalar field the coordinates live in.
     type F: Field;
 
     /// The dimension of the space — the number of coordinates.
-    const N: usize;
+    const N: usize = Self::Array::<Self::F>::N;
+
+    type Array<T: std::fmt::Debug + Copy>: Array<T>;
 
     /// The side on which `F` acts. [`Dual<Self>`](Dual) elects the opposite
     /// hand, and `Dual<Dual<Self>>` therefore restores this one.
     type Hand: Handedness;
 
-    type Iter<'a>: Iterator<Item = &'a Self::F>
-    where
-        Self: 'a;
-
     /// Iterates the `N` coordinates in order.
-    fn iter(&self) -> Self::Iter<'_>;
+    fn iter(&self) -> <Self::Array<Self::F> as Array<Self::F>>::Iter<'_> {
+        self.as_ref().iter()
+    }
 
     /// Builds a vector from a function of coordinate index. The canonical
     /// constructor — most other constructors reduce to this.
-    fn from_fn(f: impl Fn(usize) -> Self::F) -> Self;
+    fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self;
 
     /// The canonical evaluation pairing `(V, V*) -> F`, `⟨v, ω⟩ = ω(v)`.
     ///
@@ -264,18 +318,21 @@ pub trait Vector:
         v.0.0
     }
 
-    /// Converts a fixed-size array to a vector, checking `N` matches at compile
-    /// time. The const assertion is the crate's stand-in for length-indexed
-    /// construction that stable const generics can't express.
-    fn from_array<const N: usize>(arr: [Self::F; N]) -> Self {
-        const { assert!(Self::N == N) }
-        Self::from_fn(|i| arr[i])
-    }
+    fn from_iter(iter: impl IntoIterator<Item = Self::F>) -> Self {
+        let mut iter = iter.into_iter();
 
-    /// Converts to a fixed-size array, checking `N` matches at compile time.
-    fn to_array<const N: usize>(self) -> [Self::F; N] {
-        const { assert!(Self::N == N) }
-        std::array::from_fn(|i| self[i])
+        let out = Self::from_fn(|_| {
+            iter.next()
+                .unwrap_or_else(|| panic!("iterator contained fewer than {} elements", Self::N))
+        });
+
+        assert!(
+            iter.next().is_none(),
+            "iterator contained more than {} elements",
+            Self::N,
+        );
+
+        out
     }
 
     // Flat space has no singularities — to_local is always Some
@@ -307,32 +364,32 @@ pub trait Vector:
 #[macro_export]
 macro_rules! impl_vector_ops {
     ($target:ty, $($generics:tt)*) => {
-        impl<$($generics)*> Add<Self> for $target {
-            type Output = Self;
+        impl<$($generics)*> std::ops::Add<Self> for $target {
+            type Output = $target;
 
             fn add(self, rhs: Self) -> Self::Output {
                 Self::from_fn(|i| self[i] + rhs[i])
             }
         }
 
-        impl<$($generics)*> Sub<Self> for $target {
-            type Output = Self;
+        impl<$($generics)*> std::ops::Sub<Self> for $target {
+            type Output = $target;
 
             fn sub(self, rhs: Self) -> Self::Output {
                 Self::from_fn(|i| self[i] - rhs[i])
             }
         }
 
-        impl<$($generics)*> Neg for $target {
-            type Output = Self;
+        impl<$($generics)*> std::ops::Neg for $target {
+            type Output = $target;
 
             fn neg(self) -> Self::Output {
                 Self::from_fn(|i| -self[i])
             }
         }
 
-        impl<$($generics)*> Mul<<$target as Vector>::F> for $target {
-            type Output = Self;
+        impl<$($generics)*> std::ops::Mul<<$target as Vector>::F> for $target {
+            type Output = $target;
 
             fn mul(self, scalar: <$target as Vector>::F) -> Self::Output {
                 Self::from_fn(|i| match <<$target as Vector>::Hand as $crate::traits::Handedness>::H {
@@ -342,13 +399,13 @@ macro_rules! impl_vector_ops {
             }
         }
 
-        impl<$($generics)*> Zero for $target {
+        impl<$($generics)*> num_traits::Zero for $target {
             fn zero() -> Self {
                 Self::from_fn(|_| <$target as Vector>::F::zero())
             }
 
             fn is_zero(&self) -> bool {
-                self.iter().all(Zero::is_zero)
+                self.iter().all(num_traits::Zero::is_zero)
             }
         }
     };

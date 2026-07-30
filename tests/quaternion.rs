@@ -77,11 +77,11 @@ fn dual_pairing_distinguishes_musical_and_raw_coordinates() {
     let j = H::j();
     let k = H::k();
 
-    let alpha = H1::from_array([i]).flat();
-    let beta = H1::from_array([j]).flat();
-    let alpha_direct = Dual::<H1>::from_array([i]);
-    let beta_direct = Dual::<H1>::from_array([j]);
-    let psi_direct = Dual::<Dual<H1>>::from_array([j]);
+    let alpha = H1::from_iter([i]).flat();
+    let beta = H1::from_iter([j]).flat();
+    let alpha_direct = Dual::<H1>::from_iter([i]);
+    let beta_direct = Dual::<H1>::from_iter([j]);
+    let psi_direct = Dual::<Dual<H1>>::from_iter([j]);
 
     let psi = beta.flat();
 

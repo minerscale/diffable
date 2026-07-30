@@ -1,4 +1,4 @@
-use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
+use std::ops::{Index, IndexMut, Mul};
 
 use num_traits::{Inv, One, Zero};
 
@@ -405,21 +405,28 @@ impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> Vector
     type F = F;
     type Hand = Right;
 
-    const N: usize = D;
+    type Array<T: Copy + std::fmt::Debug> = [T; D];
 
-    type Iter<'a>
-        = std::slice::Iter<'a, F>
-    where
-        Self: 'a;
-
-    fn iter(&self) -> Self::Iter<'_> {
-        self.0.iter()
-    }
-
-    fn from_fn(f: impl Fn(usize) -> Self::F) -> Self {
+    fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         const {
             assert!(D == N * N - 1);
         }
         Self(Coords::<F, D>::from_fn(f))
+    }
+}
+
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> AsRef<[F; D]>
+    for SlAlgebra<F, N, D>
+{
+    fn as_ref(&self) -> &[F; D] {
+        &self.0
+    }
+}
+
+impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> AsMut<[F; D]>
+    for SlAlgebra<F, N, D>
+{
+    fn as_mut(&mut self) -> &mut [F; D] {
+        &mut self.0
     }
 }
