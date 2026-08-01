@@ -25,5 +25,4 @@ all = ["testing"]
 [dependencies]
 num-traits = "0.2.19"
 proptest = { version = "1.11.0", optional = true }
-itertools = "0.15.0"
 num-derive = "0.4.2"

@@ -231,7 +231,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>> Interval for KleinBottle<I, V> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct TorusCover<I: ICompatible<V>, V: VCompatible<I>>(Torus<I, V>);
 
 impl<I: ICompatible<V>, V: VCompatible<I>> From<Torus<I, V>> for TorusCover<I, V> {
@@ -290,7 +290,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>>
 {
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct KleinBottleCover<I: ICompatible<V>, V: VCompatible<I>>(KleinBottle<I, V>);
 
 impl<I: ICompatible<V>, V: VCompatible<I>> From<KleinBottle<I, V>> for KleinBottleCover<I, V> {

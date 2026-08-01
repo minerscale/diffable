@@ -139,6 +139,7 @@ impl<V: Vector> AsMut<<Dual<V> as Vector>::Array<V::F>> for Dual<V> {
 }
 
 /// The runtime witness for a module's elected scalar-action side.
+#[derive(Debug, Copy, Clone)]
 pub enum Hand {
     Left,
     Right,
@@ -271,14 +272,14 @@ pub trait Vector:
     /// hand, and `Dual<Dual<Self>>` therefore restores this one.
     type Hand: Handedness;
 
+    /// Builds a vector from a function of coordinate index. The canonical
+    /// constructor — most other constructors reduce to this.
+    fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self;
+
     /// Iterates the `N` coordinates in order.
     fn iter(&self) -> <Self::Array<Self::F> as Array<Self::F>>::Iter<'_> {
         self.as_ref().iter()
     }
-
-    /// Builds a vector from a function of coordinate index. The canonical
-    /// constructor — most other constructors reduce to this.
-    fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self;
 
     /// The canonical evaluation pairing `(V, V*) -> F`, `⟨v, ω⟩ = ω(v)`.
     ///

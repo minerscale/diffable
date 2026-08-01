@@ -47,6 +47,12 @@ impl<F: Field + ConstZero, const N: usize, const M: usize> ConstZero for Coords<
     const ZERO: Self = Self([F::ZERO; N]);
 }
 
+impl<F: Field> From<F> for Coords<F, 1> {
+    fn from(value: F) -> Self {
+        Self::from_iter([value])
+    }
+}
+
 impl<F: Field, const N: usize, const M: usize> Deref for Coords<F, N, M> {
     type Target = [F; N];
 

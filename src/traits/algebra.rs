@@ -388,7 +388,7 @@ impl<T: Zero + One + Inv<Output = T>> Inv for NonZero<T> {
     }
 }
 
-impl<T: Zero + One + Clone> Group for NonZero<T>
+impl<T: Zero + One + Point> Group for NonZero<T>
 where
     NonZero<T>: Inv<Output = Self>,
 {

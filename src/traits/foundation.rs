@@ -32,9 +32,9 @@ use num_traits::{Euclid, Inv, real::Real as _};
 /// [`Chart`]: crate::traits::Chart
 /// [`Group`]: crate::traits::Group
 /// [`Real`]: crate::traits::Real
-pub trait Point: Clone {}
+pub trait Point: Clone + std::fmt::Debug {}
 
-impl<T: Clone> Point for T {}
+impl<T: Clone + std::fmt::Debug> Point for T {}
 
 /// A scalar field for use as the coordinate type of a Euclidean space.
 ///

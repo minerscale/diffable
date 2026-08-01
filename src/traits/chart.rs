@@ -61,7 +61,7 @@ impl<T> OptionallyOption<T> for Option<T> {
 /// returning `None` at genuine singularities of the manifold. If
 /// the charted manifold is geodesically complete, then to_global returns
 /// `P` rather than `Option<P>`.
-pub trait Chart<P: Point, V: Vector>: Sized {
+pub trait Chart<P: Point, V: Vector>: Point {
     /// The result of mapping local coordinates back onto the manifold.
     ///
     /// This is either `P` or `Option<P>`. Choosing `P` certifies that
