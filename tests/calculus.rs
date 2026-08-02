@@ -1,5 +1,7 @@
 #![cfg(feature = "testing")]
 
+use std::ops::Mul;
+
 use diffable::{
     coords::Coords,
     traits::{Field, Vector, d},
@@ -7,7 +9,7 @@ use diffable::{
 
 #[test]
 fn differential_of_scalar_linear_function() {
-    fn double<V: Vector>(x: V) -> V {
+    fn double<V: Vector + Mul<V::F, Output = V>>(x: V) -> V {
         x * V::F::from_nat(2)
     }
 

@@ -5,8 +5,8 @@ use num_traits::{ConstZero, Zero};
 use crate::{
     impl_vector_ops,
     traits::{
-        DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate, Point, Real, Right,
-        Sesquilinear, Vector,
+        BothSided, DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate, Point,
+        Real, Right, Sesquilinear, Vector,
     },
 };
 
@@ -106,6 +106,7 @@ impl_vector_ops!(Coords<F, N, M>, F: Field, const N: usize, const M: usize);
 impl<F: Field, const N: usize, const M: usize> Vector for Coords<F, N, M> {
     type F = F;
     type Hand = Right;
+    type Action = BothSided;
 
     type Array<T: Point> = [T; N];
 

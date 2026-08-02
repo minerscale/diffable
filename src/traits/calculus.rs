@@ -9,8 +9,8 @@ use crate::{
     coords::Coords,
     impl_vector_ops,
     traits::{
-        Array, CField, Chart, DivRing, Dual, ExpMap, Field, Handedness, NonZero, Point,
-        TangentBundle, Vector,
+        ActionExists, Array, CField, Chart, DivRing, Dual, ExpMap, Field, Handedness, Left,
+        NonZero, Point, Right, Sidedness, TangentBundle, TensorProductAction, Vector,
     },
 };
 
@@ -119,6 +119,7 @@ impl<F: Field, H: Handedness, U: Vector<F = F, Hand = H>, V: Vector<F = F, Hand 
 {
     type F = U::F;
     type Hand = H;
+    type Action = <U::Action as Sidedness>::Meet<V::Action>;
 
     type Array<T: Point> = DirectSumArray<T, U::Array<T>, V::Array<T>>;
 
@@ -228,25 +229,31 @@ impl<T: Point, U: Array<V>, V: Array<T>> IntoIterator for TensorProductArray<T, 
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct TensorProduct<U: Vector<F = V::F>, V: Vector<F: CField>>(
-    TensorProductArray<V::F, U::Array<V::Array<V::F>>, V::Array<V::F>>,
-);
+pub struct TensorProduct<
+    U: Vector<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Vector<F = U::F, Hand = Left, Action: ActionExists>,
+>(TensorProductArray<V::F, U::Array<V::Array<V::F>>, V::Array<V::F>>);
 
-impl<U: Vector<F = V::F>, V: Vector<F: CField>> Vector for TensorProduct<U, V> {
+impl<
+    U: Vector<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Vector<F = U::F, Hand = Left, Action: ActionExists>,
+> Vector for TensorProduct<U, V>
+{
     type F = V::F;
+    type Action = <U::Action as TensorProductAction<V::Action>>::Action;
+    type Hand = <U::Action as TensorProductAction<V::Action>>::Hand;
 
     type Array<T: Point> = TensorProductArray<T, U::Array<V::Array<T>>, V::Array<T>>;
-
-    // just adopt V's handedness, it doesn't matter since it's all abelian anyway.
-    type Hand = V::Hand;
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(Self::Array::from_fn(f))
     }
 }
 
-impl<U: Vector<F = V::F>, V: Vector<F: CField>>
-    AsRef<TensorProductArray<V::F, U::Array<V::Array<V::F>>, V::Array<V::F>>>
+impl<
+    U: Vector<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Vector<F = U::F, Hand = Left, Action: ActionExists>,
+> AsRef<TensorProductArray<V::F, U::Array<V::Array<V::F>>, V::Array<V::F>>>
     for TensorProduct<U, V>
 {
     fn as_ref(&self) -> &TensorProductArray<V::F, U::Array<V::Array<V::F>>, V::Array<V::F>> {
@@ -254,49 +261,72 @@ impl<U: Vector<F = V::F>, V: Vector<F: CField>>
     }
 }
 
-impl<F: CField, U: Vector<F = F>, V: Vector<F = F>>
-    AsMut<TensorProductArray<F, U::Array<V::Array<V::F>>, V::Array<F>>> for TensorProduct<U, V>
+impl<
+    U: Vector<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Vector<F = U::F, Hand = Left, Action: ActionExists>,
+> AsMut<TensorProductArray<V::F, U::Array<V::Array<V::F>>, V::Array<V::F>>>
+    for TensorProduct<U, V>
 {
-    fn as_mut(&mut self) -> &mut TensorProductArray<F, U::Array<V::Array<V::F>>, V::Array<F>> {
+    fn as_mut(
+        &mut self,
+    ) -> &mut TensorProductArray<V::F, U::Array<V::Array<V::F>>, V::Array<V::F>> {
         &mut self.0
     }
 }
 
-impl<F: CField, U: Vector<F = F>, V: Vector<F = F>> Index<usize> for TensorProduct<U, V> {
-    type Output = F;
-
-    fn index(&self, index: usize) -> &F {
-        &self.0[index]
-    }
-}
-
-impl<F: CField, U: Vector<F = F>, V: Vector<F = F>> IndexMut<usize> for TensorProduct<U, V> {
-    fn index_mut(&mut self, index: usize) -> &mut F {
-        &mut self.0[index]
-    }
-}
-
-impl<F: CField, U: Vector<F = F>, V: Vector<F = F>> Index<(usize, usize)> for TensorProduct<U, V> {
-    type Output = F;
-
-    fn index(&self, index: (usize, usize)) -> &F {
-        &self.0[index]
-    }
-}
-
-impl<F: CField, U: Vector<F = F>, V: Vector<F = F>> IndexMut<(usize, usize)>
-    for TensorProduct<U, V>
+impl<
+    U: Vector<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Vector<F = U::F, Hand = Left, Action: ActionExists>,
+> Index<usize> for TensorProduct<U, V>
 {
-    fn index_mut(&mut self, index: (usize, usize)) -> &mut F {
+    type Output = V::F;
+
+    fn index(&self, index: usize) -> &V::F {
+        &self.0[index]
+    }
+}
+
+impl<
+    U: Vector<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Vector<F = U::F, Hand = Left, Action: ActionExists>,
+> IndexMut<usize> for TensorProduct<U, V>
+{
+    fn index_mut(&mut self, index: usize) -> &mut V::F {
         &mut self.0[index]
     }
 }
 
-impl_vector_ops!(TensorProduct<U, V>, U: Vector<F = V::F>, V: Vector<F: CField>);
+impl<
+    U: Vector<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Vector<F = U::F, Hand = Left, Action: ActionExists>,
+> Index<(usize, usize)> for TensorProduct<U, V>
+{
+    type Output = V::F;
+
+    fn index(&self, index: (usize, usize)) -> &V::F {
+        &self.0[index]
+    }
+}
+
+impl<
+    U: Vector<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Vector<F = U::F, Hand = Left, Action: ActionExists>,
+> IndexMut<(usize, usize)> for TensorProduct<U, V>
+{
+    fn index_mut(&mut self, index: (usize, usize)) -> &mut V::F {
+        &mut self.0[index]
+    }
+}
+
+impl_vector_ops!(
+    TensorProduct<U, V>,
+    U: Vector<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Vector<F = U::F, Hand = Left, Action: ActionExists>,
+);
 
 pub trait Section<
     BP: Point,
-    BT: Vector<F: CField>,
+    BT: Vector,
     Base: TangentBundle<BP, BT>,
     FP: Point,
     FT: Vector<F = BT::F>,
@@ -308,7 +338,7 @@ pub trait Section<
 
 impl<
     BP: Point,
-    BT: Vector<F: CField>,
+    BT: Vector,
     Base: TangentBundle<BP, BT>,
     FP: Point,
     FT: Vector<F = BT::F>,
@@ -325,30 +355,42 @@ type HomOf<BT, FT> = TensorProduct<FT, Dual<BT>>;
 
 #[derive(Debug)]
 pub struct TangentMap<
-    BT: Vector<F: CField>,
+    BT: Vector<Hand = Right, Action: ActionExists>,
     FP: Point,
-    FT: Vector<F = BT::F>,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
     Fiber: TangentBundle<FP, FT>,
 >(HomOf<BT, FT>, PhantomData<fn() -> (FP, Fiber)>);
 
-impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBundle<FP, FT>>
-    TangentMap<BT, FP, FT, Fiber>
+impl<
+    BT: Vector<Hand = Right, Action: ActionExists>,
+    FP: Point,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Fiber: TangentBundle<FP, FT>,
+> TangentMap<BT, FP, FT, Fiber>
 {
     pub fn new(v: HomOf<BT, FT>) -> Self {
         Self(v, PhantomData)
     }
 }
 
-impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBundle<FP, FT>> Clone
-    for TangentMap<BT, FP, FT, Fiber>
+impl<
+    BT: Vector<Hand = Right, Action: ActionExists>,
+    FP: Point,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Fiber: TangentBundle<FP, FT>,
+> Clone for TangentMap<BT, FP, FT, Fiber>
 {
     fn clone(&self) -> Self {
         Self(self.0.clone(), self.1.clone())
     }
 }
 
-impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBundle<FP, FT>>
-    Index<usize> for TangentMap<BT, FP, FT, Fiber>
+impl<
+    BT: Vector<Hand = Right, Action: ActionExists>,
+    FP: Point,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Fiber: TangentBundle<FP, FT>,
+> Index<usize> for TangentMap<BT, FP, FT, Fiber>
 {
     type Output = BT::F;
 
@@ -357,15 +399,24 @@ impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBund
     }
 }
 
-impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBundle<FP, FT>>
-    IndexMut<usize> for TangentMap<BT, FP, FT, Fiber>
+impl<
+    BT: Vector<Hand = Right, Action: ActionExists>,
+    FP: Point,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Fiber: TangentBundle<FP, FT>,
+> IndexMut<usize> for TangentMap<BT, FP, FT, Fiber>
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBundle<FP, FT>>
+impl<
+    BT: Vector<Hand = Right, Action: ActionExists>,
+    FP: Point,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Fiber: TangentBundle<FP, FT>,
+>
     AsRef<
         TensorProductArray<
             BT::F,
@@ -385,7 +436,12 @@ impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBund
     }
 }
 
-impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBundle<FP, FT>>
+impl<
+    BT: Vector<Hand = Right, Action: ActionExists>,
+    FP: Point,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Fiber: TangentBundle<FP, FT>,
+>
     AsMut<
         TensorProductArray<
             BT::F,
@@ -405,12 +461,17 @@ impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBund
     }
 }
 
-impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBundle<FP, FT>> Vector
-    for TangentMap<BT, FP, FT, Fiber>
+impl<
+    BT: Vector<Hand = Right, Action: ActionExists>,
+    FP: Point,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Fiber: TangentBundle<FP, FT>,
+> Vector for TangentMap<BT, FP, FT, Fiber>
 {
     type F = <HomOf<BT, FT> as Vector>::F;
     type Array<T: Point> = <HomOf<BT, FT> as Vector>::Array<T>;
     type Hand = <HomOf<BT, FT> as Vector>::Hand;
+    type Action = <HomOf<BT, FT> as Vector>::Action;
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(HomOf::<BT, FT>::from_fn(f), PhantomData)
@@ -418,14 +479,18 @@ impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBund
 }
 
 impl_vector_ops!(TangentMap<BT, FP, FT, Fiber>,
-    BT: Vector<F: CField>,
+    BT: Vector<Hand = Right, Action: ActionExists>,
     FP: Point,
-    FT: Vector<F = BT::F>,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
     Fiber: TangentBundle<FP, FT>,
 );
 
-impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBundle<FP, FT>> Deref
-    for TangentMap<BT, FP, FT, Fiber>
+impl<
+    BT: Vector<Hand = Right, Action: ActionExists>,
+    FP: Point,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Fiber: TangentBundle<FP, FT>,
+> Deref for TangentMap<BT, FP, FT, Fiber>
 {
     type Target = HomOf<BT, FT>;
 
@@ -434,8 +499,12 @@ impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBund
     }
 }
 
-impl<BT: Vector<F: CField>, FP: Point, FT: Vector<F = BT::F>, Fiber: TangentBundle<FP, FT>> DerefMut
-    for TangentMap<BT, FP, FT, Fiber>
+impl<
+    BT: Vector<Hand = Right, Action: ActionExists>,
+    FP: Point,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Fiber: TangentBundle<FP, FT>,
+> DerefMut for TangentMap<BT, FP, FT, Fiber>
 {
     fn deref_mut(&mut self) -> &mut HomOf<BT, FT> {
         &mut self.0
@@ -457,6 +526,7 @@ impl<V: Vector, const N: usize> Vector for JetVector<V, N> {
     type Array<T: Point> = V::Array<T>;
 
     type Hand = V::Hand;
+    type Action = V::Action;
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(Self::Array::from_fn(f))
@@ -872,7 +942,7 @@ pub struct Differential<F, BT, FT> {
 
 pub fn d<F, BT, FT>(function: F) -> Differential<F, BT, FT>
 where
-    BT: Vector<F: CField>,
+    BT: Vector,
     FT: Vector<F = BT::F>,
     F: Fn(JetVector<BT>) -> JetVector<FT>,
 {
@@ -884,8 +954,8 @@ where
 
 impl<F, BT, FT> Differential<F, BT, FT>
 where
-    BT: Vector<F: CField>,
-    FT: Vector<F = BT::F>,
+    BT: Vector<Hand = Right, Action: ActionExists>,
+    FT: Vector<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
     F: Fn(JetVector<BT>) -> JetVector<FT>,
 {
     pub fn at(&self, point: BT) -> TangentMap<BT, FT, FT, FT> {

@@ -1,11 +1,17 @@
 use num_traits::{Zero, real::Real as _};
-use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
+use std::{
+    convert::Infallible,
+    ops::{Add, Index, IndexMut, Mul, Neg, Sub},
+};
 
 #[cfg(feature = "testing")]
 use super::Chart;
 
 use super::{Field, LieGroup, Metric, Real};
-use crate::{impl_group_via_add, impl_vector_ops, traits::Point};
+use crate::{
+    impl_group_via_add, impl_vector_ops,
+    traits::{Interval, Point},
+};
 
 /// A finite-dimensional Euclidean space.
 ///
@@ -48,7 +54,9 @@ use crate::{impl_group_via_add, impl_vector_ops, traits::Point};
 /// [`Form`]: crate::traits::Form
 /// [`Nondegenerate`]: crate::traits::Nondegenerate
 /// [`Sesquilinear`]: crate::traits::Sesquilinear
-pub trait Euclidean: Bilinear<F: Real> + InnerProduct {
+pub trait Euclidean:
+    Bilinear<F: Real, Action = BothSided> + InnerProduct + Mul<Self::F, Output = Self>
+{
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
     fn check_pythagorean(a: &Self, b: &Self) -> bool {
@@ -102,6 +110,7 @@ impl<V: Vector> Dual<V> {
 impl<V: Vector> Vector for Dual<V> {
     type F = V::F;
     type Hand = <V::Hand as Handedness>::Opposite;
+    type Action = V::Action;
 
     type Array<T: Point> = V::Array<T>;
 
@@ -138,6 +147,113 @@ impl<V: Vector> AsMut<<Dual<V> as Vector>::Array<V::F>> for Dual<V> {
     }
 }
 
+impl<V: Nondegenerate> Form for Dual<V> {
+    fn flat(&self) -> Dual<Self> {
+        Dual(Dual(V::sharp(self.clone())))
+    }
+}
+
+impl<V: Nondegenerate> Nondegenerate for Dual<V> {
+    fn sharp(v: Dual<Self>) -> Self {
+        v.0.0.flat()
+    }
+}
+
+impl<V: Nondegenerate + Sesquilinear> Sesquilinear for Dual<V> {}
+
+impl<V: Nondegenerate + Interval> Interval for Dual<V> {
+    type R = V::R;
+
+    fn interval_squared(&self, other: &Self) -> Self::R {
+        let a = V::sharp(self.clone());
+        let b = V::sharp(other.clone());
+
+        a.interval_squared(&b)
+    }
+}
+
+impl<V: Nondegenerate + Metric> Metric for Dual<V> {}
+
+impl<V> Euclidean for Dual<V> where V: Euclidean + Nondegenerate {}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Sinister<V: Vector<Action = BothSided>>(pub V);
+
+impl<V: Vector<Action = BothSided>> Vector for Sinister<V> {
+    type F = V::F;
+    type Hand = <V::Hand as Handedness>::Opposite;
+    type Action = V::Action;
+
+    type Array<T: Point> = V::Array<T>;
+
+    fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
+        Self(V::from_fn(f))
+    }
+}
+
+impl_vector_ops!(Sinister<V>, V: Vector<Action = BothSided>);
+
+impl<V: Vector<Action = BothSided>> Index<usize> for Sinister<V> {
+    type Output = V::F;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl<V: Vector<Action = BothSided>> IndexMut<usize> for Sinister<V> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+
+impl<V: Vector<Action = BothSided>> AsRef<<Sinister<V> as Vector>::Array<V::F>> for Sinister<V> {
+    fn as_ref(&self) -> &<Sinister<V> as Vector>::Array<V::F> {
+        self.0.as_ref()
+    }
+}
+
+impl<V: Vector<Action = BothSided>> AsMut<<Sinister<V> as Vector>::Array<V::F>> for Sinister<V> {
+    fn as_mut(&mut self) -> &mut <Sinister<V> as Vector>::Array<V::F> {
+        self.0.as_mut()
+    }
+}
+
+impl<V> Form for Sinister<V>
+where
+    V: Form<Action = BothSided>,
+{
+    fn flat(&self) -> Dual<Self> {
+        let flat: Dual<V> = self.0.flat();
+
+        // Dual<Sinister<V>> and Sinister<Dual<V>>
+        // are coordinate-identical.
+        Dual(Sinister(flat.0))
+    }
+}
+
+impl<V: Nondegenerate<Action = BothSided>> Nondegenerate for Sinister<V> {
+    fn sharp(v: Dual<Self>) -> Self {
+        Sinister(V::sharp(Dual(v.0.0)))
+    }
+}
+
+// The reversed bilinear form is bilinear. Not true for Sesquilinear forms.
+impl<V: Bilinear<Action = BothSided>> Sesquilinear for Sinister<V> {}
+
+impl<V: Vector<Action = BothSided> + Interval> Interval for Sinister<V> {
+    type R = V::R;
+
+    fn interval_squared(&self, other: &Self) -> Self::R {
+        self.0.interval_squared(&other.0)
+    }
+}
+
+impl<V: Vector<Action = BothSided> + Metric> Metric for Sinister<V> {}
+
+impl<V: Vector<Action = BothSided> + Euclidean> Euclidean for Sinister<V> {}
+
 /// The runtime witness for a module's elected scalar-action side.
 #[derive(Debug, Copy, Clone)]
 pub enum Hand {
@@ -171,6 +287,120 @@ impl Handedness for Left {
 impl Handedness for Right {
     type Opposite = Left;
     const H: Hand = Hand::Right;
+}
+
+pub trait Sidedness: Copy + Clone + std::fmt::Debug {
+    /// The lesser of this sidedness and the other sidedness.
+    type Meet<T: Sidedness>: Sidedness;
+    #[doc(hidden)]
+    type MeetOne: Sidedness;
+
+    /// `T` when a scalar action exists, otherwise an uninhabited type.
+    type Exists<T>;
+
+    /// Extracts the value whose existence is certified by this sidedness.
+    fn into_existing<T>(value: &Self::Exists<T>) -> &T;
+
+    /// The runtime value corresponding to this type-level side.
+    const S: Side;
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Side {
+    None,
+    Same,
+    Both,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum NoSided {}
+#[derive(Debug, Copy, Clone)]
+pub enum OneSided {}
+#[derive(Debug, Copy, Clone)]
+pub enum BothSided {}
+
+pub trait ActionExists: Sidedness {
+    type Product<T: ActionExists>: Sidedness;
+
+    /// Product with `OneSided`.
+    #[doc(hidden)]
+    type ProductOne: Sidedness;
+}
+
+impl ActionExists for OneSided {
+    type Product<T: ActionExists> = <T as ActionExists>::ProductOne;
+
+    type ProductOne = NoSided;
+}
+
+impl ActionExists for BothSided {
+    type Product<T: ActionExists> = T;
+
+    type ProductOne = OneSided;
+}
+
+pub trait TensorProductAction<Rhs: ActionExists>: ActionExists {
+    type Action: Sidedness;
+    type Hand: Handedness;
+}
+
+impl<T: ActionExists> TensorProductAction<T> for OneSided {
+    type Action = <OneSided as ActionExists>::Product<T>;
+
+    // One ⊗ One is signed zero, defaulting Right.
+    // One ⊗ Both retains only the right action.
+    type Hand = Right;
+}
+
+impl TensorProductAction<OneSided> for BothSided {
+    // The left exterior action survives.
+    type Action = OneSided;
+    type Hand = Left;
+}
+
+impl TensorProductAction<BothSided> for BothSided {
+    // Both exterior actions survive, defaulting Right.
+    type Action = BothSided;
+    type Hand = Right;
+}
+
+impl Sidedness for OneSided {
+    type Meet<T: Sidedness> = T::MeetOne;
+    type MeetOne = OneSided;
+
+    type Exists<T> = T;
+
+    fn into_existing<T>(value: &T) -> &T {
+        value
+    }
+
+    const S: Side = Side::Same;
+}
+
+impl Sidedness for BothSided {
+    type Meet<T: Sidedness> = T;
+    type MeetOne = OneSided;
+
+    type Exists<T> = T;
+
+    fn into_existing<T>(value: &T) -> &T {
+        value
+    }
+
+    const S: Side = Side::Both;
+}
+
+impl Sidedness for NoSided {
+    type Meet<T: Sidedness> = NoSided;
+    type MeetOne = NoSided;
+
+    type Exists<T> = Infallible;
+
+    fn into_existing<T>(value: &Infallible) -> &T {
+        match *value {}
+    }
+
+    const S: Side = Side::None;
 }
 
 pub trait Array<T: Point>:
@@ -251,7 +481,7 @@ impl<T: Point, const N: usize> Array<T> for [T; N] {
 pub trait Vector:
     Add<Output = Self>
     + Sub<Output = Self>
-    + Mul<Self::F, Output = Self>
+    + Mul<<Self::Action as Sidedness>::Exists<Self::F>, Output = Self>
     + Neg<Output = Self>
     + Zero
     + Index<usize, Output = Self::F>
@@ -271,6 +501,9 @@ pub trait Vector:
     /// The side on which `F` acts. [`Dual<Self>`](Dual) elects the opposite
     /// hand, and `Dual<Dual<Self>>` therefore restores this one.
     type Hand: Handedness;
+
+    // Whether `Self` has a one-sided or both-sided action.
+    type Action: Sidedness;
 
     /// Builds a vector from a function of coordinate index. The canonical
     /// constructor — most other constructors reduce to this.
@@ -318,6 +551,24 @@ pub trait Vector:
         v.0.0
     }
 
+    /// The canonical relabelling
+    /// `Dual<Sinister<Self>> ≅ Sinister<Dual<Self>>`.
+    fn dual_sinister(v: Dual<Sinister<Self>>) -> Sinister<Dual<Self>>
+    where
+        Self: Vector<Action = BothSided>,
+    {
+        Sinister(Dual(v.0.0))
+    }
+
+    /// The inverse canonical relabelling
+    /// `Sinister<Dual<Self>> ≅ Dual<Sinister<Self>>`.
+    fn sinister_dual(v: Sinister<Dual<Self>>) -> Dual<Sinister<Self>>
+    where
+        Self: Vector<Action = BothSided>,
+    {
+        Dual(Sinister(v.0.0))
+    }
+
     fn from_iter(iter: impl IntoIterator<Item = Self::F>) -> Self {
         let mut iter = iter.into_iter();
 
@@ -348,6 +599,7 @@ pub trait Vector:
     fn check_global_geodesic_scaling(p: &Self, v: Self, t: <Self::F as Field>::Fixed) -> bool
     where
         Self: PartialEq,
+        Self: Mul<Self::F, Output = Self>,
     {
         let t = Self::F::from_fixed(t);
         let chart = Self::chart_at(p);
@@ -388,13 +640,13 @@ macro_rules! impl_vector_ops {
             }
         }
 
-        impl<$($generics)*> std::ops::Mul<<$target as Vector>::F> for $target {
+        impl<$($generics)*> std::ops::Mul<<<$target as $crate::traits::Vector>::Action as $crate::traits::Sidedness>::Exists<<$target as $crate::traits::Vector>::F>> for $target {
             type Output = $target;
 
-            fn mul(self, scalar: <$target as Vector>::F) -> Self::Output {
+            fn mul(self, scalar: <<$target as $crate::traits::Vector>::Action as $crate::traits::Sidedness>::Exists<<$target as $crate::traits::Vector>::F>) -> Self::Output {
                 Self::from_fn(|i| match <<$target as Vector>::Hand as $crate::traits::Handedness>::H {
-                    $crate::traits::Hand::Left => scalar * self[i],
-                    $crate::traits::Hand::Right => self[i] * scalar,
+                    $crate::traits::Hand::Left => *<<$target as $crate::traits::Vector>::Action as $crate::traits::Sidedness>::into_existing(&scalar) * self[i],
+                    $crate::traits::Hand::Right => self[i] * *<<$target as $crate::traits::Vector>::Action as $crate::traits::Sidedness>::into_existing(&scalar),
                 })
             }
         }
@@ -469,20 +721,6 @@ pub trait Nondegenerate: Form {
         Self::sharp(flat.clone()) == *a && Dual::<Self>::sharp(flat.flat()) == flat
     }
 }
-
-impl<V: Nondegenerate> Form for Dual<V> {
-    fn flat(&self) -> Dual<Self> {
-        Dual(Dual(V::sharp(self.clone())))
-    }
-}
-
-impl<V: Nondegenerate> Nondegenerate for Dual<V> {
-    fn sharp(v: Dual<Self>) -> Self {
-        v.0.0.flat()
-    }
-}
-
-impl<V: Nondegenerate + Sesquilinear> Sesquilinear for Dual<V> {}
 
 impl_group_via_add!(V, V: Vector);
 
@@ -603,7 +841,8 @@ pub trait Sesquilinear: Form {
 /// vector space. And not every [`Bilinear`] form is an `InnerProduct` — a
 /// Minkowski scalar product is bilinear and symmetric but indefinite, so it
 /// induces no metric at all.
-pub trait InnerProduct: Sesquilinear + Metric<R = <Self::F as Field>::Fixed>
+pub trait InnerProduct:
+    Sesquilinear + Nondegenerate + Metric<R = <Self::F as Field>::Fixed>
 where
     <Self::F as Field>::Fixed: Real,
 {
@@ -628,7 +867,7 @@ where
     }
 }
 
-impl<P: Sesquilinear + Metric<R = <Self::F as Field>::Fixed>> InnerProduct for P where
+impl<P: Sesquilinear + Nondegenerate + Metric<R = <Self::F as Field>::Fixed>> InnerProduct for P where
     <Self::F as Field>::Fixed: Real
 {
 }
