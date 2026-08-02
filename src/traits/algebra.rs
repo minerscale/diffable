@@ -1,6 +1,6 @@
 use crate::{
     impl_group_via_mul,
-    traits::{ExactCmp, FromReal, Interval, Metric, Real, Vector},
+    traits::{ExactCmp, FromReal, Interval, Metric, Real, Tensor},
 };
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 use std::ops::{Add, Mul, Neg, Sub};
@@ -905,7 +905,7 @@ impl<F: Field, const N: usize> Inv for RootOfUnity<F, N> {
 
 impl_group_via_mul!(RootOfUnity<F, N>, F: Field, const N: usize);
 
-impl<V: Vector, const N: usize> LieGroup<V> for RootOfUnity<V::F, N> {
+impl<V: Tensor, const N: usize> LieGroup<V> for RootOfUnity<V::F, N> {
     fn identity_exp(_: V) -> Self {
         const { assert!(N != 0) }
         Self::one()
@@ -1115,13 +1115,13 @@ pub trait Group: Point {
 /// [`Chart`]: crate::traits::Chart
 /// [`ExpMap`]: crate::traits::ExpMap
 /// [`TangentBundle`]: crate::traits::TangentBundle
-pub trait LieGroup<V: Vector>: Group {
+pub trait LieGroup<V: Tensor>: Group {
     fn identity_exp(v: V) -> Self;
     fn identity_log(p: &Self) -> Option<V>;
 }
 
 // left translation
-impl<V: Vector, L: LieGroup<V>> Smooth<V> for L {
+impl<V: Tensor, L: LieGroup<V>> Smooth<V> for L {
     type Global = Self;
 
     fn exp(&self, coord: V) -> Self {
@@ -1186,7 +1186,7 @@ impl<V: Vector, L: LieGroup<V>> Smooth<V> for L {
 /// because `-1` commutes with everything (it is, after all, just a scalar
 /// multiple of the identity), which is what makes `S³/{±1} → SO(3)` and
 /// `(R\{0}, ×)/{±1} → (R⁺, ×)` both legitimate instances of this trait.
-pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Vector>: Point {
+pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Tensor>: Point {
     /// Maps `g` to the `Quotient` value representing its coset `gH`.
     fn new(g: G) -> Self;
 

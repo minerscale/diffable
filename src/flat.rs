@@ -1,7 +1,7 @@
 use crate::{
     discrete::Z,
     impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
-    traits::{Bounded, BuildNodes, Interval, NerveComplexParameters, Vector},
+    traits::{Bounded, BuildNodes, Interval, NerveComplexParameters, Tensor},
 };
 use std::marker::PhantomData;
 
@@ -12,7 +12,7 @@ use num_traits::{Euclid, NumCast, One, Zero, real::Real as _};
 /// The circle `S¹`, as the quotient of the line `V` by the integer lattice
 /// [`Z`]. One-dimensional (`From<[F; 1]>`).
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct S1<V: Euclidean + From<[<V as Vector>::F; 1]>>(V);
+pub struct S1<V: Euclidean + From<[<V as Tensor>::F; 1]>>(V);
 
 impl<V: Euclidean<F: Real> + From<[V::F; 1]>> Interval for S1<V> {
     type R = V::F;
@@ -22,7 +22,7 @@ impl<V: Euclidean<F: Real> + From<[V::F; 1]>> Interval for S1<V> {
     }
 }
 
-impl<V: Euclidean<F: Real> + From<[<V as Vector>::F; 1]>> Quotient<V, Z<V>, V> for S1<V> {
+impl<V: Euclidean<F: Real> + From<[<V as Tensor>::F; 1]>> Quotient<V, Z<V>, V> for S1<V> {
     fn new(g: V) -> Self {
         let one = V::F::one();
         let mut d = g[0].rem_euclid(&one);
@@ -49,7 +49,7 @@ impl<V: Euclidean<F: Real> + From<[<V as Vector>::F; 1]>> Quotient<V, Z<V>, V> f
     }
 }
 
-impl_lie_group_via_quotient!(S1<V>, V, Z<V>, V, V: Euclidean + From<[<V as Vector>::F; 1]>);
+impl_lie_group_via_quotient!(S1<V>, V, Z<V>, V, V: Euclidean + From<[<V as Tensor>::F; 1]>);
 
 /// The 2-torus `T² = S¹ × S¹`.
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -251,7 +251,7 @@ const S: usize = 4;
 impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
     for TorusCover<I, V>
 {
-    fn sdf(&self, v: &V) -> <V as Vector>::F {
+    fn sdf(&self, v: &V) -> <V as Tensor>::F {
         let to = |x| <V::F as NumCast>::from(x).unwrap();
         v.norm() - (to(2).sqrt() + to(2)) / to(4 * S)
     }
@@ -308,7 +308,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<KleinBottle<I, V>> for KleinBot
 impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<KleinBottle<I, V>, KleinBottle<I, V>, V>
     for KleinBottleCover<I, V>
 {
-    fn sdf(&self, v: &V) -> <V as Vector>::F {
+    fn sdf(&self, v: &V) -> <V as Tensor>::F {
         let to = |x| <V::F as NumCast>::from(x).unwrap();
         v.norm() - (to(2).sqrt() + to(2)) / to(4 * S)
     }
@@ -378,7 +378,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>> From<Torus<I, V>> for MyopicTorus<I, 
 impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
     for MyopicTorus<I, V>
 {
-    fn sdf(&self, v: &V) -> <V as Vector>::F {
+    fn sdf(&self, v: &V) -> <V as Tensor>::F {
         v.norm() - Self::radius()
     }
 }
@@ -409,7 +409,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>> From<MyopicTorus<I, V>> for MyopicTor
 impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<MyopicTorus<I, V>, Torus<I, V>, V>
     for MyopicTorusCover<I, V>
 {
-    fn sdf(&self, v: &V) -> <V as Vector>::F {
+    fn sdf(&self, v: &V) -> <V as Tensor>::F {
         let to = |x| <V::F as NumCast>::from(x).unwrap();
         v.norm() - (to(2).sqrt() + to(2)) / to(4 * MyopicTorus::<I, V>::s())
     }

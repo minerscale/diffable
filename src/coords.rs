@@ -5,8 +5,8 @@ use num_traits::{ConstZero, Zero};
 use crate::{
     impl_vector_ops,
     traits::{
-        BothSided, DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate, Point,
-        Real, Right, Sesquilinear, Vector,
+        BothSided, DivRing, Dual, Euclidean, Field, Form, FormLift, Interval, JetMode, JetVector,
+        Metric, Nondegenerate, NondegenerateLift, Point, Real, Right, Sesquilinear, Tensor,
     },
 };
 
@@ -103,7 +103,7 @@ pub(crate) fn array_zip_map<A, B, C, const N: usize>(
 
 impl_vector_ops!(Coords<F, N, M>, F: Field, const N: usize, const M: usize);
 
-impl<F: Field, const N: usize, const M: usize> Vector for Coords<F, N, M> {
+impl<F: Field, const N: usize, const M: usize> Tensor for Coords<F, N, M> {
     type F = F;
     type Hand = Right;
     type Action = BothSided;
@@ -182,6 +182,28 @@ impl<R: Field, const N: usize, const M: usize> Form for Coords<R, N, M> {
 impl<R: Field, const N: usize, const M: usize> Nondegenerate for Coords<R, N, M> {
     fn sharp(v: Dual<Self>) -> Self {
         Self::from_fn(|i| if i < M { -v[i] } else { v[i] }.conj())
+    }
+}
+
+impl<R: Field, const N: usize, const M: usize> FormLift for Coords<R, N, M> {
+    fn jet_flat<const K: usize, Mode: JetMode>(
+        value: &JetVector<Self, Mode, K>,
+    ) -> Dual<JetVector<Self, Mode, K>>
+    where
+        JetVector<Self, Mode, K>: Tensor,
+    {
+        Dual::from_fn(|i| if i < M { -value[i] } else { value[i] }.conj())
+    }
+}
+
+impl<R: Field, const N: usize, const M: usize> NondegenerateLift for Coords<R, N, M> {
+    fn jet_sharp<const K: usize, Mode: JetMode>(
+        value: Dual<JetVector<Self, Mode, K>>,
+    ) -> JetVector<Self, Mode, K>
+    where
+        JetVector<Self, Mode, K>: Tensor,
+    {
+        JetVector::from_fn(|i| if i < M { -value[i] } else { value[i] }.conj())
     }
 }
 

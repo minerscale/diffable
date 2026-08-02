@@ -54,9 +54,7 @@ use crate::{
 /// [`Form`]: crate::traits::Form
 /// [`Nondegenerate`]: crate::traits::Nondegenerate
 /// [`Sesquilinear`]: crate::traits::Sesquilinear
-pub trait Euclidean:
-    Bilinear<F: Real, Action = BothSided> + InnerProduct + Mul<Self::F, Output = Self>
-{
+pub trait Euclidean: Bilinear<F: Real, Action = BothSided> + InnerProduct + Vector {
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
     fn check_pythagorean(a: &Self, b: &Self) -> bool {
@@ -89,9 +87,9 @@ pub trait Euclidean:
 /// [`from_raw`](Dual::from_raw) — the latter is a bare relabel that ignores the
 /// metric.
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Dual<V: Vector>(V);
+pub struct Dual<V: Tensor>(V);
 
-impl<V: Vector> Dual<V> {
+impl<V: Tensor> Dual<V> {
     /// This is a naive constructor! Do not use this
     /// for geometric computation. It exists only to help
     /// with the implementation of `Form` on types.
@@ -107,7 +105,7 @@ impl<V: Vector> Dual<V> {
     }
 }
 
-impl<V: Vector> Vector for Dual<V> {
+impl<V: Tensor> Tensor for Dual<V> {
     type F = V::F;
     type Hand = <V::Hand as Handedness>::Opposite;
     type Action = V::Action;
@@ -119,9 +117,9 @@ impl<V: Vector> Vector for Dual<V> {
     }
 }
 
-impl_vector_ops!(Dual<V>, V: Vector);
+impl_vector_ops!(Dual<V>, V: Tensor);
 
-impl<V: Vector> Index<usize> for Dual<V> {
+impl<V: Tensor> Index<usize> for Dual<V> {
     type Output = V::F;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -129,20 +127,20 @@ impl<V: Vector> Index<usize> for Dual<V> {
     }
 }
 
-impl<V: Vector> IndexMut<usize> for Dual<V> {
+impl<V: Tensor> IndexMut<usize> for Dual<V> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-impl<V: Vector> AsRef<<Dual<V> as Vector>::Array<V::F>> for Dual<V> {
-    fn as_ref(&self) -> &<Dual<V> as Vector>::Array<V::F> {
+impl<V: Tensor> AsRef<<Dual<V> as Tensor>::Array<V::F>> for Dual<V> {
+    fn as_ref(&self) -> &<Dual<V> as Tensor>::Array<V::F> {
         self.0.as_ref()
     }
 }
 
-impl<V: Vector> AsMut<<Dual<V> as Vector>::Array<V::F>> for Dual<V> {
-    fn as_mut(&mut self) -> &mut <Dual<V> as Vector>::Array<V::F> {
+impl<V: Tensor> AsMut<<Dual<V> as Tensor>::Array<V::F>> for Dual<V> {
+    fn as_mut(&mut self) -> &mut <Dual<V> as Tensor>::Array<V::F> {
         self.0.as_mut()
     }
 }
@@ -174,13 +172,13 @@ impl<V: Nondegenerate + Interval> Interval for Dual<V> {
 
 impl<V: Nondegenerate + Metric> Metric for Dual<V> {}
 
-impl<V> Euclidean for Dual<V> where V: Euclidean + Nondegenerate {}
+impl<V: Euclidean> Euclidean for Dual<V> {}
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Sinister<V: Vector<Action = BothSided>>(pub V);
+pub struct Sinister<V: Tensor<Action = BothSided>>(pub V);
 
-impl<V: Vector<Action = BothSided>> Vector for Sinister<V> {
+impl<V: Tensor<Action = BothSided>> Tensor for Sinister<V> {
     type F = V::F;
     type Hand = <V::Hand as Handedness>::Opposite;
     type Action = V::Action;
@@ -192,9 +190,9 @@ impl<V: Vector<Action = BothSided>> Vector for Sinister<V> {
     }
 }
 
-impl_vector_ops!(Sinister<V>, V: Vector<Action = BothSided>);
+impl_vector_ops!(Sinister<V>, V: Tensor<Action = BothSided>);
 
-impl<V: Vector<Action = BothSided>> Index<usize> for Sinister<V> {
+impl<V: Tensor<Action = BothSided>> Index<usize> for Sinister<V> {
     type Output = V::F;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -202,20 +200,20 @@ impl<V: Vector<Action = BothSided>> Index<usize> for Sinister<V> {
     }
 }
 
-impl<V: Vector<Action = BothSided>> IndexMut<usize> for Sinister<V> {
+impl<V: Tensor<Action = BothSided>> IndexMut<usize> for Sinister<V> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-impl<V: Vector<Action = BothSided>> AsRef<<Sinister<V> as Vector>::Array<V::F>> for Sinister<V> {
-    fn as_ref(&self) -> &<Sinister<V> as Vector>::Array<V::F> {
+impl<V: Tensor<Action = BothSided>> AsRef<<Sinister<V> as Tensor>::Array<V::F>> for Sinister<V> {
+    fn as_ref(&self) -> &<Sinister<V> as Tensor>::Array<V::F> {
         self.0.as_ref()
     }
 }
 
-impl<V: Vector<Action = BothSided>> AsMut<<Sinister<V> as Vector>::Array<V::F>> for Sinister<V> {
-    fn as_mut(&mut self) -> &mut <Sinister<V> as Vector>::Array<V::F> {
+impl<V: Tensor<Action = BothSided>> AsMut<<Sinister<V> as Tensor>::Array<V::F>> for Sinister<V> {
+    fn as_mut(&mut self) -> &mut <Sinister<V> as Tensor>::Array<V::F> {
         self.0.as_mut()
     }
 }
@@ -242,7 +240,7 @@ impl<V: Nondegenerate<Action = BothSided>> Nondegenerate for Sinister<V> {
 // The reversed bilinear form is bilinear. Not true for Sesquilinear forms.
 impl<V: Bilinear<Action = BothSided>> Sesquilinear for Sinister<V> {}
 
-impl<V: Vector<Action = BothSided> + Interval> Interval for Sinister<V> {
+impl<V: Tensor<Action = BothSided> + Interval> Interval for Sinister<V> {
     type R = V::R;
 
     fn interval_squared(&self, other: &Self) -> Self::R {
@@ -250,9 +248,9 @@ impl<V: Vector<Action = BothSided> + Interval> Interval for Sinister<V> {
     }
 }
 
-impl<V: Vector<Action = BothSided> + Metric> Metric for Sinister<V> {}
+impl<V: Tensor<Action = BothSided> + Metric> Metric for Sinister<V> {}
 
-impl<V: Vector<Action = BothSided> + Euclidean> Euclidean for Sinister<V> {}
+impl<V: Euclidean> Euclidean for Sinister<V> {}
 
 /// The runtime witness for a module's elected scalar-action side.
 #[derive(Debug, Copy, Clone)]
@@ -478,7 +476,7 @@ impl<T: Point, const N: usize> Array<T> for [T; N] {
 /// pinned to the coordinate dot product, `V`, `V*`, and `V**` are
 /// coordinate-identical, which is what makes [`collapse`](Vector::collapse) a
 /// free relabel. Double dualisation restores the original hand.
-pub trait Vector:
+pub trait Tensor:
     Add<Output = Self>
     + Sub<Output = Self>
     + Mul<<Self::Action as Sidedness>::Exists<Self::F>, Output = Self>
@@ -555,7 +553,7 @@ pub trait Vector:
     /// `Dual<Sinister<Self>> ≅ Sinister<Dual<Self>>`.
     fn dual_sinister(v: Dual<Sinister<Self>>) -> Sinister<Dual<Self>>
     where
-        Self: Vector<Action = BothSided>,
+        Self: Tensor<Action = BothSided>,
     {
         Sinister(Dual(v.0.0))
     }
@@ -564,7 +562,7 @@ pub trait Vector:
     /// `Sinister<Dual<Self>> ≅ Dual<Sinister<Self>>`.
     fn sinister_dual(v: Sinister<Dual<Self>>) -> Dual<Sinister<Self>>
     where
-        Self: Vector<Action = BothSided>,
+        Self: Tensor<Action = BothSided>,
     {
         Dual(Sinister(v.0.0))
     }
@@ -598,8 +596,7 @@ pub trait Vector:
     #[cfg(feature = "testing")]
     fn check_global_geodesic_scaling(p: &Self, v: Self, t: <Self::F as Field>::Fixed) -> bool
     where
-        Self: PartialEq,
-        Self: Mul<Self::F, Output = Self>,
+        Self: Vector + PartialEq,
     {
         let t = Self::F::from_fixed(t);
         let chart = Self::chart_at(p);
@@ -612,6 +609,9 @@ pub trait Vector:
         }
     }
 }
+
+pub trait Vector: Tensor<Action: ActionExists> + Mul<Self::F, Output = Self> {}
+impl<V: Tensor<Action: ActionExists> + Mul<Self::F, Output = Self>> Vector for V {}
 
 #[macro_export]
 macro_rules! impl_vector_ops {
@@ -640,20 +640,20 @@ macro_rules! impl_vector_ops {
             }
         }
 
-        impl<$($generics)*> std::ops::Mul<<<$target as $crate::traits::Vector>::Action as $crate::traits::Sidedness>::Exists<<$target as $crate::traits::Vector>::F>> for $target {
+        impl<$($generics)*> std::ops::Mul<<<$target as $crate::traits::Tensor>::Action as $crate::traits::Sidedness>::Exists<<$target as $crate::traits::Tensor>::F>> for $target {
             type Output = $target;
 
-            fn mul(self, scalar: <<$target as $crate::traits::Vector>::Action as $crate::traits::Sidedness>::Exists<<$target as $crate::traits::Vector>::F>) -> Self::Output {
-                Self::from_fn(|i| match <<$target as Vector>::Hand as $crate::traits::Handedness>::H {
-                    $crate::traits::Hand::Left => *<<$target as $crate::traits::Vector>::Action as $crate::traits::Sidedness>::into_existing(&scalar) * self[i],
-                    $crate::traits::Hand::Right => self[i] * *<<$target as $crate::traits::Vector>::Action as $crate::traits::Sidedness>::into_existing(&scalar),
+            fn mul(self, scalar: <<$target as $crate::traits::Tensor>::Action as $crate::traits::Sidedness>::Exists<<$target as $crate::traits::Tensor>::F>) -> Self::Output {
+                Self::from_fn(|i| match <<$target as Tensor>::Hand as $crate::traits::Handedness>::H {
+                    $crate::traits::Hand::Left => *<<$target as $crate::traits::Tensor>::Action as $crate::traits::Sidedness>::into_existing(&scalar) * self[i],
+                    $crate::traits::Hand::Right => self[i] * *<<$target as $crate::traits::Tensor>::Action as $crate::traits::Sidedness>::into_existing(&scalar),
                 })
             }
         }
 
         impl<$($generics)*> num_traits::Zero for $target {
             fn zero() -> Self {
-                Self::from_fn(|_| <$target as Vector>::F::zero())
+                Self::from_fn(|_| <$target as Tensor>::F::zero())
             }
 
             fn is_zero(&self) -> bool {
@@ -671,7 +671,7 @@ macro_rules! impl_vector_ops {
 /// assumed here — a general (even indefinite or degenerate) form is a `Form`.
 /// The refinements add those: [`Nondegenerate`] (invertible), [`Sesquilinear`]
 /// (Hermitian), [`Bilinear`] (symmetric), [`InnerProduct`] (positive-definite).
-pub trait Form: Vector {
+pub trait Form: Tensor {
     fn flat(&self) -> Dual<Self>;
 
     fn dot(&self, b: &Self) -> Self::F {
@@ -722,9 +722,9 @@ pub trait Nondegenerate: Form {
     }
 }
 
-impl_group_via_add!(V, V: Vector);
+impl_group_via_add!(V, V: Tensor);
 
-impl<V: Vector> LieGroup<V> for V {
+impl<V: Tensor> LieGroup<V> for V {
     fn identity_exp(v: V) -> Self {
         v
     }
@@ -815,12 +815,12 @@ pub trait Sesquilinear: Form {
     #[cfg(feature = "testing")]
     fn check_scalar_linearity(a: Self, c: Self, k: Self::F) -> bool
     where
-        Self: Mul<Self::F, Output = Self> + Clone,
+        Self: Vector,
     {
         let dot = a.dot(&c);
 
         (a * k).dot(&c)
-            == match <Self as Vector>::Hand::H {
+            == match <Self as Tensor>::Hand::H {
                 Hand::Right => dot * k,
                 Hand::Left => k * dot,
             }

@@ -4,7 +4,7 @@ use crate::traits::Form;
 #[cfg(feature = "testing")]
 use num_traits::Zero;
 
-use crate::traits::{Bilinear, Euclidean, Field, Interval, Real, Vector};
+use crate::traits::{Bilinear, Euclidean, Field, Interval, Real, Tensor};
 
 use super::Point;
 
@@ -61,7 +61,7 @@ impl<T> OptionallyOption<T> for Option<T> {
 /// returning `None` at genuine singularities of the manifold. If
 /// the charted manifold is geodesically complete, then to_global returns
 /// `P` rather than `Option<P>`.
-pub trait Chart<P: Point, V: Vector>: Point {
+pub trait Chart<P: Point, V: Tensor>: Point {
     /// The result of mapping local coordinates back onto the manifold.
     ///
     /// This is either `P` or `Option<P>`. Choosing `P` certifies that
@@ -109,7 +109,7 @@ pub trait Chart<P: Point, V: Vector>: Point {
 /// that distances from the origin equal arc lengths along those geodesics.
 ///
 /// Additionally, you certify that `Self::chart_at(&self.base_point()) == self`
-pub trait ExpMap<P: Point, V: Vector>: Chart<P, V> {
+pub trait ExpMap<P: Point, V: Tensor>: Chart<P, V> {
     fn base_point(&self) -> P {
         self.to_global(V::zero()).into_option().unwrap()
     }
@@ -220,7 +220,7 @@ impl<V: Bilinear<F: Real>, E: ExpMap<Self, V> + Interval<R = V::F>> PseudoRieman
 /// bare [`Chart`] or [`ExpMap`].
 ///
 /// Use the `test_tangent_bundle!` macro to verify this invariant.
-pub trait TangentBundle<P: Point, V: Vector>: ExpMap<P, V> {
+pub trait TangentBundle<P: Point, V: Tensor>: ExpMap<P, V> {
     // p is the point on the manifold which is the base point.
     #[cfg(feature = "testing")]
     fn check_universal_centring(p: P) -> bool
@@ -254,7 +254,7 @@ pub trait TangentBundle<P: Point, V: Vector>: ExpMap<P, V> {
 /// [`ExpMap<Self, V>`]: crate::traits::ExpMap
 /// [`TangentBundle<Self, V>`]: crate::traits::TangentBundle
 /// [`LieGroup`]: crate::traits::LieGroup
-pub trait Smooth<V: Vector>: Point {
+pub trait Smooth<V: Tensor>: Point {
     /// The result of applying the exponential map.
     ///
     /// This is either `Self` or `Option<Self>`. Choosing `Self` certifies that
@@ -279,7 +279,7 @@ pub trait Smooth<V: Vector>: Point {
     fn log(&self, other: &Self) -> Option<V>;
 }
 
-impl<V: Vector, S: Smooth<V>> Chart<Self, V> for S {
+impl<V: Tensor, S: Smooth<V>> Chart<Self, V> for S {
     type Global = S::Global;
 
     fn to_local(&self, point: &Self) -> Option<V> {
@@ -295,11 +295,11 @@ impl<V: Vector, S: Smooth<V>> Chart<Self, V> for S {
     }
 }
 
-impl<V: Vector, L: Smooth<V>> ExpMap<Self, V> for L {
+impl<V: Tensor, L: Smooth<V>> ExpMap<Self, V> for L {
     // optimisation
     fn base_point(&self) -> Self {
         self.clone()
     }
 }
 
-impl<V: Vector, L: Smooth<V>> TangentBundle<Self, V> for L {}
+impl<V: Tensor, L: Smooth<V>> TangentBundle<Self, V> for L {}

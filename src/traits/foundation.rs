@@ -96,6 +96,15 @@ where
     fn conj(&self) -> Self {
         *self
     }
+
+    fn from_nat(n: usize) -> Self {
+        Self::from(n).unwrap()
+    }
+
+    fn norm_squared(self) -> Self::Fixed {
+        let abs = self.abs();
+        abs * abs
+    }
 }
 
 // Real multiplication is commutative

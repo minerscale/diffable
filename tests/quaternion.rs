@@ -12,7 +12,7 @@ use diffable::{
     hypersphere::S3,
     quaternion::Quaternion,
     test_field, test_nondegenerate, test_sesquilinear, test_vector,
-    traits::{Dual, Field, Form, Nondegenerate, Vector},
+    traits::{Dual, Field, Form, Nondegenerate, Tensor},
 };
 use num_traits::{One, Zero};
 use proptest::prelude::*;

@@ -9,7 +9,7 @@ use crate::{
     coords::array_zip_map,
     traits::{
         CField, DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Hand, Handedness, Interval,
-        Metric, NatZero, NonZero, Vector,
+        Metric, NatZero, NonZero, Tensor,
     },
 };
 
@@ -26,9 +26,9 @@ use crate::{
 /// N must be equal to V::N. This is enforced by all constructors
 /// at compile time. This is due to limitations in Rust's const generics.
 #[derive(Debug, Copy, Clone)]
-pub struct Matrix<V: Vector, const N: usize>([[V::F; N]; N]);
+pub struct Matrix<V: Tensor, const N: usize>([[V::F; N]; N]);
 
-impl<V: Vector, const N: usize> Index<(usize, usize)> for Matrix<V, N> {
+impl<V: Tensor, const N: usize> Index<(usize, usize)> for Matrix<V, N> {
     type Output = V::F;
 
     fn index(&self, index: (usize, usize)) -> &Self::Output {
@@ -36,13 +36,13 @@ impl<V: Vector, const N: usize> Index<(usize, usize)> for Matrix<V, N> {
     }
 }
 
-impl<V: Vector, const N: usize> IndexMut<(usize, usize)> for Matrix<V, N> {
+impl<V: Tensor, const N: usize> IndexMut<(usize, usize)> for Matrix<V, N> {
     fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
         &mut self.0[index.0][index.1]
     }
 }
 
-impl<V: Vector, const N: usize> PartialEq for Matrix<V, N> {
+impl<V: Tensor, const N: usize> PartialEq for Matrix<V, N> {
     fn eq(&self, other: &Self) -> bool {
         // Scale is computed from `self` alone, not chained with
         // `other` — this looks like it should break symmetry (self.eq(other) vs
@@ -85,7 +85,7 @@ impl<V: Vector, const N: usize> PartialEq for Matrix<V, N> {
     }
 }
 
-impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
+impl<F: Field, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
     /// Wraps a raw `N×N` array as a matrix, checking `V::N == N` at compile
     /// time. The const assertion is the crate's stand-in for `Matrix<V, {V::N}>`,
     /// which stable const generics can't express — it guarantees the matrix's
@@ -273,7 +273,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Matrix<V, N> {
     }
 }
 
-impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
+impl<F: Field + Metric, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
     /// The Frobenius norm `√(Σᵢⱼ |Mᵢⱼ|²)`, valued in the real field `F::R`.
     ///
     /// Requires `F: Metric` so each entry has a *definite* squared magnitude
@@ -415,7 +415,7 @@ impl<F: Field + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
     }
 }
 
-impl<F: CField + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
+impl<F: CField + Metric, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
     fn swap_rows(&mut self, a: usize, b: usize) {
         if a != b {
             self.0.swap(a, b);
@@ -489,7 +489,7 @@ impl<F: CField + Metric, V: Vector<F = F>, const N: usize> Matrix<V, N> {
     }
 }
 
-impl<F: Field, V: Vector<F = F>, const N: usize> Zero for Matrix<V, N> {
+impl<F: Field, V: Tensor<F = F>, const N: usize> Zero for Matrix<V, N> {
     fn zero() -> Self {
         const { assert!(V::N == N) }
 
@@ -501,7 +501,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Zero for Matrix<V, N> {
     }
 }
 
-impl<F: Field, V: Vector<F = F>, const N: usize> One for Matrix<V, N> {
+impl<F: Field, V: Tensor<F = F>, const N: usize> One for Matrix<V, N> {
     fn one() -> Self {
         const { assert!(V::N == N) }
 
@@ -511,7 +511,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> One for Matrix<V, N> {
     }
 }
 
-impl<F: Field, V: Vector<F = F>, const N: usize> Mul<Self> for Matrix<V, N> {
+impl<F: Field, V: Tensor<F = F>, const N: usize> Mul<Self> for Matrix<V, N> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self {
@@ -528,7 +528,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Mul<Self> for Matrix<V, N> {
     }
 }
 
-impl<F: Field, V: Vector<F = F>, const N: usize> Add<Self> for Matrix<V, N> {
+impl<F: Field, V: Tensor<F = F>, const N: usize> Add<Self> for Matrix<V, N> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -538,7 +538,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Add<Self> for Matrix<V, N> {
     }
 }
 
-impl<F: Field, V: Vector<F = F>, const N: usize> Sub<Self> for Matrix<V, N> {
+impl<F: Field, V: Tensor<F = F>, const N: usize> Sub<Self> for Matrix<V, N> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -548,7 +548,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Sub<Self> for Matrix<V, N> {
     }
 }
 
-impl<F: Field, V: Vector<F = F>, const N: usize> Neg for Matrix<V, N> {
+impl<F: Field, V: Tensor<F = F>, const N: usize> Neg for Matrix<V, N> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -556,7 +556,7 @@ impl<F: Field, V: Vector<F = F>, const N: usize> Neg for Matrix<V, N> {
     }
 }
 
-impl<F: CField, V: Vector<F = F>, const N: usize> Mul<F> for Matrix<V, N> {
+impl<F: CField, V: Tensor<F = F>, const N: usize> Mul<F> for Matrix<V, N> {
     type Output = Self;
 
     fn mul(self, rhs: F) -> Self::Output {
@@ -564,7 +564,7 @@ impl<F: CField, V: Vector<F = F>, const N: usize> Mul<F> for Matrix<V, N> {
     }
 }
 
-impl<F: CField, V: Vector<F = F>, const N: usize> Div<F> for Matrix<V, N> {
+impl<F: CField, V: Tensor<F = F>, const N: usize> Div<F> for Matrix<V, N> {
     type Output = Self;
 
     fn div(self, rhs: F) -> Self::Output {
@@ -622,7 +622,7 @@ pub fn nth_root_near_one<F: Field + Metric>(a: &F, n: usize) -> F {
 impl<
     const N: usize,
     F: Field<Characteristic = NatZero, Fixed: FromReal + Metric> + Metric + FromReal + FieldExp,
-    V: Vector<F = F>,
+    V: Tensor<F = F>,
 > MatrixExponential for Matrix<V, N>
 {
     fn exp(&self) -> Self {
