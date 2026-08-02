@@ -41,7 +41,7 @@ use crate::{
 /// [`Euclidean`]: crate::traits::Euclidean
 /// [`Sesquilinear`]: crate::traits::Sesquilinear
 #[derive(Debug, Copy, Clone)]
-pub struct Coords<F: Field, const N: usize, const M: usize = 0>([F; N]);
+pub struct Coords<F: Field, const N: usize, const M: usize = 0>(pub [F; N]);
 
 impl<F: Field + ConstZero, const N: usize, const M: usize> ConstZero for Coords<F, N, M> {
     const ZERO: Self = Self([F::ZERO; N]);
@@ -49,7 +49,7 @@ impl<F: Field + ConstZero, const N: usize, const M: usize> ConstZero for Coords<
 
 impl<F: Field> From<F> for Coords<F, 1> {
     fn from(value: F) -> Self {
-        Self::from_iter([value])
+        Self([value])
     }
 }
 

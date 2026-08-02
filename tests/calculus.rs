@@ -1,11 +1,9 @@
 #![cfg(feature = "testing")]
 
-use std::ops::Mul;
-
 use diffable::{
     complex::Complex,
     coords::Coords,
-    traits::{Euclidean, Field, Tensor, d},
+    traits::{Euclidean, Field, Vector, d},
 };
 use num_traits::Zero;
 
@@ -19,8 +17,8 @@ fn differential_of_scalar_linear_function() {
         x * V::F::from_nat(2)
     }
 
-    let derivative = d(double).at(0.0.into());
-    let derivative_v = d(double_v).at(Complex::zero().into());
+    let derivative = d(double).at(Coords::from(0.0));
+    let derivative_v = d(double_v).at(Coords::from(Complex::zero()));
 
     assert_eq!(derivative[0], 2.0);
     assert_eq!(derivative_v[0], Complex::from_fixed(2.0));
@@ -28,14 +26,12 @@ fn differential_of_scalar_linear_function() {
 
 #[test]
 fn differential_computes_a_jacobian() {
-    type V = Coords<f64, 2>;
-
     // f(x, y) = (x² + y, xy)
     fn f<V: Euclidean>(v: V) -> V {
         V::from_iter([v[0] * v[0] + v[1], v[0] * v[1]])
     }
 
-    let jacobian = d(f).at([2.0, 3.0].into());
+    let jacobian = d(f).at(Coords([2.0, 3.0]));
 
     // J_f(x,y) = [ 2x  1 ]
     //            [  y  x ]
@@ -51,8 +47,6 @@ fn differential_computes_a_jacobian() {
 
 #[test]
 fn jacobian_uses_output_by_input_orientation() {
-    type V = Coords<f64, 2>;
-
     // f(x,y) = (2x + 3y, 5x + 7y)
     fn f<V: Euclidean>(v: V) -> V {
         let to = |n| V::F::from_nat(n);
@@ -60,7 +54,7 @@ fn jacobian_uses_output_by_input_orientation() {
         V::from_iter([v[0] * to(2) + v[1] * to(3), v[0] * to(5) + v[1] * to(7)])
     }
 
-    let jacobian = d(f).at([11.0, 13.0].into());
+    let jacobian = d(f).at(Coords([11.0, 13.0]));
 
     assert_eq!(jacobian[0], 2.0);
     assert_eq!(jacobian[1], 3.0);

@@ -2467,7 +2467,7 @@ macro_rules! impl_tangent_bundle_via_bounded {
 
             fn to_local(&self, p: &$manifold) -> Option<$v> {
                 <$ambient as Chart<$manifold, $v>>::to_local(self.as_ref(), p)
-                    .filter(|v| self.sdf(v) < <$v as $crate::traits::Vector>::F::zero())
+                    .filter(|v| self.sdf(v) < <$v as $crate::traits::Tensor>::F::zero())
             }
             fn to_global(&self, c: $v) -> Self::Global {
                 <$ambient as Chart<$manifold, $v>>::to_global(self.as_ref(), c)

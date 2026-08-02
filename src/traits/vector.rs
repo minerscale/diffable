@@ -157,7 +157,7 @@ impl<V: Nondegenerate> Nondegenerate for Dual<V> {
     }
 }
 
-impl<V: Nondegenerate + Sesquilinear> Sesquilinear for Dual<V> {}
+impl<V: Nondegenerate + Sesquilinear> Sesquilinear for Dual<V> where Self: Vector {}
 
 impl<V: Nondegenerate + Interval> Interval for Dual<V> {
     type R = V::R;
@@ -790,7 +790,7 @@ impl<F: Field<Fixed = F>, V: Sesquilinear<F = F>> Bilinear for V {}
 /// The certified invariants are Hermitian symmetry, additivity, and scalar
 /// linearity in the first argument. Conjugate-linearity in the second argument
 /// follows from these together with Hermitian symmetry.
-pub trait Sesquilinear: Form {
+pub trait Sesquilinear: Form + Vector {
     // Hermitian spaces are exactly the spaces where
     // self.dot(self) lands in the fixed field of F
     fn norm_squared(&self) -> <Self::F as Field>::Fixed {
@@ -813,10 +813,7 @@ pub trait Sesquilinear: Form {
     }
 
     #[cfg(feature = "testing")]
-    fn check_scalar_linearity(a: Self, c: Self, k: Self::F) -> bool
-    where
-        Self: Vector,
-    {
+    fn check_scalar_linearity(a: Self, c: Self, k: Self::F) -> bool {
         let dot = a.dot(&c);
 
         (a * k).dot(&c)

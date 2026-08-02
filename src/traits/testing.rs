@@ -13,7 +13,7 @@ macro_rules! test_vector {
             use super::*;
             use $crate::{
                 test_group, test_tangent_bundle,
-                traits::{Field, Vector},
+                traits::{Field, Tensor},
             };
 
             test_tangent_bundle!(tangent_bundle, $space, $arb_point);

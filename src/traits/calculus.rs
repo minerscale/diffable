@@ -11,7 +11,7 @@ use crate::{
     traits::{
         ActionExists, Array, BothSided, CField, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap,
         Field, Form, Handedness, Interval, Left, Metric, NonZero, Nondegenerate, Point, Real,
-        Right, Sesquilinear, Sidedness, TangentBundle, Tensor, TensorProductAction,
+        Right, Sesquilinear, Sidedness, TangentBundle, Tensor, TensorProductAction, Vector,
     },
 };
 
@@ -1101,7 +1101,7 @@ where
 }
 
 impl<V: Sesquilinear, const N: usize, M: JetMode> Sesquilinear for JetVector<V, M, N> where
-    Self: Nondegenerate
+    Self: Nondegenerate + Vector
 {
 }
 
@@ -1111,7 +1111,7 @@ impl<V: Tensor + Metric, const N: usize, M: JetMode> Metric for JetVector<V, M, 
 }
 
 impl<V: Euclidean + NondegenerateLift, const N: usize> Euclidean for JetVector<V, JetReal, N> where
-    Self: Tensor<F: Real, Action = BothSided>
+    Self: Vector<F: Real, Action = BothSided>
 {
 }
 
