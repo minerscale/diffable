@@ -186,22 +186,22 @@ impl<R: Field, const N: usize, const M: usize> Nondegenerate for Coords<R, N, M>
 }
 
 impl<R: Field, const N: usize, const M: usize> FormLift for Coords<R, N, M> {
-    fn jet_flat<const K: usize, Mode: JetMode>(
-        value: &JetVector<Self, Mode, K>,
-    ) -> Dual<JetVector<Self, Mode, K>>
+    fn jet_flat<S: Field, Mode: JetMode, const K: usize>(
+        value: &JetVector<Self, Mode, K, S>,
+    ) -> Dual<JetVector<Self, Mode, K, S>>
     where
-        JetVector<Self, Mode, K>: Tensor,
+        JetVector<Self, Mode, K, S>: Tensor,
     {
         Dual::from_fn(|i| if i < M { -value[i] } else { value[i] }.conj())
     }
 }
 
 impl<R: Field, const N: usize, const M: usize> NondegenerateLift for Coords<R, N, M> {
-    fn jet_sharp<const K: usize, Mode: JetMode>(
-        value: Dual<JetVector<Self, Mode, K>>,
-    ) -> JetVector<Self, Mode, K>
+    fn jet_sharp<S: Field, Mode: JetMode, const K: usize>(
+        value: Dual<JetVector<Self, Mode, K, S>>,
+    ) -> JetVector<Self, Mode, K, S>
     where
-        JetVector<Self, Mode, K>: Tensor,
+        JetVector<Self, Mode, K, S>: Tensor,
     {
         JetVector::from_fn(|i| if i < M { -value[i] } else { value[i] }.conj())
     }

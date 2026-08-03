@@ -465,7 +465,7 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     /// time rather than dividing by a zero that only appears at runtime.
     type Characteristic: Nat;
 
-    fn pow(&self, mut s: usize) -> Self {
+    fn powi(&self, mut s: usize) -> Self {
         let mut base = *self;
         let mut result = Self::one();
 
@@ -641,7 +641,7 @@ pub trait FieldExp: Field<Characteristic = NatZero> + Metric {
             0
         };
 
-        let scaled = self.div((Self::from_nat(2)).pow(s.try_into().unwrap()));
+        let scaled = self.div((Self::from_nat(2)).powi(s.try_into().unwrap()));
 
         let (mut result, _, _) = (0..n).fold(
             (Self::one(), Self::one(), Self::one()),

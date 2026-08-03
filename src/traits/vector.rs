@@ -512,6 +512,11 @@ pub trait Tensor:
         self.as_ref().iter()
     }
 
+    /// Applies f to each coordinate of V
+    fn map(&self, mut f: impl FnMut(Self::F) -> Self::F) -> Self {
+        Self::from_fn(|i| f(self[i]))
+    }
+
     /// The canonical evaluation pairing `(V, V*) -> F`, `⟨v, ω⟩ = ω(v)`.
     ///
     /// Evaluation follows the elected hand:

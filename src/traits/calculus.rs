@@ -523,9 +523,12 @@ impl JetMode for Algebraic {}
 impl JetMode for JetReal {}
 
 #[derive(Copy, Clone, Debug)]
-pub struct JetVector<V: Tensor, Mode: JetMode = Algebraic, const N: usize = 1>(
-    V::Array<Jet<V::F, Mode, N>>,
-);
+pub struct JetVector<
+    V: Tensor,
+    Mode: JetMode = Algebraic,
+    const N: usize = 1,
+    S: Field = <V as Tensor>::F,
+>(V::Array<Jet<S, Mode, N>>);
 
 impl<V: Tensor, M: JetMode, const N: usize> JetVector<V, M, N> {
     pub fn constant(v: V) -> Self {
@@ -535,8 +538,11 @@ impl<V: Tensor, M: JetMode, const N: usize> JetVector<V, M, N> {
     }
 }
 
-impl<V: Tensor, const N: usize> Tensor for JetVector<V, Algebraic, N> {
-    type F = Jet<V::F, Algebraic, N>;
+impl<V: Tensor, const N: usize, S: Field> Tensor for JetVector<V, Algebraic, N, S>
+where
+    Jet<S, Algebraic, N>: Field,
+{
+    type F = Jet<S, Algebraic, N>;
 
     type Array<T: Point> = V::Array<T>;
 
@@ -544,12 +550,12 @@ impl<V: Tensor, const N: usize> Tensor for JetVector<V, Algebraic, N> {
     type Action = V::Action;
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
-        Self(Self::Array::from_fn(f))
+        Self(V::Array::from_fn(f))
     }
 }
 
-impl<V: Tensor<F: Real>, const N: usize> Tensor for JetVector<V, JetReal, N> {
-    type F = Jet<V::F, JetReal, N>;
+impl<V: Tensor<F: Real>, const N: usize, S: Real> Tensor for JetVector<V, JetReal, N, S> {
+    type F = Jet<S, JetReal, N>;
 
     type Array<T: Point> = V::Array<T>;
 
@@ -557,42 +563,42 @@ impl<V: Tensor<F: Real>, const N: usize> Tensor for JetVector<V, JetReal, N> {
     type Action = V::Action;
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
-        Self(Self::Array::from_fn(f))
+        Self(V::Array::from_fn(f))
     }
 }
 
-impl<V: Tensor, M: JetMode, const N: usize> Index<usize> for JetVector<V, M, N> {
-    type Output = Jet<V::F, M, N>;
+impl<V: Tensor, M: JetMode, const N: usize, S: Field> Index<usize> for JetVector<V, M, N, S> {
+    type Output = Jet<S, M, N>;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
     }
 }
 
-impl<V: Tensor, M: JetMode, const N: usize> IndexMut<usize> for JetVector<V, M, N> {
+impl<V: Tensor, M: JetMode, const N: usize, S: Field> IndexMut<usize> for JetVector<V, M, N, S> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-impl<V: Tensor, M: JetMode, const N: usize> AsRef<V::Array<Jet<V::F, M, N>>>
-    for JetVector<V, M, N>
+impl<V: Tensor, M: JetMode, const N: usize, S: Field> AsRef<V::Array<Jet<S, M, N>>>
+    for JetVector<V, M, N, S>
 {
-    fn as_ref(&self) -> &V::Array<Jet<V::F, M, N>> {
+    fn as_ref(&self) -> &V::Array<Jet<S, M, N>> {
         &self.0
     }
 }
 
-impl<V: Tensor, M: JetMode, const N: usize> AsMut<V::Array<Jet<V::F, M, N>>>
-    for JetVector<V, M, N>
+impl<V: Tensor, M: JetMode, const N: usize, S: Field> AsMut<V::Array<Jet<S, M, N>>>
+    for JetVector<V, M, N, S>
 {
-    fn as_mut(&mut self) -> &mut V::Array<Jet<V::F, M, N>> {
+    fn as_mut(&mut self) -> &mut V::Array<Jet<S, M, N>> {
         &mut self.0
     }
 }
 
-impl_vector_ops!(JetVector<V, Algebraic, N>, V: Tensor, const N: usize);
-impl_vector_ops!(JetVector<V, JetReal, N>, V: Tensor<F: Real>, const N: usize);
+impl_vector_ops!(JetVector<V, Algebraic, N, S>, V: Tensor, const N: usize, S: Field);
+impl_vector_ops!(JetVector<V, JetReal, N, S>, V: Tensor<F: Real>, const N: usize, S: Real);
 
 type JetCoords<F, const N: usize> = DirectSum<Coords<F, 1>, Coords<F, N>>;
 
@@ -983,11 +989,8 @@ pub trait LiftedBundle {
     fn jet(&self) -> &JetVector<Self::Tangent>;
 }
 
-impl<P, V, T> LiftedBundle for LiftedTM<P, V, T>
-where
-    P: Point,
-    V: Tensor,
-    T: JetTangentBundle<P, V, JetBundle = Self>,
+impl<P: Point, V: Tensor, T: JetTangentBundle<P, V, JetBundle = Self>> LiftedBundle
+    for LiftedTM<P, V, T>
 {
     type Point = P;
     type Tangent = V;
@@ -1002,31 +1005,22 @@ where
     }
 }
 
-pub struct Differential<F, BT, FT, M: JetMode> {
-    function: F,
-    marker: PhantomData<(fn(BT) -> FT, M)>,
-}
+#[allow(non_camel_case_types)]
+pub struct d<F>(pub F);
 
-pub fn d<F, BT, FT, M: JetMode>(function: F) -> Differential<F, BT, FT, M>
-where
-    BT: Tensor,
-    FT: Tensor<F = BT::F>,
-    F: Fn(JetVector<BT, M>) -> JetVector<FT, M>,
-{
-    Differential {
-        function,
-        marker: PhantomData,
-    }
-}
-
-impl<F, BT, FT, M: JetMode> Differential<F, BT, FT, M>
-where
-    BT: Tensor<Hand = Right, Action: ActionExists>,
-    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
-    F: Fn(JetVector<BT, M>) -> JetVector<FT, M>,
-    JetVector<BT, M>: Tensor<F = Jet<BT::F, M>>,
-{
-    pub fn at(&self, point: BT) -> TangentMap<BT, FT, FT, FT> {
+impl<F> d<F> {
+    pub fn at<
+        BT: Tensor<Hand = Right, Action: ActionExists>,
+        FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+        M: JetMode,
+    >(
+        &self,
+        point: BT,
+    ) -> TangentMap<BT, FT, FT, FT>
+    where
+        F: JetMap<BT, FT, M, 1, BT::F>,
+        JetVector<BT, M>: Tensor<F = Jet<BT::F, M>>,
+    {
         let columns: BT::Array<FT> = BT::Array::from_fn(|input_coordinate| {
             let input = JetVector::<BT, M>::from_fn(|j| {
                 Jet::new(
@@ -1039,7 +1033,7 @@ where
                 )
             });
 
-            let output = (self.function)(input);
+            let output = self.0.jet_at(input);
 
             FT::from_fn(|output_coordinate| output[output_coordinate][1])
         });
@@ -1055,41 +1049,110 @@ where
     }
 }
 
+pub trait JetMap<BT: Tensor, FT: Tensor<F = BT::F>, M: JetMode, const N: usize, S: Field> {
+    fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S>;
+}
+
+impl<F, BT: Tensor, FT: Tensor<F = BT::F>, M: JetMode, const N: usize, S: Field>
+    JetMap<BT, FT, M, N, S> for F
+where
+    F: Fn(JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S>,
+{
+    fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S> {
+        self(input)
+    }
+}
+
+impl<
+    F: JetMap<BT, FT, M, 1, Jet<S, M, N>>,
+    BT: Vector<F = FT::F, Hand = Right>,
+    FT: Vector<Hand = Right, Action: TensorProductAction<BT::Action>>,
+    M: JetMode,
+    const N: usize,
+    S: Field,
+> JetMap<BT, HomOf<BT, FT>, M, N, S> for d<F>
+where
+    // The outer presentation.
+    JetVector<FT, M, N, S>: Vector<F = Jet<S, M, N>>,
+    // One additional derivative layer over the existing outer scalar.
+    JetVector<BT, M, 1, Jet<S, M, N>>: Tensor<F = Jet<Jet<S, M, N>, M>>,
+    Jet<S, M, N>: Field,
+{
+    fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<HomOf<BT, FT>, M, N, S> {
+        type OuterScalar<S, M, const N: usize> = Jet<S, M, N>;
+
+        let columns: BT::Array<JetVector<FT, M, N, S>> = BT::Array::from_fn(|input_coordinate| {
+            let nested_input = JetVector::<BT, M, 1, OuterScalar<S, M, N>>::from_fn(|coordinate| {
+                Jet::new(
+                    input[coordinate],
+                    [if input_coordinate == coordinate {
+                        OuterScalar::<S, M, N>::one()
+                    } else {
+                        OuterScalar::<S, M, N>::zero()
+                    }],
+                )
+            });
+
+            let nested_output: JetVector<FT, M, 1, OuterScalar<S, M, N>> =
+                self.0.jet_at(nested_input);
+
+            JetVector::<FT, M, N, S>::from_fn(|output_coordinate| {
+                nested_output[output_coordinate][1]
+            })
+        });
+
+        let rows: FT::Array<<Dual<BT> as Tensor>::Array<OuterScalar<S, M, N>>> =
+            FT::Array::from_fn(|output_coordinate| {
+                <Dual<BT> as Tensor>::Array::from_fn(|input_coordinate| {
+                    columns[input_coordinate][output_coordinate]
+                })
+            });
+
+        JetVector::<HomOf<BT, FT>, M, N, S>(TensorProductArray(rows, PhantomData))
+    }
+}
+
 pub trait FormLift: Form {
-    fn jet_flat<const N: usize, M: JetMode>(
-        value: &JetVector<Self, M, N>,
-    ) -> Dual<JetVector<Self, M, N>>
+    fn jet_flat<S: Field, M: JetMode, const N: usize>(
+        value: &JetVector<Self, M, N, S>,
+    ) -> Dual<JetVector<Self, M, N, S>>
     where
-        JetVector<Self, M, N>: Tensor;
+        Jet<S, M, N>: Field,
+        JetVector<Self, M, N, S>: Tensor<F = Jet<S, M, N>>;
 }
 
 pub trait NondegenerateLift: Nondegenerate + FormLift {
-    fn jet_sharp<const N: usize, M: JetMode>(
-        value: Dual<JetVector<Self, M, N>>,
-    ) -> JetVector<Self, M, N>
+    fn jet_sharp<S: Field, M: JetMode, const N: usize>(
+        value: Dual<JetVector<Self, M, N, S>>,
+    ) -> JetVector<Self, M, N, S>
     where
-        JetVector<Self, M, N>: Tensor;
+        Jet<S, M, N>: Field,
+        JetVector<Self, M, N, S>: Tensor<F = Jet<S, M, N>>;
 }
 
-impl<V: FormLift, const N: usize, M: JetMode> Form for JetVector<V, M, N>
+impl<V: FormLift, M: JetMode, const N: usize, S: Field> Form for JetVector<V, M, N, S>
 where
-    Self: Tensor,
+    Jet<S, M, N>: Field,
+    Self: Tensor<F = Jet<S, M, N>>,
 {
     fn flat(&self) -> Dual<Self> {
-        V::jet_flat(self)
+        V::jet_flat::<S, M, N>(self)
     }
 }
 
-impl<V: NondegenerateLift, const N: usize, M: JetMode> Nondegenerate for JetVector<V, M, N>
+impl<V: NondegenerateLift, M: JetMode, const N: usize, S: Field> Nondegenerate
+    for JetVector<V, M, N, S>
 where
-    Self: Tensor,
+    Jet<S, M, N>: Field,
+    Self: Form<F = Jet<S, M, N>>,
 {
-    fn sharp(v: Dual<Self>) -> Self {
-        V::jet_sharp(v)
+    fn sharp(value: Dual<Self>) -> Self {
+        V::jet_sharp::<S, M, N>(value)
     }
 }
 
-impl<V: Sesquilinear + Interval, const N: usize, M: JetMode> Interval for JetVector<V, M, N>
+impl<V: Sesquilinear + Interval, const N: usize, M: JetMode, S: Field> Interval
+    for JetVector<V, M, N, S>
 where
     Self: Sesquilinear<F: Field<Fixed: Real>>,
 {
@@ -1100,18 +1163,20 @@ where
     }
 }
 
-impl<V: Sesquilinear, const N: usize, M: JetMode> Sesquilinear for JetVector<V, M, N> where
+impl<V: Sesquilinear, const N: usize, M: JetMode, S: Field> Sesquilinear for JetVector<V, M, N, S> where
     Self: Nondegenerate + Vector
 {
 }
 
-impl<V: Tensor + Metric, const N: usize, M: JetMode> Metric for JetVector<V, M, N> where
+impl<V: Tensor + Metric, const N: usize, M: JetMode, S: Field> Metric for JetVector<V, M, N, S> where
     Self: Interval
 {
 }
 
-impl<V: Euclidean + NondegenerateLift, const N: usize> Euclidean for JetVector<V, JetReal, N> where
-    Self: Vector<F: Real, Action = BothSided>
+impl<V: Euclidean + NondegenerateLift, const N: usize, S: Real> Euclidean
+    for JetVector<V, JetReal, N, S>
+where
+    Self: Vector<F = Jet<S, JetReal, N>, Action = BothSided>,
 {
 }
 

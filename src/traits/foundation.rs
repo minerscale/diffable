@@ -5,7 +5,7 @@ use crate::{
     complex::Complex,
     traits::{CField, Field, FieldExp, NatZero, NonZero},
 };
-use num_traits::{Euclid, Inv, real::Real as _};
+use num_traits::{Euclid, Inv, ToPrimitive, real::Real as _};
 
 /// An element of the carrier set of a manifold, group, or metric space.
 ///
@@ -104,6 +104,10 @@ where
     fn norm_squared(self) -> Self::Fixed {
         let abs = self.abs();
         abs * abs
+    }
+
+    fn powi(&self, s: usize) -> Self {
+        <Self as num_traits::real::Real>::powi(*self, s.to_i32().unwrap())
     }
 }
 

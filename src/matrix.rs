@@ -603,7 +603,7 @@ pub fn nth_root_near_one<F: Field + Metric>(a: &F, n: usize) -> F {
     let epsilon = F::R::epsilon();
 
     for _ in 0..32 {
-        let y_pow = y.pow(n - 1);
+        let y_pow = y.powi(n - 1);
 
         let next = ((F::from_nat(n - 1) * y) + a.div(y_pow)).div(n_f);
 
