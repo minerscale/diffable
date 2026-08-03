@@ -325,33 +325,6 @@ impl_vector_ops!(
     V: Tensor<F = U::F, Hand = Left, Action: ActionExists>,
 );
 
-pub trait Section<
-    BP: Point,
-    BT: Tensor,
-    Base: TangentBundle<BP, BT>,
-    FP: Point,
-    FT: Tensor<F = BT::F>,
-    Fiber: TangentBundle<FP, FT>,
->
-{
-    fn at(&self, value: Base) -> Fiber;
-}
-
-impl<
-    BP: Point,
-    BT: Tensor,
-    Base: TangentBundle<BP, BT>,
-    FP: Point,
-    FT: Tensor<F = BT::F>,
-    Fiber: TangentBundle<FP, FT>,
-    F: Fn(Base) -> Fiber,
-> Section<BP, BT, Base, FP, FT, Fiber> for F
-{
-    fn at(&self, value: Base) -> Fiber {
-        self(value)
-    }
-}
-
 type HomOf<BT, FT> = TensorProduct<FT, Dual<BT>>;
 
 #[derive(Debug)]
@@ -825,6 +798,14 @@ impl<P: Point, V: Tensor, Tower> TangentElement<P, V, Tower> {
     pub fn new(p: P, v: JetVector<V>) -> Self {
         Self(p, v, PhantomData)
     }
+
+    pub fn base_point(&self) -> P {
+        self.0.clone()
+    }
+
+    pub fn jet(&self) -> &JetVector<V> {
+        &self.1
+    }
 }
 
 type Prolongation<P, V, T> = TangentElement<P, V, Cons<T, Nil>>;
@@ -903,13 +884,6 @@ pub trait TangentLift<P: Point, V: Tensor>: TangentBundle<P, V> {
     fn tangent_to_global(base: Tangent<P, V>, coordinate: JetVector<V>) -> (P, JetVector<V>);
 }
 
-pub trait JetTangentBundle<BP: Point, BT: Tensor>: TangentBundle<BP, BT> + Point {
-    type JetBundle: TangentBundle<Self::JetBundle, JetVector<BT>>;
-
-    fn lift(base: BP, jet: JetVector<BT>) -> Self::JetBundle;
-    fn into_parts(bundle: Self::JetBundle) -> (BP, JetVector<BT>);
-}
-
 impl<P: Point, V: Tensor, T: TangentLift<P, V>> Chart<LiftedTM<P, V, T>, JetVector<V>>
     for Prolongation<P, V, T>
 {
@@ -945,18 +919,6 @@ impl<P: Point, V: Tensor, T: TangentLift<P, V>> TangentBundle<LiftedTM<P, V, T>,
 {
 }
 
-impl<P: Point, V: Tensor, T: TangentLift<P, V>> JetTangentBundle<P, V> for T {
-    type JetBundle = LiftedTM<P, V, T>;
-
-    fn lift(base: P, jet: JetVector<V>) -> Self::JetBundle {
-        TangentElement::new(base, jet)
-    }
-
-    fn into_parts(bundle: Self::JetBundle) -> (P, JetVector<V>) {
-        (bundle.0, bundle.1)
-    }
-}
-
 impl<V: Tensor> TangentLift<V, V> for V {
     fn tangent_to_local(base: Tangent<V, V>, local: Tangent<V, V>) -> Option<JetVector<V>> {
         Some(JetVector::from_fn(|i| {
@@ -977,31 +939,6 @@ impl<V: Tensor> TangentLift<V, V> for V {
         });
 
         (base, tangent)
-    }
-}
-
-pub trait LiftedBundle {
-    type Point: Point;
-    type Tangent: Tensor;
-    type Bundle: JetTangentBundle<Self::Point, Self::Tangent, JetBundle = Self>;
-
-    fn base_point(&self) -> Self::Point;
-    fn jet(&self) -> &JetVector<Self::Tangent>;
-}
-
-impl<P: Point, V: Tensor, T: JetTangentBundle<P, V, JetBundle = Self>> LiftedBundle
-    for LiftedTM<P, V, T>
-{
-    type Point = P;
-    type Tangent = V;
-    type Bundle = T;
-
-    fn base_point(&self) -> P {
-        self.0.clone()
-    }
-
-    fn jet(&self) -> &JetVector<V> {
-        &self.1
     }
 }
 
