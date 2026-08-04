@@ -11,7 +11,8 @@ use crate::{
     traits::{
         ActionExists, Array, BothSided, CField, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap,
         Field, Form, Handedness, Interval, Left, Metric, NonZero, Nondegenerate, Point, Real,
-        Right, Sesquilinear, Sidedness, TangentBundle, Tensor, TensorProductAction, Vector,
+        Right, Sesquilinear, Sidedness, Sinister, TangentBundle, Tensor, TensorProductAction,
+        Vector,
     },
 };
 
@@ -791,6 +792,43 @@ pub struct Nil;
 #[derive(Debug, Copy, Clone)]
 pub struct Cons<Head, Tail>(PhantomData<(Head, Tail)>);
 
+/// One step through a jet-valued scalar presentation.
+#[derive(Debug, Copy, Clone)]
+pub struct JetLayer<M: JetMode, const N: usize>(PhantomData<M>);
+
+/// Constructs the current scalar presentation from a scalar in the base field.
+///
+/// A [`JetMap`] carries this type-level route while differential operators add
+/// jet layers. This lets operators which capture base-field constants inject
+/// them into an arbitrarily deeply nested jet computation.
+pub trait ConstantRoute<F: Field> {
+    type Output: Field;
+
+    fn constant(value: F) -> Self::Output;
+}
+
+impl<F: Field> ConstantRoute<F> for Nil {
+    type Output = F;
+
+    fn constant(value: F) -> Self::Output {
+        value
+    }
+}
+
+impl<F, M, const N: usize, Tail> ConstantRoute<F> for Cons<JetLayer<M, N>, Tail>
+where
+    F: Field,
+    M: JetMode,
+    Tail: ConstantRoute<F>,
+    Jet<Tail::Output, M, N>: Field,
+{
+    type Output = Jet<Tail::Output, M, N>;
+
+    fn constant(value: F) -> Self::Output {
+        Jet::from_field(Tail::constant(value))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TangentElement<P: Point, V: Tensor, Tower>(pub P, pub JetVector<V>, PhantomData<Tower>);
 
@@ -960,14 +998,54 @@ impl<F> d<F> {
         point: BT,
     ) -> TangentMap<BT, FT, FT, FT>
     where
-        F: JetMap<BT, FT, M, 1, BT::F>,
-        JetVector<BT, M>: Tensor<F = Jet<BT::F, M>>,
+        Self: EvaluableAt<BT, TangentMap<BT, FT, FT, FT>, M>,
     {
+        <Self as EvaluableAt<BT, TangentMap<BT, FT, FT, FT>, M>>::evaluate_at(self, point)
+    }
+
+    pub fn along<V>(self, direction: V) -> Along<F, V> {
+        Along {
+            f: self.0,
+            direction,
+        }
+    }
+}
+
+impl<F, BT> Along<F, BT> {
+    pub fn at<FT, M>(&self, point: BT) -> FT
+    where
+        Self: EvaluableAt<BT, FT, M>,
+    {
+        <Self as EvaluableAt<BT, FT, M>>::evaluate_at(self, point)
+    }
+}
+
+#[diagnostic::on_unimplemented(
+    message = "this differential program cannot be evaluated at `{Point}`",
+    label = "the composed differential operations are not defined for this point type",
+    note = "the function may not accept the required jet presentation",
+    note = "the input and output tensors may have incompatible fields, handedness, or actions",
+    note = "a required form or musical isomorphism may not lift through nested jets"
+)]
+#[doc(hidden)]
+pub trait EvaluableAt<Point, Output, Mode> {
+    fn evaluate_at(&self, point: Point) -> Output;
+}
+
+impl<F, BT, FT, M> EvaluableAt<BT, TangentMap<BT, FT, FT, FT>, M> for d<F>
+where
+    BT: Tensor<Hand = Right, Action: ActionExists>,
+    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    M: JetMode,
+    F: JetMap<BT, FT, M, 1, BT::F>,
+    JetVector<BT, M>: Tensor<F = Jet<BT::F, M>>,
+{
+    fn evaluate_at(&self, point: BT) -> TangentMap<BT, FT, FT, FT> {
         let columns: BT::Array<FT> = BT::Array::from_fn(|input_coordinate| {
-            let input = JetVector::<BT, M>::from_fn(|j| {
+            let input = JetVector::<BT, M>::from_fn(|coordinate| {
                 Jet::new(
-                    point[j],
-                    [if input_coordinate == j {
+                    point[coordinate],
+                    [if input_coordinate == coordinate {
                         BT::F::one()
                     } else {
                         BT::F::zero()
@@ -975,7 +1053,7 @@ impl<F> d<F> {
                 )
             });
 
-            let output = self.0.jet_at(input);
+            let output = <F as JetMap<BT, FT, M, 1, BT::F, Nil>>::jet_at(&self.0, input);
 
             FT::from_fn(|output_coordinate| output[output_coordinate][1])
         });
@@ -989,37 +1067,37 @@ impl<F> d<F> {
 
         TangentMap::new(TensorProduct(TensorProductArray(rows, PhantomData)))
     }
-
-    pub fn along<V>(self, direction: V) -> Along<F, V> {
-        Along {
-            f: self.0,
-            direction,
-        }
-    }
 }
 
-impl<F, BT> Along<F, BT>
+impl<F, BT, FT, M> EvaluableAt<BT, FT, M> for Along<F, BT>
 where
     BT: Vector,
+    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    M: JetMode,
+    F: JetMap<BT, FT, M, 1, BT::F>,
+    JetVector<BT, M, 1, BT::F>: Tensor<F = Jet<BT::F, M, 1>>,
 {
-    pub fn at<FT, M>(&self, point: BT) -> FT
-    where
-        FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
-        M: JetMode,
-        F: JetMap<BT, FT, M, 1, BT::F>,
-        JetVector<BT, M, 1, BT::F>: Tensor<F = Jet<BT::F, M, 1>>,
-    {
+    fn evaluate_at(&self, point: BT) -> FT {
         let input = JetVector::<BT, M, 1, BT::F>::from_fn(|coordinate| {
             Jet::new(point[coordinate], [self.direction[coordinate]])
         });
 
-        let output: JetVector<FT, M, 1, BT::F> = self.f.jet_at(input);
+        let output: JetVector<FT, M, 1, BT::F> =
+            <F as JetMap<BT, FT, M, 1, BT::F, Nil>>::jet_at(&self.f, input);
 
         FT::from_fn(|coordinate| output[coordinate][1])
     }
 }
 
-pub trait JetMap<BT: Tensor, FT: Tensor<F = BT::F>, M: JetMode, const N: usize, S: Field> {
+pub trait JetMap<
+    BT: Tensor,
+    FT: Tensor<F = BT::F>,
+    M: JetMode,
+    const N: usize,
+    S: Field,
+    Route = Nil,
+>
+{
     fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S>;
 }
 
@@ -1030,7 +1108,8 @@ impl<
     M: JetMode,
     const N: usize,
     S: Field,
-> JetMap<BT, FT, M, N, S> for F
+    Route,
+> JetMap<BT, FT, M, N, S, Route> for F
 {
     fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S> {
         self(input)
@@ -1038,13 +1117,14 @@ impl<
 }
 
 impl<
-    F: JetMap<BT, FT, M, 1, Jet<S, M, N>>,
+    F: JetMap<BT, FT, M, 1, Jet<S, M, N>, Cons<JetLayer<M, N>, Route>>,
     BT: Vector<F = FT::F, Hand = Right>,
     FT: Vector<Hand = Right, Action: TensorProductAction<BT::Action>>,
     M: JetMode,
     const N: usize,
     S: Field,
-> JetMap<BT, HomOf<BT, FT>, M, N, S> for d<F>
+    Route: ConstantRoute<BT::F, Output = S>,
+> JetMap<BT, HomOf<BT, FT>, M, N, S, Route> for d<F>
 where
     // The outer presentation.
     JetVector<FT, M, N, S>: Vector<F = Jet<S, M, N>>,
@@ -1067,8 +1147,16 @@ where
                 )
             });
 
-            let nested_output: JetVector<FT, M, 1, OuterScalar<S, M, N>> =
-                self.0.jet_at(nested_input);
+            let nested_output: JetVector<FT, M, 1, OuterScalar<S, M, N>> = <F as JetMap<
+                BT,
+                FT,
+                M,
+                1,
+                OuterScalar<S, M, N>,
+                Cons<JetLayer<M, N>, Route>,
+            >>::jet_at(
+                &self.0, nested_input
+            );
 
             JetVector::<FT, M, N, S>::from_fn(|output_coordinate| {
                 nested_output[output_coordinate][1]
@@ -1086,22 +1174,191 @@ where
     }
 }
 
+impl<F, BT, FT, M, const N: usize, S, Route> JetMap<BT, FT, M, N, S, Route> for Along<F, BT>
+where
+    BT: Vector<F = FT::F>,
+    FT: Vector,
+    M: JetMode,
+    S: Field,
+    Route: ConstantRoute<BT::F, Output = S>,
+    Jet<S, M, N>: Field,
+    JetVector<FT, M, N, S>: Tensor<F = Jet<S, M, N>>,
+    JetVector<BT, M, 1, Jet<S, M, N>>: Tensor<F = Jet<Jet<S, M, N>, M>>,
+    F: JetMap<BT, FT, M, 1, Jet<S, M, N>, Cons<JetLayer<M, N>, Route>>,
+{
+    fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S> {
+        type OuterScalar<S, M, const N: usize> = Jet<S, M, N>;
+
+        let nested_input = JetVector::<BT, M, 1, OuterScalar<S, M, N>>::from_fn(|coordinate| {
+            Jet::new(
+                input[coordinate],
+                [Jet::from_field(Route::constant(self.direction[coordinate]))],
+            )
+        });
+
+        let nested_output: JetVector<FT, M, 1, OuterScalar<S, M, N>> =
+            <F as JetMap<BT, FT, M, 1, OuterScalar<S, M, N>, Cons<JetLayer<M, N>, Route>>>::jet_at(
+                &self.f,
+                nested_input,
+            );
+
+        JetVector::<FT, M, N, S>::from_fn(|coordinate| nested_output[coordinate][1])
+    }
+}
+
 pub trait FormLift: Form {
+    fn jet_flat_array<S: Field, M: JetMode, const N: usize>(
+        value: &<Self as Tensor>::Array<Jet<S, M, N>>,
+    ) -> <Dual<Self> as Tensor>::Array<Jet<S, M, N>>
+    where
+        Jet<S, M, N>: Field;
+
     fn jet_flat<S: Field, M: JetMode, const N: usize>(
         value: &JetVector<Self, M, N, S>,
     ) -> Dual<JetVector<Self, M, N, S>>
     where
         Jet<S, M, N>: Field,
-        JetVector<Self, M, N, S>: Tensor<F = Jet<S, M, N>>;
+        JetVector<Self, M, N, S>: Tensor<F = Jet<S, M, N>>,
+    {
+        let value = <Self as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
+        let flat = Self::jet_flat_array(&value);
+
+        Dual::from_fn(|coordinate| flat[coordinate])
+    }
 }
 
 pub trait NondegenerateLift: Nondegenerate + FormLift {
+    fn jet_sharp_array<S: Field, M: JetMode, const N: usize>(
+        value: &<Dual<Self> as Tensor>::Array<Jet<S, M, N>>,
+    ) -> <Self as Tensor>::Array<Jet<S, M, N>>
+    where
+        Jet<S, M, N>: Field;
+
     fn jet_sharp<S: Field, M: JetMode, const N: usize>(
         value: Dual<JetVector<Self, M, N, S>>,
     ) -> JetVector<Self, M, N, S>
     where
         Jet<S, M, N>: Field,
-        JetVector<Self, M, N, S>: Tensor<F = Jet<S, M, N>>;
+        JetVector<Self, M, N, S>: Tensor<F = Jet<S, M, N>>,
+    {
+        let value = Dual::to_raw(value);
+
+        let value = <Dual<Self> as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
+
+        let sharp = Self::jet_sharp_array(&value);
+
+        JetVector::from_fn(|coordinate| sharp[coordinate])
+    }
+}
+
+impl<V, M, const N: usize, S> FormLift for JetVector<V, M, N, S>
+where
+    V: FormLift,
+    M: JetMode,
+    S: Field,
+    Jet<S, M, N>: Field,
+    Self: Form<F = Jet<S, M, N>>,
+{
+    fn jet_flat_array<T: Field, InnerMode: JetMode, const K: usize>(
+        value: &<Self as Tensor>::Array<Jet<T, InnerMode, K>>,
+    ) -> <Dual<Self> as Tensor>::Array<Jet<T, InnerMode, K>>
+    where
+        Jet<T, InnerMode, K>: Field,
+    {
+        let value = V::Array::from_fn(|coordinate| value[coordinate]);
+        let flat = V::jet_flat_array::<T, InnerMode, K>(&value);
+
+        <Dual<Self> as Tensor>::Array::from_fn(|coordinate| flat[coordinate])
+    }
+}
+
+impl<V, M, const N: usize, S> NondegenerateLift for JetVector<V, M, N, S>
+where
+    V: NondegenerateLift,
+    M: JetMode,
+    S: Field,
+    Jet<S, M, N>: Field,
+    Self: Nondegenerate<F = Jet<S, M, N>>,
+{
+    fn jet_sharp_array<T: Field, InnerMode: JetMode, const K: usize>(
+        value: &<Dual<Self> as Tensor>::Array<Jet<T, InnerMode, K>>,
+    ) -> <Self as Tensor>::Array<Jet<T, InnerMode, K>>
+    where
+        Jet<T, InnerMode, K>: Field,
+    {
+        let value = <Dual<V> as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
+        let sharp = V::jet_sharp_array::<T, InnerMode, K>(&value);
+
+        <Self as Tensor>::Array::from_fn(|coordinate| sharp[coordinate])
+    }
+}
+
+impl<V> FormLift for Dual<V>
+where
+    V: NondegenerateLift,
+{
+    fn jet_flat_array<S: Field, M: JetMode, const N: usize>(
+        value: &<Self as Tensor>::Array<Jet<S, M, N>>,
+    ) -> <Dual<Self> as Tensor>::Array<Jet<S, M, N>>
+    where
+        Jet<S, M, N>: Field,
+    {
+        let value = <Dual<V> as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
+        let sharp = V::jet_sharp_array::<S, M, N>(&value);
+
+        <Dual<Self> as Tensor>::Array::from_fn(|coordinate| sharp[coordinate])
+    }
+}
+
+impl<V> NondegenerateLift for Dual<V>
+where
+    V: NondegenerateLift,
+{
+    fn jet_sharp_array<S: Field, M: JetMode, const N: usize>(
+        value: &<Dual<Self> as Tensor>::Array<Jet<S, M, N>>,
+    ) -> <Self as Tensor>::Array<Jet<S, M, N>>
+    where
+        Jet<S, M, N>: Field,
+    {
+        let value = <V as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
+        let flat = V::jet_flat_array::<S, M, N>(&value);
+
+        <Self as Tensor>::Array::from_fn(|coordinate| flat[coordinate])
+    }
+}
+
+impl<V> FormLift for Sinister<V>
+where
+    V: FormLift<Action = BothSided>,
+{
+    fn jet_flat_array<S: Field, M: JetMode, const N: usize>(
+        value: &<Self as Tensor>::Array<Jet<S, M, N>>,
+    ) -> <Dual<Self> as Tensor>::Array<Jet<S, M, N>>
+    where
+        Jet<S, M, N>: Field,
+    {
+        let value = <V as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
+        let flat = V::jet_flat_array::<S, M, N>(&value);
+
+        <Dual<Self> as Tensor>::Array::from_fn(|coordinate| flat[coordinate])
+    }
+}
+
+impl<V> NondegenerateLift for Sinister<V>
+where
+    V: NondegenerateLift<Action = BothSided>,
+{
+    fn jet_sharp_array<S: Field, M: JetMode, const N: usize>(
+        value: &<Dual<Self> as Tensor>::Array<Jet<S, M, N>>,
+    ) -> <Self as Tensor>::Array<Jet<S, M, N>>
+    where
+        Jet<S, M, N>: Field,
+    {
+        let value = <Dual<V> as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
+        let sharp = V::jet_sharp_array::<S, M, N>(&value);
+
+        <Self as Tensor>::Array::from_fn(|coordinate| sharp[coordinate])
+    }
 }
 
 impl<V: FormLift, M: JetMode, const N: usize, S: Field> Form for JetVector<V, M, N, S>
@@ -1147,10 +1404,8 @@ impl<V: Tensor + Metric, const N: usize, M: JetMode, S: Field> Metric for JetVec
 {
 }
 
-impl<V: Euclidean + NondegenerateLift, const N: usize, S: Real> Euclidean
-    for JetVector<V, JetReal, N, S>
-where
-    Self: Vector<F = Jet<S, JetReal, N>, Action = BothSided>,
+impl<V: Euclidean, const N: usize, S: Real> Euclidean for JetVector<V, JetReal, N, S> where
+    Self: Vector<F = Jet<S, JetReal, N>, Action = BothSided>
 {
 }
 

@@ -7,7 +7,7 @@ use std::{
 #[cfg(feature = "testing")]
 use super::Chart;
 
-use super::{Field, LieGroup, Metric, Real};
+use super::{Field, LieGroup, Metric, NondegenerateLift, Real};
 use crate::{
     impl_group_via_add, impl_vector_ops,
     traits::{Interval, Point},
@@ -54,7 +54,9 @@ use crate::{
 /// [`Form`]: crate::traits::Form
 /// [`Nondegenerate`]: crate::traits::Nondegenerate
 /// [`Sesquilinear`]: crate::traits::Sesquilinear
-pub trait Euclidean: Bilinear<F: Real, Action = BothSided> + InnerProduct + Vector {
+pub trait Euclidean:
+    Bilinear<F: Real, Action = BothSided> + InnerProduct + NondegenerateLift + Vector
+{
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
     fn check_pythagorean(a: &Self, b: &Self) -> bool {

@@ -73,6 +73,33 @@ fn differential_along_a_direction() {
 }
 
 #[test]
+fn directional_derivative_composes_with_differentiation() {
+    fn cube<V: Euclidean>(x: V) -> V {
+        x.map(|x| x.powi(3))
+    }
+
+    let direction = Coords::from(4.0);
+    let derivative = d(d(d(cube).along(direction))).at(Coords::from(7.0));
+
+    // D³(x³)[v] = 6v. This sends the captured base-field direction
+    // through two existing jet layers before the directional derivative adds
+    // its own layer.
+    assert_eq!(derivative[0], 24.0);
+}
+
+#[test]
+fn direction_and_point_can_vary_together() {
+    fn cube<V: Euclidean>(x: V) -> V {
+        x.map(|x| x.powi(3))
+    }
+
+    let derivative = d(|v| d(cube).along(v).at(v)).at(Coords::from(7.0));
+
+    // d/dv (D(v³)ᵥ(v)) = d/dv (3v³) = 9v².
+    assert_eq!(derivative[0], 441.0);
+}
+
+#[test]
 fn second_derivative_of_square() {
     fn square<V: Euclidean>(x: V) -> V {
         V::from_fn(|_| x[0] * x[0])
