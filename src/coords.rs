@@ -1,12 +1,20 @@
-use std::ops::{Deref, DerefMut, Index, IndexMut};
+//! Canonical finite-dimensional coordinate tensors.
+//!
+//! [`Coords`] is the library's standard concrete [`Vector`](crate::traits::Vector).
+//! Its const parameters record dimension and signature, allowing the same
+//! representation to model Euclidean coordinates and spaces such as
+//! [`Minkowski`](crate::spacetime::Minkowski).
+
+use std::ops::{Deref, DerefMut};
 
 use num_traits::{ConstZero, Zero};
 
 use crate::{
     impl_vector_ops,
     traits::{
-        Array, BothSided, DivRing, Dual, Euclidean, Field, Form, FormLift, Interval, Jet, JetMode,
-        Metric, Nondegenerate, NondegenerateLift, Point, Real, Right, Sesquilinear, Tensor,
+        Array, BothSided, DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate,
+        Point, Real, Right, Sesquilinear, Tensor,
+        calculus::{FormLift, Jet, JetMode, NondegenerateLift},
     },
 };
 
@@ -76,20 +84,6 @@ impl<F: Field, const N: usize, const M: usize> From<[F; N]> for Coords<F, N, M> 
 impl<F: Field, const N: usize, const M: usize> From<Coords<F, N, M>> for [F; N] {
     fn from(c: Coords<F, N, M>) -> Self {
         c.0
-    }
-}
-
-impl<F: Field, const N: usize, const M: usize> Index<usize> for Coords<F, N, M> {
-    type Output = F;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl<F: Field, const N: usize, const M: usize> IndexMut<usize> for Coords<F, N, M> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
     }
 }
 

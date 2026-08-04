@@ -3,7 +3,7 @@
 use diffable::{
     complex::Complex,
     coords::Coords,
-    traits::{Euclidean, Field, Form, Sinister, Tensor, Vector, d},
+    traits::{Euclidean, Field, Form, Sinister, Tensor, Vector, calculus::d},
 };
 use num_traits::Zero;
 

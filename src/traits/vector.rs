@@ -1,13 +1,18 @@
+//! Tensors, scalar actions, duality, and geometric forms.
+//!
+//! [`Tensor`] carries the coordinate shape, scalar field, handedness, and
+//! available actions needed by the tensor algebra. [`Vector`] selects tensors
+//! with an accessible scalar action. [`Dual`] reverses variance, [`Form`] elects
+//! a lowering map, and [`Nondegenerate`], [`Sesquilinear`], and [`InnerProduct`]
+//! progressively refine its geometry.
+
 use num_traits::{Zero, real::Real as _};
-use std::{
-    convert::Infallible,
-    ops::{Add, Index, IndexMut, Mul, Neg, Sub},
-};
+use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
 #[cfg(feature = "testing")]
 use super::Chart;
 
-use super::{Field, LieGroup, Metric, NondegenerateLift, Real};
+use super::{Field, LieGroup, Metric, Real, calculus::NondegenerateLift};
 use crate::{
     impl_group_via_add, impl_vector_ops,
     traits::{Interval, Point},
@@ -42,6 +47,11 @@ use crate::{
 /// [`TangentBundle`], [`Vector`], [`Form`], [`Nondegenerate`] and [`Sesquilinear`]
 /// together with the definite-only `check_pythagorean` below.
 ///
+/// [`NondegenerateLift`] additionally certifies that the musical isomorphisms
+/// extend through jet-valued scalar presentations. This is what permits a
+/// function quantified over `V: Euclidean` to be evaluated recursively by
+/// `d(d(f))` rather than losing its Euclidean bound at the first jet layer.
+///
 /// # Implementing
 /// Use the `test_euclidean!` macro to verify that your implementation
 /// satisfies the Euclidean axioms. (For an indefinite space, implement only
@@ -53,6 +63,7 @@ use crate::{
 /// [`TangentBundle`]: crate::traits::TangentBundle
 /// [`Form`]: crate::traits::Form
 /// [`Nondegenerate`]: crate::traits::Nondegenerate
+/// [`NondegenerateLift`]: crate::traits::calculus::NondegenerateLift
 /// [`Sesquilinear`]: crate::traits::Sesquilinear
 pub trait Euclidean:
     Bilinear<F: Real, Action = BothSided> + InnerProduct + NondegenerateLift + Vector
@@ -121,20 +132,6 @@ impl<V: Tensor> Tensor for Dual<V> {
 
 impl_vector_ops!(Dual<V>, V: Tensor);
 
-impl<V: Tensor> Index<usize> for Dual<V> {
-    type Output = V::F;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl<V: Tensor> IndexMut<usize> for Dual<V> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
-    }
-}
-
 impl<V: Tensor> AsRef<<Dual<V> as Tensor>::Array<V::F>> for Dual<V> {
     fn as_ref(&self) -> &<Dual<V> as Tensor>::Array<V::F> {
         self.0.as_ref()
@@ -176,6 +173,56 @@ impl<V: Nondegenerate + Metric> Metric for Dual<V> {}
 
 impl<V: Euclidean> Euclidean for Dual<V> {}
 
+/// The same two-sided module as `V`, with the opposite preferred hand.
+///
+/// `Sinister<V>` does not construct a dual space and does not alter the
+/// underlying coordinates, scalar field, form, or available scalar actions.
+/// It merely changes which of the two existing scalar actions is exposed as
+/// ordinary multiplication:
+///
+/// - if `V` is right-handed, `Sinister<V>` is left-handed;
+/// - if `V` is left-handed, `Sinister<V>` is right-handed.
+///
+/// Consequently, this construction is defined only when
+/// `V::Action = BothSided`. Rehanding a genuinely one-sided module would require
+/// inventing a scalar action which the original module does not possess.
+///
+/// This distinction matters over noncommutative fields. For a right-handed
+/// `v: V`, `v * a` uses the right action; for the corresponding
+/// `Sinister(v)`, `a * v` is selected instead. Over a commutative field these
+/// actions agree extensionally, but the wrapper remains useful because the
+/// elected hand still controls tensor-product composition.
+///
+/// # Not a dual
+///
+/// Although [`Dual<V>`] also reverses handedness, `Sinister<V>` and `Dual<V>`
+/// have different meanings. A dual is a space of linear functionals and
+/// participates in the canonical evaluation pairing. A sinister vector is
+/// still an element of the original module, viewed through its other action.
+///
+/// Keeping these constructions nominally distinct prevents a rehanded vector
+/// from being mistaken for a covector merely because its coordinates and
+/// handedness happen to coincide.
+///
+/// # Geometry
+///
+/// Any structure which is insensitive to the elected preferred hand may be
+/// transported through this wrapper. In particular, forms and their musical
+/// isomorphisms can be inherited when their scalar behaviour is compatible
+/// with both actions.
+///
+/// Double rehanding restores the original module up to the canonical
+/// coordinate-preserving isomorphism:
+///
+/// ```text
+/// Sinister<Sinister<V>> ≅ V.
+/// ```
+///
+/// Dualisation and rehanding also commute up to a canonical isomorphism:
+///
+/// ```text
+/// Dual<Sinister<V>> ≅ Sinister<Dual<V>>.
+/// ```
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Sinister<V: Tensor<Action = BothSided>>(pub V);
@@ -193,20 +240,6 @@ impl<V: Tensor<Action = BothSided>> Tensor for Sinister<V> {
 }
 
 impl_vector_ops!(Sinister<V>, V: Tensor<Action = BothSided>);
-
-impl<V: Tensor<Action = BothSided>> Index<usize> for Sinister<V> {
-    type Output = V::F;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl<V: Tensor<Action = BothSided>> IndexMut<usize> for Sinister<V> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
-    }
-}
 
 impl<V: Tensor<Action = BothSided>> AsRef<<Sinister<V> as Tensor>::Array<V::F>> for Sinister<V> {
     fn as_ref(&self) -> &<Sinister<V> as Tensor>::Array<V::F> {
@@ -274,9 +307,15 @@ pub trait Handedness {
 }
 
 /// Type-level left scalar action.
+///
+/// This is the opposite of [`Right`] and is selected through
+/// [`Tensor::Hand`].
 pub enum Left {}
 
 /// Type-level right scalar action.
+///
+/// This is the conventional hand for concrete coordinate vectors and the
+/// opposite of [`Left`].
 pub enum Right {}
 
 impl Handedness for Left {
@@ -289,37 +328,49 @@ impl Handedness for Right {
     const H: Hand = Hand::Right;
 }
 
+/// The number of externally available scalar actions on a [`Tensor`].
+///
+/// [`NoSided`] exposes no scalar multiplication, [`OneSided`] exposes only the
+/// side elected by [`Tensor::Hand`], and [`BothSided`] exposes compatible
+/// actions on both sides. Direct sums take the weaker sidedness through
+/// [`Sidedness::Meet`].
 pub trait Sidedness: Copy + Clone + std::fmt::Debug {
     /// The lesser of this sidedness and the other sidedness.
     type Meet<T: Sidedness>: Sidedness;
     #[doc(hidden)]
     type MeetOne: Sidedness;
 
-    /// `T` when a scalar action exists, otherwise an uninhabited type.
-    type Exists<T>;
-
-    /// Extracts the value whose existence is certified by this sidedness.
-    fn into_existing<T>(value: &Self::Exists<T>) -> &T;
-
     /// The runtime value corresponding to this type-level side.
     const S: Side;
 }
 
+/// Runtime reflection of a type-level [`Sidedness`].
 #[derive(Debug, Copy, Clone)]
 pub enum Side {
+    /// No external scalar action is available.
     None,
+    /// Only the side elected by [`Tensor::Hand`] is available.
     Same,
+    /// Compatible scalar actions are available on both sides.
     Both,
 }
 
+/// A tensor with no externally available scalar action.
 #[derive(Debug, Copy, Clone)]
 pub enum NoSided {}
+/// A tensor with only its preferred scalar action available.
 #[derive(Debug, Copy, Clone)]
 pub enum OneSided {}
+/// A tensor with compatible left and right scalar actions.
 #[derive(Debug, Copy, Clone)]
 pub enum BothSided {}
 
+/// A [`Sidedness`] which permits participation in another tensor product.
+///
+/// [`NoSided`] deliberately does not implement this trait. [`Product`](Self::Product)
+/// computes how many exterior actions survive after composing two tensors.
 pub trait ActionExists: Sidedness {
+    /// The sidedness remaining after tensoring with `T`.
     type Product<T: ActionExists>: Sidedness;
 
     /// Product with `OneSided`.
@@ -339,8 +390,14 @@ impl ActionExists for BothSided {
     type ProductOne = OneSided;
 }
 
+/// Computes the exterior action and preferred hand of a tensor product.
+///
+/// The interior actions are consumed by balancing; these associated types
+/// record which exterior action remains on the resulting [`TensorProduct`](crate::traits::calculus::TensorProduct).
 pub trait TensorProductAction<Rhs: ActionExists>: ActionExists {
+    /// The sidedness of the resulting tensor product.
     type Action: Sidedness;
+    /// The preferred surviving exterior action.
     type Hand: Handedness;
 }
 
@@ -368,24 +425,12 @@ impl Sidedness for OneSided {
     type Meet<T: Sidedness> = T::MeetOne;
     type MeetOne = OneSided;
 
-    type Exists<T> = T;
-
-    fn into_existing<T>(value: &T) -> &T {
-        value
-    }
-
     const S: Side = Side::Same;
 }
 
 impl Sidedness for BothSided {
     type Meet<T: Sidedness> = T;
     type MeetOne = OneSided;
-
-    type Exists<T> = T;
-
-    fn into_existing<T>(value: &T) -> &T {
-        value
-    }
 
     const S: Side = Side::Both;
 }
@@ -394,33 +439,84 @@ impl Sidedness for NoSided {
     type Meet<T: Sidedness> = NoSided;
     type MeetOne = NoSided;
 
-    type Exists<T> = Infallible;
-
-    fn into_existing<T>(value: &Infallible) -> &T {
-        match *value {}
-    }
-
     const S: Side = Side::None;
 }
 
+/// A fixed-size coordinate container with a canonical flat index order.
+///
+/// `Array<T>` is the representation layer underlying [`Tensor`]. It describes
+/// how a finite collection of coordinates of type `T` is stored, constructed,
+/// indexed, and traversed. The container carries no algebraic meaning itself:
+/// addition, scalar actions, handedness, forms, and tensor structure belong to
+/// the tensor which selects it.
+///
+/// Unlike a slice, an `Array` has a dimension known as part of its type through
+/// [`N`](Array::N). Unlike a built-in `[T; N]`, it need not use contiguous
+/// storage. Direct sums and tensor products may use nested representations while
+/// still exposing one canonical flat coordinate order.
+///
+/// All coordinate access must agree on that order:
+///
+/// - valid indices are `0..Self::N`;
+/// - [`Index`] and [`IndexMut`] select the corresponding coordinate;
+/// - [`iter`](Array::iter), [`iter_mut`](Array::iter_mut), and consuming
+///   iteration visit coordinates in increasing index order;
+/// - [`from_fn`](Array::from_fn) places `f(i)` at index `i`.
+///
+/// This agreement is what allows generic tensor operations to move between
+/// indexing, iteration, and reconstruction without knowing the physical
+/// representation.
+///
+/// # Type families
+///
+/// A tensor selects an array *family*:
+///
+/// ```text
+/// type Array<T: Point>: Array<T>;
+/// ```
+///
+/// The shape and coordinate order therefore remain fixed while the element type
+/// changes. This is essential for constructions such as automatic
+/// differentiation, where `V::Array<V::F>` may be replaced by
+/// `V::Array<Jet<V::F>>` without changing the logical tensor.
+///
+/// Implementations must preserve the same dimension and layout for every
+/// admissible `T`.
 pub trait Array<T: Point>:
     Point + Sized + Index<usize, Output = T> + IndexMut<usize> + IntoIterator<Item = T>
 {
+    /// The number of elements in this array.
+    ///
+    /// Exactly the indices `0..Self::N` must be valid.
     const N: usize;
 
+    /// The iterator returned when borrowing this array.
+    ///
+    /// Items must be yielded in increasing flat-index order.
     type Iter<'a>: Iterator<Item = &'a T>
     where
         Self: 'a,
         T: 'a;
 
+    /// The iterator returned when mutably borrowing this array.
+    ///
+    /// Items must be yielded in increasing flat-index order.
     type IterMut<'a>: Iterator<Item = &'a mut T>
     where
         Self: 'a,
         T: 'a;
 
+    /// Iterates over shared references in canonical flat-index order.
     fn iter(&self) -> Self::Iter<'_>;
+
+    /// Iterates over mutable references in canonical flat-index order.
     fn iter_mut(&mut self) -> Self::IterMut<'_>;
 
+    /// Constructs an array by evaluating `f` for every coordinate index.
+    ///
+    /// The value returned by `f(i)` is placed at index `i`. Implementations
+    /// should call `f` exactly once for each index in `0..Self::N`, in increasing
+    /// order.
     fn from_fn(f: impl FnMut(usize) -> T) -> Self;
 }
 
@@ -452,8 +548,13 @@ impl<T: Point, const N: usize> Array<T> for [T; N] {
     }
 }
 
-/// A finite-dimensional left or right module over a [`Field`], equipped with a
-/// basis.
+/// A finite-dimensional element of the tensor algebra, represented in a basis.
+///
+/// A `Tensor` records its scalar field, coordinates, preferred hand, and
+/// remaining scalar actions. It need not itself admit scalar multiplication:
+/// completed composites may have `Action = NoSided`. [`Vector`] is the
+/// refinement which certifies that the elected action exists and exposes it
+/// through `Mul<Self::F>`.
 ///
 /// This is the base of the linear hierarchy. A `Tensor` is nothing more than
 /// `N` coordinates in `F` — it carries no metric, no notion of length or angle.
@@ -467,21 +568,21 @@ impl<T: Point, const N: usize> Array<T> for [T; N] {
 /// what lets a flat coordinate space and a curved manifold share the same chart
 /// machinery.
 ///
-/// [`Hand`](Tensor::Hand) elects which side the field acts on. Concrete
-/// coordinate spaces conventionally elect [`Right`]; [`Dual<V>`](Dual) always
-/// elects the opposite hand. The ordinary `Mul<Self::F>` operation follows that
-/// election, so the same vector API represents either kind of module without
-/// silently commuting scalars.
+/// [`Hand`](Tensor::Hand) elects the side on which the field acts, if that
+/// action exists. Concrete coordinate spaces conventionally elect [`Right`];
+/// [`Dual<V>`](Dual) always elects the opposite hand.
 ///
 /// The dual space `V*` is [`Dual<Self>`](Dual), and the canonical evaluation
 /// pairing between them is [`pairing`](Tensor::pairing). Because that pairing is
 /// pinned to the coordinate dot product, `V`, `V*`, and `V**` are
 /// coordinate-identical, which is what makes [`collapse`](Tensor::collapse) a
 /// free relabel. Double dualisation restores the original hand.
+///
+/// [`Add`], [`Sub`], [`Neg`], [`Zero`], [`Index`] and [`IndexMut`] should all be
+/// impl'd using the macro [`impl_vector_ops!`](crate::impl_vector_ops)
 pub trait Tensor:
     Add<Output = Self>
     + Sub<Output = Self>
-    + Mul<<Self::Action as Sidedness>::Exists<Self::F>, Output = Self>
     + Neg<Output = Self>
     + Zero
     + Index<usize, Output = Self::F>
@@ -574,6 +675,31 @@ pub trait Tensor:
         Dual(Sinister(v.0.0))
     }
 
+    /// Constructs a tensor from its coordinates in canonical flat-index order.
+    ///
+    /// The iterator must contain exactly [`Self::N`] elements. Its first element is
+    /// placed at coordinate `0`, its second at coordinate `1`, and so on.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the iterator yields either fewer or more than [`Self::N`]
+    /// coordinates. This exact-length requirement prevents accidental truncation
+    /// and prevents omitted coordinates from being silently filled with zero.
+    ///
+    /// For construction from a function of the coordinate index, use
+    /// [`Tensor::from_fn`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use diffable::{coords::Coords, traits::Tensor};
+    ///
+    /// let v = Coords::<f64, 3>::from_iter([1.0, 2.0, 3.0]);
+    ///
+    /// assert_eq!(v[0], 1.0);
+    /// assert_eq!(v[1], 2.0);
+    /// assert_eq!(v[2], 3.0);
+    /// ```
     fn from_iter(iter: impl IntoIterator<Item = Self::F>) -> Self {
         let mut iter = iter.into_iter();
 
@@ -617,9 +743,125 @@ pub trait Tensor:
     }
 }
 
+/// A tensor on which the elected scalar action is available directly.
+///
+/// [`Tensor`] is the foundational coordinate abstraction. It records a scalar
+/// field, dimension, array representation, preferred hand, and the scalar
+/// actions possessed by the object. A `Vector` is the refinement which
+/// guarantees that at least one such action exists and exposes the preferred
+/// one through ordinary scalar multiplication:
+///
+/// ```text
+/// v * a
+/// ```
+///
+/// The actual multiplication order is determined by [`Tensor::Hand`]:
+///
+/// - for a right-handed vector, this denotes the right action `v a`;
+/// - for a left-handed vector, it denotes the left action `a v`.
+///
+/// The uniform Rust spelling is intentional. Generic vector algorithms can use
+/// scalar multiplication without silently assuming that scalars commute, while
+/// the type's handedness preserves the mathematical order of the operation.
+///
+/// # Actions and handedness
+///
+/// [`Tensor::Action`] describes which scalar actions exist:
+///
+/// - [`OneSided`] means only the elected action is available;
+/// - [`BothSided`] means both left and right actions are available.
+///
+/// [`ActionExists`] excludes zero-sided tensors. Such tensors may still be valid
+/// elements of the tensor algebra, but they cannot be vectors because no scalar
+/// action can be exposed as `Mul<Self::F, Output = Self>`.
+///
+/// Handedness and sidedness are deliberately separate. `Hand` chooses the
+/// action used by the ordinary vector interface; `Action` records whether the
+/// opposite action is also available. Thus a two-sided module may be viewed
+/// through either hand using [`Sinister`], while a one-sided module cannot be
+/// rehanded.
+///
+/// # Tensor algebra
+///
+/// Every vector is a tensor, but not every tensor is a vector. Tensor products
+/// may consume the exposed actions of their factors during balancing and can
+/// therefore produce a tensor with no remaining scalar action. The resulting
+/// object still supports tensor-algebra operations and contractions, but does
+/// not implement `Vector`.
+///
+/// This separation keeps invalid scalar multiplication unrepresentable without
+/// excluding completed tensor composites from the tensor algebra.
 pub trait Vector: Tensor<Action: ActionExists> + Mul<Self::F, Output = Self> {}
 impl<V: Tensor<Action: ActionExists> + Mul<Self::F, Output = Self>> Vector for V {}
 
+/// Implements the canonical coordinate-wise operations for a tensor type.
+///
+/// `impl_vector_ops!` supplies every operation whose implementation is uniquely
+/// determined by [`Tensor`]'s coordinate representation:
+///
+/// - [`Add`] and [`Sub`] operate coordinate by coordinate;
+/// - [`Neg`] negates each coordinate;
+/// - [`Zero`] constructs the all-zero tensor and tests every coordinate;
+/// - [`Index`] and [`IndexMut`] delegate to the array exposed by [`AsRef`] and
+///   [`AsMut`];
+/// - scalar [`Mul`] is provided when [`Tensor::Action`] implements
+///   [`ActionExists`].
+///
+/// Scalar multiplication respects [`Tensor::Hand`]. For a left-handed tensor,
+/// the scalar is placed to the left of each coordinate; for a right-handed
+/// tensor, it is placed to the right:
+///
+/// ```text
+/// Left:  (a, v) ↦ [a v₀, a v₁, …]
+/// Right: (v, a) ↦ [v₀ a, v₁ a, …]
+/// ```
+///
+/// The multiplication implementation is conditional. A tensor with
+/// `Action = NoSided` receives no scalar `Mul` implementation, while one-sided
+/// and two-sided tensors receive `Mul<Self::F, Output = Self>`. Consequently,
+/// invoking this macro does not by itself assert that the target is a
+/// [`Vector`]; that follows automatically only when its elected action exists.
+///
+/// # Implementing a tensor
+///
+/// The target type must separately implement [`Tensor`], including
+/// [`Tensor::from_fn`], and expose its coordinate storage through the required
+/// [`AsRef`] and [`AsMut`] implementations. Those are representation-specific
+/// choices and therefore cannot be generated by this macro.
+///
+/// Once those pieces are present, invoke the macro with the target type followed
+/// by its generic declarations:
+///
+/// ```text
+/// impl_vector_ops!(
+///     MyTensor<F, N>,
+///     F: Field,
+///     const N: usize
+/// );
+/// ```
+///
+/// Bounds may contain associated-type constraints:
+///
+/// ```text
+/// impl_vector_ops!(
+///     MyTensor<V>,
+///     V: Tensor<Action = BothSided>
+/// );
+/// ```
+///
+/// The macro should be invoked exactly once for a given target configuration.
+/// Writing any of the generated implementations manually for the same type will
+/// produce conflicting trait implementations.
+///
+/// [`Add`]: std::ops::Add
+/// [`Sub`]: std::ops::Sub
+/// [`Neg`]: std::ops::Neg
+/// [`Mul`]: std::ops::Mul
+/// [`Index`]: std::ops::Index
+/// [`IndexMut`]: std::ops::IndexMut
+/// [`Zero`]: num_traits::Zero
+/// [`AsRef`]: std::convert::AsRef
+/// [`AsMut`]: std::convert::AsMut
 #[macro_export]
 macro_rules! impl_vector_ops {
     ($target:ty, $($generics:tt)*) => {
@@ -647,24 +889,41 @@ macro_rules! impl_vector_ops {
             }
         }
 
-        impl<$($generics)*> std::ops::Mul<<<$target as $crate::traits::Tensor>::Action as $crate::traits::Sidedness>::Exists<<$target as $crate::traits::Tensor>::F>> for $target {
+        impl<$($generics)*> std::ops::Mul<<$target as $crate::traits::Tensor>::F> for $target
+        where
+            $target: $crate::traits::Tensor<Action: $crate::traits::ActionExists>,
+        {
             type Output = $target;
 
-            fn mul(self, scalar: <<$target as $crate::traits::Tensor>::Action as $crate::traits::Sidedness>::Exists<<$target as $crate::traits::Tensor>::F>) -> Self::Output {
-                Self::from_fn(|i| match <<$target as Tensor>::Hand as $crate::traits::Handedness>::H {
-                    $crate::traits::Hand::Left => *<<$target as $crate::traits::Tensor>::Action as $crate::traits::Sidedness>::into_existing(&scalar) * self[i],
-                    $crate::traits::Hand::Right => self[i] * *<<$target as $crate::traits::Tensor>::Action as $crate::traits::Sidedness>::into_existing(&scalar),
+            fn mul(self, scalar: <$target as $crate::traits::Tensor>::F) -> Self::Output {
+                Self::from_fn(|i| match <<$target as $crate::traits::Tensor>::Hand as $crate::traits::Handedness>::H {
+                    $crate::traits::Hand::Left => scalar * self[i],
+                    $crate::traits::Hand::Right => self[i] * scalar,
                 })
             }
         }
 
         impl<$($generics)*> num_traits::Zero for $target {
             fn zero() -> Self {
-                Self::from_fn(|_| <$target as Tensor>::F::zero())
+                Self::from_fn(|_| <$target as $crate::traits::Tensor>::F::zero())
             }
 
             fn is_zero(&self) -> bool {
                 self.iter().all(num_traits::Zero::is_zero)
+            }
+        }
+
+        impl<$($generics)*> std::ops::Index<usize> for $target {
+            type Output = <$target as $crate::traits::Tensor>::F;
+
+            fn index(&self, index: usize) -> &Self::Output {
+                &self.as_ref()[index]
+            }
+        }
+
+        impl<$($generics)*> std::ops::IndexMut<usize> for $target {
+            fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+                &mut self.as_mut()[index]
             }
         }
     };

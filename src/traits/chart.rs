@@ -1,3 +1,10 @@
+//! Local coordinates, exponential charts, and tangent bundles.
+//!
+//! [`Chart`] relates local tensors to points. [`ExpMap`] certifies that those
+//! coordinates are exponential coordinates, and [`TangentBundle`] supplies
+//! such a chart at every point. [`Smooth`] is the homogeneous version from
+//! which the full chain can be derived.
+
 #[cfg(feature = "testing")]
 use crate::traits::Form;
 
@@ -24,7 +31,8 @@ mod sealed {
 ///
 /// The trait is deliberately sealed and provides only an eliminator:
 /// constructing the result remains the responsibility of the operation
-/// which selected `T` or `Option<T>`.
+/// which selected `T` or `Option<T>`. [`Chart::Global`] uses it to distinguish
+/// complete coordinate domains from genuinely partial ones.
 pub trait OptionallyOption<T>: sealed::Sealed<T> {
     /// Converts either permitted representation into `Option<T>`.
     ///
@@ -159,24 +167,45 @@ pub trait ExpMap<P: Point, V: Tensor>: Chart<P, V> {
     }
 }
 
-/// A manifold whose exponential map agrees with its scalar product — a
+/// A manifold whose exponential coordinates preserve the signed interval — a
 /// pseudo-Riemannian manifold.
 ///
-/// [`ExpMap`] supplies geodesics and exponential coordinates; [`Bilinear`]
-/// supplies the (possibly indefinite) scalar product on the tangent space.
-/// This trait certifies that the two *coincide*: the signed interval of the
-/// geodesic from `p` in direction `v` equals the value of the quadratic form
-/// `Q(v) = ⟨v,v⟩`. Equivalently, `exp` is a radial isometry of the scalar
-/// product — `Q(log_p(exp_p v)) = Q(v)` — within the injectivity domain.
+/// [`ExpMap`] supplies geodesics and exponential coordinates, while
+/// [`Bilinear`] equips the tangent space with a possibly indefinite scalar
+/// product. This trait certifies their compatibility: the signed squared
+/// interval from a point `p` to the endpoint of a tangent vector `v` agrees
+/// with the scalar product of `v` with itself:
 ///
-/// This is stated on the **signed** form rather than a distance, because a
-/// pseudo-Riemannian manifold need not be a metric space: for timelike `v`,
-/// `Q(v) < 0` and the invariant is (minus) the squared proper time; for
-/// spacelike `v`, the squared proper distance; for null `v`, zero. No `sqrt`
-/// and no non-negativity is assumed, so the check is valid in any signature.
+/// ```text
+/// interval_squared(p, expₚ(v)) = v.dot(v).
+/// ```
 ///
-/// In the definite (`M = 0`) case this reduces to the usual Riemannian
-/// statement `d(p, exp_p v) = ‖v‖`, recovered by taking `√Q`.
+/// Equivalently, wherever the logarithm is defined,
+///
+/// ```text
+/// logₚ(q).dot(logₚ(q)) = interval_squared(p, q).
+/// ```
+///
+/// This relationship is stated using the **signed squared interval**, rather
+/// than distance. A pseudo-Riemannian manifold need not be a metric space:
+///
+/// - a timelike tangent may satisfy `v.dot(v) < 0`, representing minus the
+///   squared proper time;
+/// - a spacelike tangent may satisfy `v.dot(v) > 0`, representing squared
+///   proper distance;
+/// - a nonzero null tangent may satisfy `v.dot(v) = 0`.
+///
+/// No square root or non-negativity is assumed, so the compatibility statement
+/// applies uniformly in every signature.
+///
+/// In the positive-definite case this recovers the familiar Riemannian
+/// relationship
+///
+/// ```text
+/// distance(p, expₚ(v)) = v.norm(),
+/// ```
+///
+/// within the injectivity domain.
 ///
 /// Verified by `test_pseudo_riemannian!`.
 ///

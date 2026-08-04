@@ -1,3 +1,10 @@
+//! Foundational carrier, scalar, interval, and metric abstractions.
+//!
+//! [`Point`] is the bare carrier beneath every structure. [`Real`] and
+//! [`ExactCmp`] describe analytical scalar behavior, while [`Interval`] and
+//! [`Metric`] distinguish signed pseudo-Riemannian separation from genuine
+//! metric-space distance.
+
 #[cfg(feature = "testing")]
 use num_traits::Zero;
 
@@ -206,7 +213,12 @@ pub trait Metric: Interval {
     }
 }
 
+/// Embeds an [`Interval::R`] value into the interval-bearing scalar type.
+///
+/// Fields whose fixed field is real receive the canonical implementation via
+/// [`Field::from_fixed`](crate::traits::Field::from_fixed).
 pub trait FromReal: Interval {
+    /// Embeds a value from the real interval field.
     fn from_real(r: Self::R) -> Self;
 }
 

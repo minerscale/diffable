@@ -1,3 +1,9 @@
+//! The quaternion division algebra.
+//!
+//! [`Quaternion`] is the canonical noncommutative scalar example for
+//! [`Field`], exercising multiplication order, handedness, duality, and
+//! sesquilinear forms throughout the library.
+
 use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
 use num_traits::{Inv, One, Zero};
@@ -19,18 +25,22 @@ use crate::{
 pub struct Quaternion<R: Real>(pub Coords<R, 4, 0>);
 
 impl<R: Real> Quaternion<R> {
+    /// Constructs a quaternion from its `(real, i, j, k)` coordinates.
     pub fn new(real: R, i: R, j: R, k: R) -> Self {
         [real, i, j, k].into()
     }
 
+    /// Returns the quaternion basis element `i`.
     pub fn i() -> Self {
         Self::new(R::zero(), R::one(), R::zero(), R::zero())
     }
 
+    /// Returns the quaternion basis element `j`.
     pub fn j() -> Self {
         Self::new(R::zero(), R::zero(), R::one(), R::zero())
     }
 
+    /// Returns the quaternion basis element `k`.
     pub fn k() -> Self {
         Self::new(R::zero(), R::zero(), R::zero(), R::one())
     }
@@ -159,7 +169,11 @@ impl<R: Real> LieGroup<Coords<R, 4>> for Quaternion<R> {
 }
 
 impl<R: Real> Metric for Quaternion<R> {}
-impl<R: Real> FieldExp for Quaternion<R> {}
+impl<R: Real> FieldExp for Quaternion<R> {
+    fn exp(&self) -> Self {
+        self.exp_by_series()
+    }
+}
 
 impl<R: Real> Inv for NonZero<Quaternion<R>> {
     type Output = Self;

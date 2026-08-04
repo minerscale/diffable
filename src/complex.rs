@@ -1,3 +1,9 @@
+//! Complex scalars and their real-valued square-root convention.
+//!
+//! [`Complex`] extends a [`Real`] field with its canonical
+//! involution and Hermitian norm. It is the scalar field used by constructions
+//! such as [`Sl2c`](crate::spacetime::Sl2c).
+
 use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
 use num_traits::{Inv, One, Zero};
@@ -15,9 +21,17 @@ use crate::{
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Complex<R: Real>(pub Coords<R, 2, 0>);
 
-impl<R: Real> FieldExp for Complex<R> {}
+impl<R: Real> FieldExp for Complex<R> {
+    fn exp(&self) -> Self {
+        self.exp_by_series()
+    }
+}
 
 impl<R: Real> Complex<R> {
+    /// Returns the principal square root of a real value in the complex plane.
+    ///
+    /// Non-negative inputs lie on the real axis and negative inputs on the
+    /// positive imaginary axis. This is the convention used by [`Interval::interval`].
     pub fn real_sqrt(r: R) -> Self {
         if r.is_sign_negative() {
             [R::zero(), (-r).sqrt()].into()

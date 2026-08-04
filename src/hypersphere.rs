@@ -1,3 +1,10 @@
+//! Spheres, their Lie-group refinements, and finite covers.
+//!
+//! [`Sphere`] supplies intrinsic spherical geometry and [`Stereographic`] an
+//! external atlas. [`S0`], [`UnitComplex`], and [`S3`] add the group structures
+//! available in dimensions zero, one, and three; [`So3`] then forms the
+//! antipodal quotient of `S3`.
+
 use std::{marker::PhantomData, ops::Mul};
 
 use crate::{
@@ -6,8 +13,9 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
     quaternion::Quaternion,
     traits::{
-        Bounded, BuildNodes, Chart, Euclidean, ExpMap, InnerProduct, Interval, LieGroup, Metric,
-        NerveComplexParameters, Quotient, Real, RootOfUnity, Smooth, TangentBundle,
+        Chart, Euclidean, ExpMap, InnerProduct, Interval, LieGroup, Metric, Quotient, Real,
+        RootOfUnity, Smooth, TangentBundle,
+        simplicial::{Bounded, BuildNodes, NerveComplexParameters},
     },
 };
 
@@ -36,9 +44,11 @@ pub struct Sphere<V: Euclidean> {
 pub struct Stereographic<V: Euclidean>(StereographicPole, PhantomData<V>);
 
 impl<V: Euclidean> Stereographic<V> {
+    /// Constructs the stereographic chart projecting from the south pole.
     pub const fn south_pole() -> Self {
         Self(StereographicPole::SouthPole, PhantomData)
     }
+    /// Constructs the stereographic chart projecting from the north pole.
     pub const fn north_pole() -> Self {
         Self(StereographicPole::NorthPole, PhantomData)
     }
@@ -50,6 +60,7 @@ enum StereographicPole {
     NorthPole,
 }
 
+/// Numerical exclusion radius around a [`Stereographic`] chart's missing pole.
 pub const EPSILON: f64 = 1e-3;
 
 impl<V: Euclidean> Chart<Sphere<V>, V> for Stereographic<V> {
@@ -95,9 +106,11 @@ impl<V: Euclidean> Chart<Sphere<V>, V> for Stereographic<V> {
 }
 
 impl<V: Euclidean> Sphere<V> {
+    /// Returns the scalar coordinate in the splitting `V::F ⊕ V`.
     pub fn real(&self) -> V::F {
         self.real
     }
+    /// Returns the vector coordinate in the splitting `V::F ⊕ V`.
     pub fn imag(&self) -> V {
         self.imag.clone()
     }
@@ -124,6 +137,7 @@ impl<V: Euclidean> Sphere<V> {
         self.real.is_one() && self.imag.is_zero()
     }
 
+    /// Constructs and normalises a sphere point from scalar and vector parts.
     pub fn new(real: V::F, imag: V) -> Self {
         let sphere = Sphere { real, imag };
 
@@ -283,6 +297,7 @@ impl<V: Euclidean> Interval for S0<V> {
 impl<V: Euclidean> Metric for S0<V> {}
 
 impl<V: Euclidean> S0<V> {
+    /// Wraps a sphere point with the Lie-group structure of `S⁰`.
     pub fn new(s: Sphere<V>) -> Self {
         // Dim(V) + 1 dimensions must embed
         // the unit circle.
@@ -291,16 +306,19 @@ impl<V: Euclidean> S0<V> {
         Self(s)
     }
 
+    /// Removes the `S⁰` group wrapper.
     pub fn to_inner(self) -> Sphere<V> {
         self.0
     }
 
+    /// Borrows the underlying sphere point.
     pub fn inner(&self) -> &Sphere<V> {
         &self.0
     }
 }
 
 impl<V: Euclidean> UnitComplex<V> {
+    /// Wraps a sphere point with unit-complex multiplication.
     pub fn new(s: Sphere<V>) -> Self {
         // Dim(V) + 1 dimensions must embed
         // the unit circle.
@@ -309,16 +327,19 @@ impl<V: Euclidean> UnitComplex<V> {
         Self(s)
     }
 
+    /// Removes the unit-complex group wrapper.
     pub fn to_inner(self) -> Sphere<V> {
         self.0
     }
 
+    /// Borrows the underlying sphere point.
     pub fn inner(&self) -> &Sphere<V> {
         &self.0
     }
 }
 
 impl<V: Euclidean> S3<V> {
+    /// Wraps a sphere point with unit-quaternion multiplication.
     pub fn new(s: Sphere<V>) -> Self {
         // Dim(V) + 1 dimensions must embed
         // the unit circle.
@@ -327,10 +348,12 @@ impl<V: Euclidean> S3<V> {
         Self(s)
     }
 
+    /// Removes the `S³` group wrapper.
     pub fn to_inner(self) -> Sphere<V> {
         self.0
     }
 
+    /// Borrows the underlying sphere point.
     pub fn inner(&self) -> &Sphere<V> {
         &self.0
     }
@@ -561,6 +584,7 @@ impl_lie_group_via_quotient!(So3<V>, S3<V>, RootOfUnity<V::F, 2>, V, V: Euclidea
 
 use crate::epsilon_metric::R64;
 
+/// The six-chart good cover of [`UnitComplex`] used by [`NerveComplex`](crate::traits::simplicial::NerveComplex).
 #[derive(PartialEq, Debug, Clone)]
 pub struct S1Cover(UnitComplex<Coords<R64, 1>>);
 
@@ -616,6 +640,10 @@ impl
 {
 }
 
+/// A finite geodesic-ball cover of [`So3`] centred on icosahedral rotations.
+///
+/// The cover supplies [`Bounded`] domains and nodes for the global simplicial
+/// and geodesic algorithms.
 #[derive(PartialEq, Debug, Clone)]
 pub struct So3Cover(So3<Coords<R64, 3>>);
 

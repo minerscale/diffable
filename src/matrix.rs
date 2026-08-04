@@ -1,3 +1,9 @@
+//! Variance-aware matrices and matrix functions.
+//!
+//! A [`Matrix`] is an endomorphism tensor whose representation follows the
+//! handedness of its underlying [`Tensor`]. The [`MatrixExponential`] refinement
+//! supplies the Lie-theoretic exponential and its local logarithm.
+
 use std::{
     array::from_fn,
     ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub},
@@ -289,6 +295,7 @@ impl<F: Field + Metric, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
             .sqrt()
     }
 
+    /// Returns the induced matrix one-norm: the greatest absolute column sum.
     pub fn one_norm(&self) -> F::R {
         let mut max = F::R::zero();
 
@@ -410,6 +417,10 @@ impl<F: Field + Metric, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
         Self::new(out)
     }
 
+    /// Computes the inverse using partial pivoting.
+    ///
+    /// This is the pivoted counterpart of [`Matrix::inverse`] and panics when
+    /// the matrix is singular.
     pub fn inverse_pivoted(&self) -> Self {
         self.solve_pivoted(Self::one())
     }
@@ -422,6 +433,7 @@ impl<F: CField + Metric, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
         }
     }
 
+    /// Computes the determinant by elimination with partial pivoting.
     pub fn det(&self) -> F {
         let mut lu = self.clone();
 
@@ -587,9 +599,23 @@ pub trait MatrixExponential: Sized {
     /// exponential—large or ill-conditioned inputs may suffer substantial
     /// numerical error through rounding, cancellation, and repeated squaring.
     fn exp(&self) -> Self;
+    /// Computes the local matrix logarithm near the identity.
+    ///
+    /// Returns `None` when the input lies outside the convergence neighbourhood
+    /// elected by the implementation.
     fn log(&self) -> Option<Self>;
 }
 
+/// Approximates the `n`-th root of a field element near one.
+///
+/// Newton iteration starts at one and stops after at most 32 steps. This helper
+/// is intended for local logarithm algorithms such as [`MatrixExponential::log`]
+/// and panics if it does not converge within that budget.
+///
+/// # Panics
+///
+/// Panics when `n == 0`, when the iteration does not converge within 32 steps,
+/// or if an iteration requires division by a non-invertible value.
 pub fn nth_root_near_one<F: Field + Metric>(a: &F, n: usize) -> F {
     assert!(n > 0);
 

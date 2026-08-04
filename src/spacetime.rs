@@ -1,4 +1,11 @@
-use std::ops::{Index, IndexMut, Mul};
+//! Linear and Lie-theoretic models used in spacetime geometry.
+//!
+//! [`Minkowski`] is the canonical `(3, 1)` coordinate space. [`Sl`] and
+//! [`SlAlgebra`] represent the special linear group and its traceless Lie
+//! algebra, while [`Lorentz`] realises the restricted Lorentz group as the
+//! quotient of [`Sl2c`] by `{+1, -1}`.
+
+use std::ops::Mul;
 
 use num_traits::{Inv, One, Zero};
 
@@ -13,6 +20,7 @@ use crate::{
     },
 };
 
+/// Four-dimensional Minkowski space with signature `(3, 1)`.
 pub type Minkowski<R> = Coords<R, 4, 1>;
 
 /// The special linear group `SL(V)` — automorphisms of `V` with determinant one.
@@ -117,6 +125,7 @@ impl<R: Real> Quotient<Sl2c<R>, RootOfUnity<Complex<R>, 2>, SlAlgebra<Complex<R>
 impl_lie_group_via_quotient!(Lorentz<R>, Sl2c<R>, RootOfUnity<Complex<R>,2>, SlAlgebra<Complex<R>, 2, 3>, R: Real);
 
 impl<V: Tensor<F: CField>, const N: usize> Sl<V, N> {
+    /// Returns the trace of the represented special-linear transformation.
     pub fn trace(&self) -> V::F {
         self.0.trace()
     }
@@ -229,24 +238,6 @@ impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> From<S
 }
 
 impl_vector_ops!(SlAlgebra<F, N, D>, F: CField<Characteristic = NatZero>, const N: usize, const D: usize);
-
-impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> Index<usize>
-    for SlAlgebra<F, N, D>
-{
-    type Output = F;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> IndexMut<usize>
-    for SlAlgebra<F, N, D>
-{
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
-    }
-}
 
 impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> SlAlgebra<F, N, D> {
     fn matrix(&self) -> Matrix<Coords<F, N>, N> {

@@ -13,8 +13,8 @@ use diffable::{
     test_chart, test_exp_map, test_group, test_metric, test_pseudo_riemannian, test_quotient,
     test_tangent_bundle,
     traits::{
-        Chart, ExpMap, Group, GroupPresentation, InnerProduct, LieGroup, NerveComplex,
-        NerveComplexParameters, Nodes, Quotient,
+        Chart, ExpMap, Group, InnerProduct, LieGroup, Quotient,
+        simplicial::{GroupPresentation, NerveComplex, NerveComplexParameters, Nodes},
     },
 };
 

@@ -16,7 +16,6 @@ all-features = true
 [lib]
 path = "src/lib.rs"
 name = "diffable"
-doctest = false
 
 [features]
 testing = ["dep:proptest"]

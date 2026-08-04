@@ -1,3 +1,10 @@
+//! Tolerance-aware floating-point real fields for tests and numerical geometry.
+//!
+//! [`R32`] and [`R64`] give ordinary floating-point arithmetic an approximate
+//! equality suitable for the property-test macros, while
+//! [`ExactCmp`](crate::traits::ExactCmp) remains available when an algorithm
+//! needs the underlying strict order.
+
 use num_derive::{Float, FromPrimitive, Num, NumCast, NumOps, One, Signed, ToPrimitive, Zero};
 use num_traits::{Euclid, Float, Inv};
 use std::ops::Neg;
@@ -10,8 +17,9 @@ use crate::traits::NonZero;
 
 /// Defines a tolerance-comparison scalar newtype over `$inner`, with a
 /// `PartialEq` that treats values within `$epsilon` (relative for large
-/// magnitudes, absolute for small ones) as equal -- see [`Scalar`] for why
-/// this exists and what it means for the resulting equality to be
+/// magnitudes, absolute for small ones) as equal -- see
+/// [`RealNum`](crate::traits::RealNum) for why this exists and what it means
+/// for the resulting equality to be
 /// reflexive and symmetric but not transitive.
 ///
 /// Takes a doc string as its first argument (spliced onto the generated
@@ -20,7 +28,6 @@ use crate::traits::NonZero;
 /// macro body would be identical for every instantiation, and a `///`
 /// written before the invocation itself is simply discarded.
 ///
-/// [`Scalar`]: crate::traits::Scalar
 macro_rules! define_epsilon_metric {
     ($name:ident, $inner:ty, $epsilon:expr, $doc:expr) => {
         #[doc = $doc]

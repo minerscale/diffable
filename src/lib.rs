@@ -23,7 +23,9 @@
 //! to every other point by left translation. Diffable writes that argument as a
 //! blanket implementation:
 //!
-//! ```rust
+//! ```compile_fail,E0210
+//! use diffable::prelude::*;
+//!
 //! impl<V: Vector, L: LieGroup<V>> Smooth<V> for L {
 //!     fn exp(&self, coord: V) -> Self {
 //!         self.compose(&Self::identity_exp(coord))
@@ -159,7 +161,62 @@
 //! space into coordinates and asking the programmer to remember what remains
 //! valid.
 //!
-//! ## Trait Heirachy
+//! ## Automatic differentiation as typed programs
+//!
+//! [`d`](traits::calculus::d) turns an ordinary generic Rust function into a composable
+//! differential program. Calling `d` does not evaluate anything: derivatives can
+//! be nested, contracted with directions, and only then evaluated with `at`.
+//!
+//! ```rust
+//! use diffable::{
+//!     coords::Coords,
+//!     traits::{calculus::d, Euclidean, Field, Tensor},
+//! };
+//!
+//! fn cube<V: Euclidean>(x: V) -> V {
+//!     x.map(|x| x.powi(3))
+//! }
+//!
+//! // Full higher derivatives use the same operator recursively.
+//! let third = d(d(d(cube))).at(Coords::from(-6.0));
+//! assert_eq!(third[0], 6.0);
+//!
+//! // Contract a derivative slot before evaluation.
+//! let directional = d(cube)
+//!     .along(Coords::from(4.0))
+//!     .at(Coords::from(7.0));
+//! assert_eq!(directional[0], 588.0);
+//!
+//! // Differential programs remain differentiable, including their directions.
+//! let diagonal = d(|v| d(cube).along(v).at(v))
+//!     .at(Coords::from(7.0));
+//! assert_eq!(diagonal[0], 441.0);
+//! ```
+//!
+//! The last expression differentiates `v ↦ D(cube)ᵥ(v)`. This is deliberately
+//! ordinary Rust syntax: there is no tracing macro, tape, boxed closure, or
+//! type-erased expression graph. [`Jet`](traits::calculus::Jet) supplies Taylor
+//! coefficients, [`JetVector`](traits::calculus::JetVector) presents an existing tensor over
+//! those coefficients, and [`JetMap`](traits::calculus::JetMap) interprets the program at
+//! each required nesting depth. A type-level [`ConstantRoute`](traits::calculus::ConstantRoute)
+//! injects captured base-field values through that jet tower.
+//!
+//! The full derivative of `f: U → V` is a
+//! [`TangentMap`](traits::calculus::TangentMap), represented as `V ⊗ U*` in
+//! output-by-input coordinate order. `along` contracts one input slot and returns
+//! the directional derivative directly. If a composition cannot be evaluated,
+//! the public `at` boundary reports that the function lacks the required jet
+//! presentation, its tensor structure is incompatible, or a musical isomorphism
+//! does not lift through the nested jets.
+//!
+//! This machinery is not restricted to flat coordinates. Implementing
+//! [`TangentLift`](traits::calculus::TangentLift) tells Diffable how a manifold's tangent
+//! charts act on jets. [`FormLift`](traits::calculus::FormLift) and
+//! [`NondegenerateLift`](traits::calculus::NondegenerateLift) do the corresponding job for
+//! the lowering and raising maps, allowing generic Euclidean code to remain valid
+//! inside higher derivatives.
+//!
+//! ## Trait hierarchy
 //!
 //! The trait graph is intentionally fine-grained. Generic algorithms should
 //! state the weakest honest assumptions their proofs require.
@@ -178,6 +235,9 @@
 //! - [`Chart`](traits::Chart) provides coordinates; [`ExpMap`](traits::ExpMap)
 //!   says those coordinates are geodesic; [`TangentBundle`](traits::TangentBundle)
 //!   supplies such a chart at every point.
+//! - [`TangentLift`](traits::calculus::TangentLift) extends tangent charts through jet
+//!   coordinates; [`FormLift`](traits::calculus::FormLift) and
+//!   [`NondegenerateLift`](traits::calculus::NondegenerateLift) extend the musical maps.
 //!
 //! Degenerate and indefinite cases are not malformed approximations to
 //! Euclidean geometry. They are first-class structures with precisely the
@@ -198,6 +258,10 @@
 //!   `V` is right-handed and `V* ⊗ V` when it is left-handed. Tensor variance
 //!   and handedness are carried by the types.
 //!   [`matrix::MatrixExponential`] supplies matrix `exp` and `log`.
+//! - [`traits::calculus::Jet`] and [`traits::calculus::JetVector`] implement forward automatic
+//!   differentiation without changing the logical tensor shape. [`traits::calculus::d`]
+//!   and [`traits::calculus::Along`] compose full and directional derivatives into typed
+//!   programs.
 //!
 //! ### Manifolds and Lie groups
 //!
@@ -224,8 +288,8 @@
 //!
 //! ## Global geometry and topology
 //!
-//! [`Bounded`](traits::Bounded) describes a bounded open exponential-chart
-//! domain by a signed distance field. [`NerveComplex`](traits::NerveComplex)
+//! [`Bounded`](traits::simplicial::Bounded) describes a bounded open exponential-chart
+//! domain by a signed distance field. [`NerveComplex`](traits::simplicial::NerveComplex)
 //! assembles a finite cover from those domains
 //! and records their overlap as a simplicial complex.
 //!
@@ -235,7 +299,7 @@
 //! - recovery of the fundamental group from the nerve; and
 //! - a compactness certificate for the implemented manifold.
 //!
-//! [`GroupPresentation`](traits::GroupPresentation) represents the resulting
+//! [`GroupPresentation`](traits::simplicial::GroupPresentation) represents the resulting
 //! fundamental group by generators and relations. It deliberately does not
 //! implement [`Group`](traits::Group): equality of words
 //! in an arbitrary finite presentation is undecidable in general.
@@ -255,9 +319,9 @@
 //! diffable = { version = "0.2", features = ["testing"] }
 //! ```
 //!
-//! The testing module includes tolerance-aware [`R32`] and [`R64`] scalar types so
-//! that floating-point implementations can be tested against the exact
-//! mathematics they approximate.
+//! The testing module includes tolerance-aware [`R32`](epsilon_metric::R32) and
+//! [`R64`](epsilon_metric::R64) scalar types so that floating-point implementations
+//! can be tested against the exact mathematics they approximate.
 //!
 //! ## Trait map
 //!
@@ -293,15 +357,50 @@
 //!
 #![allow(clippy::needless_range_loop, clippy::type_complexity)]
 
-pub mod coords;
-pub mod hypersphere;
-pub mod traits;
-
 pub mod complex;
+pub mod coords;
 pub mod discrete;
 pub mod epsilon_metric;
 pub mod flat;
+pub mod hypersphere;
 pub mod matrix;
 pub mod quaternion;
 pub mod spacetime;
-pub use epsilon_metric::{R32, R64};
+pub mod traits;
+
+/// Common carrier types and mathematical certificates for ordinary use.
+///
+/// Importing this module brings the differential operator
+/// [`d`](crate::traits::calculus::d), canonical coordinates, scalar fields,
+/// linear geometry, charts, groups, and their principal constructors into
+/// scope. Lower-level tensor and topology machinery remains in
+/// [`traits`] and [`traits::simplicial`].
+pub mod prelude {
+    // The derivative.
+    pub use crate::traits::calculus::d;
+
+    // Canonical carrier types.
+    pub use crate::{
+        complex::Complex,
+        coords::Coords,
+        traits::{Dual, NonZero},
+    };
+
+    // Scalar structure.
+    pub use crate::traits::{CField, Field, FieldExp, Real};
+
+    // Ordinary linear geometry.
+    pub use crate::traits::{
+        Bilinear, Euclidean, Form, InnerProduct, Nondegenerate, Sesquilinear, Vector,
+    };
+
+    // Metric and manifold structure.
+    pub use crate::traits::{
+        Chart, ExpMap, Interval, Metric, Point, PseudoRiemannian, Smooth, TangentBundle,
+    };
+
+    // Group structure.
+    pub use crate::traits::{Group, LieGroup};
+
+    pub use crate::epsilon_metric::{R32, R64};
+}

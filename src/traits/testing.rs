@@ -1,3 +1,11 @@
+//! Property-test suites for the axioms represented by Diffable's traits.
+//!
+//! The exported `test_*` macros mirror the trait hierarchy: for example,
+//! [`test_euclidean!`](crate::test_euclidean) includes the inherited vector,
+//! form, interval, and metric obligations, while
+//! [`test_field!`](crate::test_field) includes the corresponding ring and
+//! division-ring laws. Enable the `testing` feature to use this module.
+
 // ---------------------------------------------------------------------------
 // Trait test macros
 // These generate the full suite of invariant tests for any implementation
@@ -5,7 +13,7 @@
 // manifold, just invoke the relevant macro with appropriate generators.
 // ---------------------------------------------------------------------------
 
-/// Tests that a vector space is a vector space
+/// Tests the axioms required by [`Vector`](crate::traits::Vector).
 #[macro_export]
 macro_rules! test_vector {
     ($mod_name:ident, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
@@ -35,7 +43,14 @@ macro_rules! test_vector {
     };
 }
 
-/// Tests that a space claiming to be a pseudo-Euclidean space is a pseudo-Euclidean space
+/// Tests the inherited vector, form, interval, and chart axioms of a
+/// pseudo-Euclidean space.
+///
+/// This composes [`test_vector!`](crate::test_vector),
+/// [`test_interval!`](crate::test_interval),
+/// [`test_pseudo_riemannian!`](crate::test_pseudo_riemannian),
+/// [`test_sesquilinear!`](crate::test_sesquilinear), and
+/// [`test_nondegenerate!`](crate::test_nondegenerate).
 #[macro_export]
 macro_rules! test_pseudo_euclidean {
     ($mod_name:ident, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
@@ -55,7 +70,7 @@ macro_rules! test_pseudo_euclidean {
     };
 }
 
-/// Tests that a space claiming to be a euclidean space is a euclidean space
+/// Tests the axioms required by [`Euclidean`](crate::traits::Euclidean).
 #[macro_export]
 macro_rules! test_euclidean {
     ($mod_name:ident, $space:ty, $arb_point:expr, $arb_scalar:expr) => {
@@ -79,8 +94,7 @@ macro_rules! test_euclidean {
     };
 }
 
-/// Tests the chart roundtrip invariant: to_global(to_local(p)) == p
-/// for any chart type and point generator.
+/// Tests the roundtrip invariant required by [`Chart`](crate::traits::Chart).
 #[macro_export]
 macro_rules! test_chart {
     ($mod_name:ident, $chart:ty, $arb_point:expr) => {
@@ -153,7 +167,8 @@ macro_rules! test_exp_map {
     };
 }
 
-/// Tests that `Metric` and `ExpMap` agree: `d(p, exp_p(v)) == |log_p(exp_p(v))|`.
+/// Tests that [`Interval`](crate::traits::Interval) and
+/// [`ExpMap`](crate::traits::ExpMap) agree along exponential coordinates.
 #[macro_export]
 macro_rules! test_pseudo_riemannian {
     ($mod_name:ident, $chart:ty, $arb_point:expr, $arb_vec:expr) => {
@@ -172,7 +187,8 @@ macro_rules! test_pseudo_riemannian {
     };
 }
 
-/// Tests the TangentBundle invariant on top of all ExpMap invariants.
+/// Tests [`TangentBundle`](crate::traits::TangentBundle) on top of all
+/// [`ExpMap`](crate::traits::ExpMap) invariants.
 #[macro_export]
 macro_rules! test_tangent_bundle {
     ($mod_name:ident, $chart:ty, $arb_point:expr) => {
@@ -194,7 +210,7 @@ macro_rules! test_tangent_bundle {
     };
 }
 
-/// Tests the `CMonoid` axioms: identity, associativity, commutativity.
+/// Tests the axioms required by [`CMonoid`](crate::traits::CMonoid).
 #[macro_export]
 macro_rules! test_cmonoid {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
@@ -229,7 +245,7 @@ macro_rules! test_cmonoid {
     };
 }
 
-/// Tests the `Group` axioms: identity, associativity, inverses.
+/// Tests the axioms required by [`Group`](crate::traits::Group).
 #[macro_export]
 macro_rules! test_group {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
@@ -269,7 +285,7 @@ macro_rules! test_group {
     };
 }
 
-/// Tests the `Monoid` axioms: identity, associativity (no commutativity).
+/// Tests the axioms required by [`Monoid`](crate::traits::Monoid).
 #[macro_export]
 macro_rules! test_monoid {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
@@ -299,7 +315,8 @@ macro_rules! test_monoid {
     };
 }
 
-/// Tests the `CGroup` axioms: everything `test_cmonoid!` checks, plus
+/// Tests the [`CGroup`](crate::traits::CGroup) axioms: everything
+/// [`test_cmonoid!`](crate::test_cmonoid) checks, plus
 /// additive inverses.
 #[macro_export]
 macro_rules! test_cgroup {
@@ -329,7 +346,8 @@ macro_rules! test_cgroup {
     };
 }
 
-/// Tests the `MulGroup` axioms: everything `test_monoid!` checks, plus
+/// Tests the [`MulGroup`](crate::traits::MulGroup) axioms: everything
+/// [`test_monoid!`](crate::test_monoid) checks, plus
 /// multiplicative inverses.
 #[macro_export]
 macro_rules! test_mul_group {
@@ -354,7 +372,7 @@ macro_rules! test_mul_group {
     };
 }
 
-/// Tests the Metric axioms: non-negativity, symmetry, self-distance is zero.
+/// Tests the axioms required by [`Metric`](crate::traits::Metric).
 #[macro_export]
 macro_rules! test_metric {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
@@ -379,7 +397,7 @@ macro_rules! test_metric {
     };
 }
 
-/// Tests the Interval axioms: Symmetry and self-interval is zero.
+/// Tests the axioms required by [`Interval`](crate::traits::Interval).
 #[macro_export]
 macro_rules! test_interval {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
@@ -407,6 +425,8 @@ macro_rules! test_interval {
     };
 }
 
+/// Tests the axioms required by [`Form`](crate::traits::Form): dot/pairing
+/// agreement and translation invariance
 #[macro_export]
 macro_rules! test_form {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
@@ -429,6 +449,8 @@ macro_rules! test_form {
     };
 }
 
+/// Tests that [`Nondegenerate::sharp`](crate::traits::Nondegenerate::sharp) is
+/// exactly the inverse of [`Form::flat`](crate::traits::Form::flat).
 #[macro_export]
 macro_rules! test_nondegenerate {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
@@ -451,7 +473,8 @@ macro_rules! test_nondegenerate {
     };
 }
 
-/// Tests the `Sesquilinear` axioms: Hermitian symmetry, additivity, and
+/// Tests the [`Sesquilinear`](crate::traits::Sesquilinear) axioms: Hermitian
+/// symmetry, additivity, and
 /// scalar linearity in the first argument.
 #[macro_export]
 macro_rules! test_sesquilinear {
@@ -480,7 +503,7 @@ macro_rules! test_sesquilinear {
     };
 }
 
-/// Tests the InnerProduct axioms: symmetry, bilinearity, positive-definiteness.
+/// Tests the axioms required by [`InnerProduct`](crate::traits::InnerProduct).
 #[macro_export]
 macro_rules! test_inner_product {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_scalar:expr) => {
@@ -506,7 +529,8 @@ macro_rules! test_inner_product {
     };
 }
 
-/// Tests the Quotient axioms: that canonical respects cosets, and the
+/// Tests the [`Quotient`](crate::traits::Quotient) axioms: that canonical
+/// respects cosets, and the
 /// inherited LieGroup axioms which follow from the quotient structure.
 #[macro_export]
 macro_rules! test_quotient {
@@ -528,7 +552,7 @@ macro_rules! test_quotient {
     };
 }
 
-/// Tests the `DivRing` axioms: that the Inverse is properly implemented.
+/// Tests the axioms required by [`DivRing`](crate::traits::DivRing).
 #[macro_export]
 macro_rules! test_div_ring {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
@@ -549,7 +573,7 @@ macro_rules! test_div_ring {
     };
 }
 
-/// Tests the `CField` axioms: that we have a commutative field.
+/// Tests the axioms required by [`CField`](crate::traits::CField).
 #[macro_export]
 macro_rules! test_cfield {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_fixed:expr) => {
@@ -569,7 +593,7 @@ macro_rules! test_cfield {
     };
 }
 
-/// Tests the `Field` axioms: that we have a division ring with proper involution.
+/// Tests the axioms required by [`Field`](crate::traits::Field).
 #[macro_export]
 macro_rules! test_field {
     ($mod_name:ident, $point:ty, $arb_point:expr, $arb_fixed:expr) => {
@@ -643,7 +667,7 @@ macro_rules! test_field {
     };
 }
 
-/// Tests the `Ring` axioms: everything `test_cgroup!` and `test_rig!` check.
+/// Tests the axioms required by [`Ring`](crate::traits::Ring).
 #[macro_export]
 macro_rules! test_ring {
     ($mod_name:ident, $point:ty, $arb_point:expr) => {
@@ -657,7 +681,9 @@ macro_rules! test_ring {
     };
 }
 
-/// Tests the `Rig` axioms: everything `test_cmonoid!` and `test_monoid!`
+/// Tests the [`Rig`](crate::traits::Rig) axioms: everything
+/// [`test_cmonoid!`](crate::test_cmonoid) and
+/// [`test_monoid!`](crate::test_monoid)
 /// check, plus distributivity and multiplicative annihilation by zero.
 #[macro_export]
 macro_rules! test_rig {

@@ -10,8 +10,10 @@ use diffable::{
     flat::{KleinBottle, KleinBottleCover, MyopicTorus, MyopicTorusCover, S1, Torus, TorusCover},
     group_presentation, test_pseudo_riemannian, test_quotient, test_tangent_bundle,
     traits::{
-        Abelianisation, Chart, GroupPresentation, InnerProduct, NerveComplex,
-        NerveComplexParameters, Nodes,
+        Chart, InnerProduct,
+        simplicial::{
+            Abelianisation, GroupPresentation, NerveComplex, NerveComplexParameters, Nodes,
+        },
     },
 };
 
@@ -143,7 +145,7 @@ proptest! {
         }
 
         let expected_distance = p.to_local(&q).unwrap().norm();
-        let Some(diffable::traits::Geodesic {path: _, length, certificate}) =
+        let Some(diffable::traits::simplicial::Geodesic {path: _, length, certificate}) =
             Cover::geodesic_path(&p, &q) else {
                 panic!("no geodesic found")
             };

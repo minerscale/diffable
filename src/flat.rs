@@ -1,12 +1,23 @@
+//! Flat manifolds obtained from Euclidean spaces by discrete identifications.
+//!
+//! [`S1`] is the quotient `R/Z`; [`Torus`] combines two circles with straight
+//! gluing, while [`KleinBottle`] twists one identification. Their cover types
+//! implement the [`Bounded`] machinery used by [`NerveComplex`] to recover
+//! global topology.
+//!
+//! [`NerveComplex`]: crate::traits::simplicial::NerveComplex
+
 use crate::{
     discrete::Z,
     impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
-    traits::{Bounded, BuildNodes, Interval, NerveComplexParameters, Tensor},
+    traits::{
+        Interval, Tensor,
+        simplicial::{Bounded, BuildNodes, NerveComplexParameters},
+    },
 };
 use std::marker::PhantomData;
 
 use crate::traits::{Chart, Euclidean, Group, LieGroup, Quotient, Real, Smooth};
-
 use num_traits::{Euclid, NumCast, One, Zero, real::Real as _};
 
 /// The circle `S¹`, as the quotient of the line `V` by the integer lattice
@@ -60,6 +71,7 @@ pub struct Torus<I: Euclidean + From<[I::F; 1]> + From<[V::F; 1]>, V: Euclidean 
 );
 
 impl<I: ICompatible<V>, V: VCompatible<I>> Torus<I, V> {
+    /// Constructs a torus point from its two circle coordinates.
     pub fn new(a: S1<I>, b: S1<I>) -> Self {
         Self(a, b, PhantomData)
     }
@@ -142,6 +154,7 @@ impl<
 pub struct KleinBottle<I: ICompatible<V>, V: VCompatible<I>>(S1<I>, S1<I>, PhantomData<V>);
 
 impl<I: ICompatible<V>, V: VCompatible<I>> KleinBottle<I, V> {
+    /// Constructs a Klein-bottle point from its two circle coordinates.
     pub fn new(a: S1<I>, b: S1<I>) -> Self {
         Self(a, b, PhantomData)
     }
@@ -231,6 +244,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>> Interval for KleinBottle<I, V> {
     }
 }
 
+/// A bounded chart domain in the regular finite cover of [`Torus`].
 #[derive(Debug, Copy, Clone)]
 pub struct TorusCover<I: ICompatible<V>, V: VCompatible<I>>(Torus<I, V>);
 
@@ -290,6 +304,7 @@ impl<I: ICompatible<V>, V: VCompatible<I>>
 {
 }
 
+/// A bounded chart domain in the regular finite cover of [`KleinBottle`].
 #[derive(Debug, Copy, Clone)]
 pub struct KleinBottleCover<I: ICompatible<V>, V: VCompatible<I>>(KleinBottle<I, V>);
 
@@ -349,10 +364,16 @@ impl<I: ICompatible<V>, V: VCompatible<I>>
 {
 }
 
+/// A deliberately overlapping bounded domain on [`Torus`].
+///
+/// This exercises [`NerveComplex`](crate::traits::simplicial::NerveComplex)
+/// when many cover nodes see the same region rather than forming the regular
+/// cover represented by [`TorusCover`].
 #[derive(Debug, Clone)]
 pub struct MyopicTorus<I: ICompatible<V>, V: VCompatible<I>>(pub Torus<I, V>);
 
 impl<I: ICompatible<V>, V: VCompatible<I>> MyopicTorus<I, V> {
+    /// Returns the number of cover samples along each torus coordinate.
     pub fn s() -> usize {
         8
     }
@@ -391,6 +412,7 @@ impl_tangent_bundle_via_bounded!(
     I: ICompatible<V>, V: VCompatible<I>
 );
 
+/// The tangent-bundle chart wrapper associated with [`MyopicTorus`].
 #[derive(Debug, Clone)]
 pub struct MyopicTorusCover<I: ICompatible<V>, V: VCompatible<I>>(MyopicTorus<I, V>);
 

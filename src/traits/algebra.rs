@@ -1,3 +1,11 @@
+//! Algebraic structures and the blanket theorems connecting them.
+//!
+//! Additive structure progresses through [`CMonoid`] and [`CGroup`], while
+//! multiplicative structure progresses through [`Monoid`] and [`MulGroup`].
+//! Their joins produce [`Ring`], [`DivRing`], and [`Field`]; [`CField`] adds
+//! commutative multiplication. [`Group`] and [`LieGroup`] carry the same
+//! structural approach into geometry.
+
 use crate::{
     impl_group_via_mul,
     traits::{ExactCmp, FromReal, Interval, Metric, Real, Tensor},
@@ -353,6 +361,9 @@ impl<R: CMonoid + One> Rig for R {}
 pub struct NonZero<T: Zero>(pub T);
 
 impl<T: Zero> NonZero<T> {
+    /// Certifies that `value` is nonzero.
+    ///
+    /// Returns `None` when `value` is zero.
     pub fn new(value: T) -> Option<Self> {
         if !value.is_zero() {
             Some(Self(value))
@@ -361,6 +372,12 @@ impl<T: Zero> NonZero<T> {
         }
     }
 
+    /// Constructs a certified nonzero value without checking the invariant.
+    ///
+    /// Callers must establish by construction that `value` is not zero. This
+    /// is a logical unchecked constructor rather than an unsafe memory
+    /// operation; violating the invariant can nevertheless invalidate the
+    /// algebraic assumptions of [`DivRing`] and [`Field`].
     pub fn new_unchecked(value: T) -> Self {
         Self(value)
     }
@@ -421,9 +438,15 @@ impl<R: CGroup + Rig> Ring for R {}
 
 /// A division ring.
 ///
-/// A ring whose nonzero elements have inverses.
-/// Purely algebraic fact: every nonzero value is multiplicatively invertible.
+/// A [`Ring`] whose nonzero elements form a [`MulGroup`], so every nonzero
+/// value is multiplicatively invertible. [`Field`] adds the involution, fixed
+/// field, and characteristic used by the tensor hierarchy.
 pub trait DivRing: Ring {
+    /// Divides by a nonzero `rhs` using its multiplicative inverse.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `rhs` is zero.
     fn div(self, rhs: Self) -> Self {
         self * Self::Mul::from(NonZero::new(rhs).expect("division by zero"))
             .inv()
@@ -431,6 +454,7 @@ pub trait DivRing: Ring {
             .0
     }
 
+    /// The multiplicative group corresponding to [`NonZero`].
     type Mul: MulGroup + From<NonZero<Self>> + Into<NonZero<Self>>;
 }
 
@@ -621,6 +645,8 @@ pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
     }
 }
 
+/// A marker that asserts that a [`Field`](crate::traits::Field)
+/// is multiplicatively commutative.
 pub trait CField: Field {
     #[cfg(feature = "testing")]
     fn check_commutativity(a: Self, b: Self) -> bool {
@@ -628,8 +654,65 @@ pub trait CField: Field {
     }
 }
 
-pub trait FieldExp: Field<Characteristic = NatZero> + Metric {
-    fn exp(&self) -> Self {
+/// A characteristic-zero field equipped with an exponential map.
+///
+/// `FieldExp` certifies that the field provides an elected implementation of
+///
+/// ```text
+/// exp(x) = Σₙ₌₀∞ xⁿ / n!.
+/// ```
+///
+/// Characteristic zero is required because the series contains every natural
+/// number as a denominator. In positive characteristic, some `n!` vanishes and
+/// the ordinary total field exponential cannot be defined this way.
+///
+/// The field need not be commutative. For commuting `x` and `y`, the
+/// exponential is expected to satisfy
+///
+/// ```text
+/// exp(0)     = 1
+/// exp(x + y) = exp(x) exp(y)
+/// exp(-x)    = exp(x)⁻¹.
+/// ```
+///
+/// The second identity is asserted only when `x * y == y * x`; it does not hold
+/// for arbitrary elements of a noncommutative field.
+///
+/// # Implementing
+///
+/// Implementors must provide [`exp`](FieldExp::exp). Types with an appropriate
+/// [`Metric`] may delegate to [`exp_by_series`](FieldExp::exp_by_series), while
+/// types with a more accurate or efficient implementation—such as a platform
+/// real exponential or a closed form—should use that instead.
+///
+/// The series helper is an implementation convenience, not an additional
+/// requirement of `FieldExp`: an exponential may exist without electing the
+/// particular metric needed by its scaling-and-squaring algorithm.
+pub trait FieldExp: Field<Characteristic = NatZero> {
+    /// Computes the elected exponential of this field element.
+    fn exp(&self) -> Self;
+
+    /// Approximates the exponential using a scaled Taylor series.
+    ///
+    /// The input is repeatedly divided by two until its distance from zero is
+    /// at most one. The method then evaluates the Taylor polynomial through
+    /// degree 20 and reverses the scaling by repeated squaring:
+    ///
+    /// ```text
+    /// exp(x) = exp(x / 2ˢ)^(2ˢ).
+    /// ```
+    ///
+    /// [`Metric`] supplies the compatible positive magnitude used to choose
+    /// `s`; it is required by this algorithm rather than by the
+    /// [`FieldExp`] abstraction itself.
+    ///
+    /// This is a general fallback. Implementors which can delegate to a native
+    /// exponential or use a suitable closed form will generally obtain better
+    /// accuracy and performance by overriding [`exp`](FieldExp::exp).
+    fn exp_by_series(&self) -> Self
+    where
+        Self: Metric,
+    {
         let theta = Self::R::one();
         let n = 20;
         let r = self.distance(&Self::zero());
@@ -830,11 +913,15 @@ impl<R: Real, F: Field<Fixed = R>> Interval for F {
 /// [`new`](RootOfUnityPrimitive::new) returns `None` if the given element isn't
 /// primitive (some lower power hits `1`), and
 /// [`roots_of_unity`](RootOfUnityPrimitive::roots_of_unity) enumerates the full
-/// group it generates.
+/// group it generates as [`RootOfUnity`] values.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct RootOfUnityPrimitive<F: Field, const N: usize>(RootOfUnity<F, N>);
 
 impl<F: Field, const N: usize> RootOfUnityPrimitive<F, N> {
+    /// Certifies that `x` is a primitive `N`-th root of unity.
+    ///
+    /// Returns `None` when an earlier positive power of `x` is one or when
+    /// `xⁿ != 1`.
     pub fn new(x: F) -> Option<Self> {
         const { assert!(N != 0) }
 
@@ -850,10 +937,12 @@ impl<F: Field, const N: usize> RootOfUnityPrimitive<F, N> {
             .map(|_| Self(RootOfUnity(x)))
     }
 
+    /// Returns this generator as an ordinary [`RootOfUnity`].
     pub fn inner(&self) -> RootOfUnity<F, N> {
         self.0
     }
 
+    /// Enumerates the cyclic group generated by this primitive root.
     pub fn roots_of_unity(&self) -> impl Iterator<Item = RootOfUnity<F, N>> {
         let mut acc = F::one();
 
@@ -917,11 +1006,13 @@ impl<V: Tensor, const N: usize> LieGroup<V> for RootOfUnity<V::F, N> {
 }
 
 impl<F: Field, const N: usize> RootOfUnity<F, N> {
+    /// Certifies that `x` is an `N`-th root of unity.
     pub fn new(x: F) -> Option<Self> {
         const { assert!(N != 0) }
         ((1..N).fold(x, |acc, _| acc * x).is_one()).then_some(Self(x))
     }
 
+    /// Returns the underlying field element.
     pub fn inner(self) -> F {
         self.0
     }

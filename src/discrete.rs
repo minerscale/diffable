@@ -1,3 +1,9 @@
+//! Discrete additive spaces and their group completion.
+//!
+//! [`N`] supplies the additive natural-number monoid, while [`Z`] is its
+//! Grothendieck completion. The latter also acts as the lattice used to form
+//! the circle [`S1`](crate::flat::S1) as a quotient of the real line.
+
 use std::{
     marker::PhantomData,
     ops::{Add, Mul},
@@ -56,6 +62,7 @@ pub struct Z<V: Euclidean>(pub isize, PhantomData<V>);
 impl_group_via_add!(Z<V>, V: Euclidean);
 
 impl<V: Euclidean> Z<V> {
+    /// Constructs the integer `v` in the lattice associated with `V`.
     pub fn new(v: isize) -> Self {
         Self(v, PhantomData)
     }

@@ -1,3 +1,24 @@
+//! Tensor constructions, tangent lifts, and forward automatic differentiation.
+//!
+//! The differentiation API is a small typed language. [`d`] introduces a
+//! derivative, [`d::along`] contracts one derivative slot with a direction,
+//! and [`d::at`] or [`Along::at`] evaluates the completed program. Programs may
+//! themselves be differentiated, so `d(d(f))` is the second derivative (the
+//! Hessian for a scalar-valued map) and arbitrarily deep nestings use the same
+//! machinery.
+//!
+//! Evaluation is implemented with truncated Taylor jets. [`Jet`] stores scalar
+//! coefficients, [`JetVector`] gives a tensor a jet-valued scalar presentation,
+//! and [`JetMap`] is the internal interpretation rule for ordinary functions
+//! and differential programs. [`ConstantRoute`] records how captured constants
+//! must be embedded through nested presentations. [`EvaluableAt`] is the final
+//! interpreter boundary and provides the user-facing diagnostic when a program
+//! cannot be evaluated.
+//!
+//! [`TangentLift`] extends the construction from vector spaces to tangent
+//! bundles. [`FormLift`] and [`NondegenerateLift`] state that lowering and
+//! raising maps extend coherently when coordinates are replaced by jets.
+
 use std::{
     marker::PhantomData,
     ops::{Add, Deref, DerefMut, Div, Index, IndexMut, Mul, Neg, Rem, Sub},
@@ -16,6 +37,11 @@ use crate::{
     },
 };
 
+/// The external direct sum `U ⊕ V` of tensors with a common field and hand.
+///
+/// Coordinates of `U` precede coordinates of `V`. The result exposes only the
+/// scalar actions available on both summands: its [`Tensor::Action`] is the
+/// meet of `U::Action` and `V::Action`.
 #[derive(Debug, Copy, Clone)]
 pub struct DirectSum<U: Tensor<F = V::F>, V: Tensor>(
     DirectSumArray<V::F, U::Array<V::F>, V::Array<V::F>>,
@@ -24,33 +50,21 @@ pub struct DirectSum<U: Tensor<F = V::F>, V: Tensor>(
 impl<F: Field, H: Handedness, U: Tensor<F = F, Hand = H>, V: Tensor<F = F, Hand = H>>
     DirectSum<U, V>
 {
+    /// Applies the canonical isomorphism `(U ⊕ V)* ≅ U* ⊕ V*`.
     pub fn dual_isomorphism(dual: Dual<Self>) -> DirectSum<Dual<U>, Dual<V>> {
         DirectSum::<Dual<U>, Dual<V>>::from_fn(|i| dual[i])
     }
 
+    /// Applies the inverse canonical isomorphism `U* ⊕ V* ≅ (U ⊕ V)*`.
     pub fn dual_isomorphism_inverse(dual: DirectSum<Dual<U>, Dual<V>>) -> Dual<Self> {
         Dual::<Self>::from_fn(|i| dual[i])
     }
 }
 
-impl<F: Field, H: Handedness, U: Tensor<F = F, Hand = H>, V: Tensor<F = F, Hand = H>> Index<usize>
-    for DirectSum<U, V>
-{
-    type Output = F;
-
-    fn index(&self, index: usize) -> &F {
-        &self.0[index]
-    }
-}
-
-impl<F: Field, H: Handedness, U: Tensor<F = F, Hand = H>, V: Tensor<F = F, Hand = H>>
-    IndexMut<usize> for DirectSum<U, V>
-{
-    fn index_mut(&mut self, index: usize) -> &mut F {
-        &mut self.0[index]
-    }
-}
-
+/// The concatenated array representation used by [`DirectSum`].
+///
+/// The representation implements [`Array`] without requiring either summand
+/// to use contiguous storage.
 #[derive(Debug, Copy, Clone)]
 pub struct DirectSumArray<T: Point, U: Array<T>, V: Array<T>>(U, V, PhantomData<T>);
 
@@ -79,7 +93,7 @@ impl<T: Point, U: Array<T>, V: Array<T>> Array<T> for DirectSumArray<T, U, V> {
 
     fn from_fn(mut f: impl FnMut(usize) -> T) -> Self {
         Self(
-            U::from_fn(|i| f(i)),
+            U::from_fn(&mut f),
             V::from_fn(|i| f(U::N + i)),
             PhantomData,
         )
@@ -154,6 +168,10 @@ impl_vector_ops!(
     V: Tensor<F = F, Hand = H>
 );
 
+/// The nested array representation used by [`TensorProduct`].
+///
+/// Its flat iteration and indexing order is outer coordinate first, then inner
+/// coordinate. No claim is made that the nested arrays are contiguous.
 #[derive(Debug, Copy, Clone)]
 pub struct TensorProductArray<T: Point, U: Array<V>, V: Array<T>>(U, PhantomData<(T, V)>);
 
@@ -230,6 +248,13 @@ impl<T: Point, U: Array<V>, V: Array<T>> IntoIterator for TensorProductArray<T, 
     }
 }
 
+/// The balanced tensor product `U ⊗ V`.
+///
+/// `U` must expose the right action used for balancing and `V` the left action.
+/// The result's preferred hand and remaining scalar actions are computed by
+/// [`TensorProductAction`]. These restrictions remain explicit even over a
+/// commutative field, where switching hands is available through
+/// [`Sinister`].
 #[derive(Debug, Clone, Copy)]
 pub struct TensorProduct<
     U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
@@ -279,28 +304,6 @@ impl<
 impl<
     U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
     V: Tensor<F = U::F, Hand = Left, Action: ActionExists>,
-> Index<usize> for TensorProduct<U, V>
-{
-    type Output = V::F;
-
-    fn index(&self, index: usize) -> &V::F {
-        &self.0[index]
-    }
-}
-
-impl<
-    U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
-    V: Tensor<F = U::F, Hand = Left, Action: ActionExists>,
-> IndexMut<usize> for TensorProduct<U, V>
-{
-    fn index_mut(&mut self, index: usize) -> &mut V::F {
-        &mut self.0[index]
-    }
-}
-
-impl<
-    U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
-    V: Tensor<F = U::F, Hand = Left, Action: ActionExists>,
 > Index<(usize, usize)> for TensorProduct<U, V>
 {
     type Output = V::F;
@@ -328,6 +331,11 @@ impl_vector_ops!(
 
 type HomOf<BT, FT> = TensorProduct<FT, Dual<BT>>;
 
+/// A derivative represented as a linear map between tangent spaces.
+///
+/// The carrier is `FT ⊗ BT*`, so coordinates are stored in
+/// **output-by-input** order. `FP` and `Fiber` retain the geometric target of
+/// the map even though the coordinate carrier depends only on `BT` and `FT`.
 #[derive(Debug)]
 pub struct TangentMap<
     BT: Tensor<Hand = Right, Action: ActionExists>,
@@ -343,6 +351,7 @@ impl<
     Fiber: TangentBundle<FP, FT>,
 > TangentMap<BT, FP, FT, Fiber>
 {
+    /// Wraps the tensor representing a tangent map.
     pub fn new(v: HomOf<BT, FT>) -> Self {
         Self(v, PhantomData)
     }
@@ -356,33 +365,7 @@ impl<
 > Clone for TangentMap<BT, FP, FT, Fiber>
 {
     fn clone(&self) -> Self {
-        Self(self.0.clone(), self.1.clone())
-    }
-}
-
-impl<
-    BT: Tensor<Hand = Right, Action: ActionExists>,
-    FP: Point,
-    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
-    Fiber: TangentBundle<FP, FT>,
-> Index<usize> for TangentMap<BT, FP, FT, Fiber>
-{
-    type Output = BT::F;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl<
-    BT: Tensor<Hand = Right, Action: ActionExists>,
-    FP: Point,
-    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
-    Fiber: TangentBundle<FP, FT>,
-> IndexMut<usize> for TangentMap<BT, FP, FT, Fiber>
-{
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
+        Self(self.0.clone(), self.1)
     }
 }
 
@@ -486,16 +469,34 @@ impl<
     }
 }
 
+/// Selects the algebra implemented by a [`Jet`] presentation.
+///
+/// [`Algebraic`] works over arbitrary fields. [`JetReal`] additionally exposes
+/// the projection semantics required by [`Real`], allowing generic real
+/// functions to be evaluated by forward automatic differentiation.
 pub trait JetMode: Copy + Clone + std::fmt::Debug {}
 
+/// Algebraic jets over an arbitrary [`Field`].
 #[derive(Debug, Copy, Clone)]
 pub enum Algebraic {}
+/// Real jets whose comparisons and nonanalytic operations project to the
+/// constant coefficient.
 #[derive(Debug, Copy, Clone)]
 pub enum JetReal {}
 
 impl JetMode for Algebraic {}
 impl JetMode for JetReal {}
 
+/// A tensor `V` whose coordinates are jets over a presented scalar `S`.
+///
+/// `V` remains the *logical* tensor: its dimension, array family, handedness,
+/// and available scalar actions are preserved. `S` records the scalar
+/// presentation currently carried by each coordinate. Keeping those roles
+/// separate is what permits nested differentiation without constructing a
+/// nominal tower such as `JetVector<JetVector<V>>`.
+///
+/// `N` is the highest retained Taylor coefficient. The default is a first-order
+/// presentation, which is sufficient for one forward derivative layer.
 #[derive(Copy, Clone, Debug)]
 pub struct JetVector<
     V: Tensor,
@@ -505,6 +506,7 @@ pub struct JetVector<
 >(V::Array<Jet<S, Mode, N>>);
 
 impl<V: Tensor, M: JetMode, const N: usize> JetVector<V, M, N> {
+    /// Embeds every coordinate of `v` as a constant jet.
     pub fn constant(v: V) -> Self {
         Self(V::Array::<Jet<V::F, M, N>>::from_fn(|i| {
             Jet::from_field(v[i])
@@ -541,20 +543,6 @@ impl<V: Tensor<F: Real>, const N: usize, S: Real> Tensor for JetVector<V, JetRea
     }
 }
 
-impl<V: Tensor, M: JetMode, const N: usize, S: Field> Index<usize> for JetVector<V, M, N, S> {
-    type Output = Jet<S, M, N>;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl<V: Tensor, M: JetMode, const N: usize, S: Field> IndexMut<usize> for JetVector<V, M, N, S> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
-    }
-}
-
 impl<V: Tensor, M: JetMode, const N: usize, S: Field> AsRef<V::Array<Jet<S, M, N>>>
     for JetVector<V, M, N, S>
 {
@@ -576,10 +564,23 @@ impl_vector_ops!(JetVector<V, JetReal, N, S>, V: Tensor<F: Real>, const N: usize
 
 type JetCoords<F, const N: usize> = DirectSum<Coords<F, 1>, Coords<F, N>>;
 
+/// A truncated formal power series used for forward automatic differentiation.
+///
+/// A value represents
+///
+/// ```text
+/// a₀ + a₁ε + a₂ε² + ⋯ + aₙεⁿ,    εⁿ⁺¹ = 0.
+/// ```
+///
+/// Index `0` is the primal value and index `k` is the Taylor coefficient
+/// `f⁽ᵏ⁾/k!`, not the unscaled derivative. Multiplication is truncated
+/// convolution. The [`d`] interpreter normally uses first-order jets and nests
+/// them when independent derivative slots are required.
 #[derive(Debug, Copy, Clone)]
 pub struct Jet<F: Field, Mode: JetMode, const N: usize = 1>(JetCoords<F, N>, PhantomData<Mode>);
 
 impl<F: Field, M: JetMode, const N: usize> Jet<F, M, N> {
+    /// Embeds a field element as a constant jet.
     pub fn from_field(value: F) -> Self {
         Self(
             DirectSum(DirectSumArray([value], [F::zero(); N], PhantomData)),
@@ -587,6 +588,8 @@ impl<F: Field, M: JetMode, const N: usize> Jet<F, M, N> {
         )
     }
 
+    /// Constructs a jet from its primal value and coefficients of
+    /// `ε¹, …, εᴺ`.
     pub fn new(value: F, coefficients: [F; N]) -> Self {
         Self(
             DirectSum(DirectSumArray([value], coefficients, PhantomData)),
@@ -594,6 +597,8 @@ impl<F: Field, M: JetMode, const N: usize> Jet<F, M, N> {
         )
     }
 
+    /// Constructs all `N + 1` coefficients by index, beginning with the primal
+    /// coefficient at index zero.
     pub fn from_fn(f: impl FnMut(usize) -> F) -> Self {
         Self(JetCoords::from_fn(f), PhantomData)
     }
@@ -787,12 +792,24 @@ impl<F: Field, M: JetMode, const N: usize> Inv for NonZero<Jet<F, M, N>> {
     }
 }
 
+/// The empty type-level list.
+///
+/// In the differentiation machinery this denotes both an empty tangent tower
+/// and the identity [`ConstantRoute`].
 #[derive(Debug, Copy, Clone)]
 pub struct Nil;
+
+/// A type-level list node with `Head` followed by `Tail`.
+///
+/// [`ConstantRoute`] uses these nodes to remember each [`JetLayer`] in a
+/// scalar-presentation tower without storing any runtime data.
 #[derive(Debug, Copy, Clone)]
 pub struct Cons<Head, Tail>(PhantomData<(Head, Tail)>);
 
-/// One step through a jet-valued scalar presentation.
+/// One step through a jet-valued scalar presentation in a [`ConstantRoute`].
+///
+/// `JetLayer<M, N>` records that the current scalar was obtained by wrapping
+/// the preceding scalar in [`Jet<_, M, N>`].
 #[derive(Debug, Copy, Clone)]
 pub struct JetLayer<M: JetMode, const N: usize>(PhantomData<M>);
 
@@ -802,8 +819,10 @@ pub struct JetLayer<M: JetMode, const N: usize>(PhantomData<M>);
 /// jet layers. This lets operators which capture base-field constants inject
 /// them into an arbitrarily deeply nested jet computation.
 pub trait ConstantRoute<F: Field> {
+    /// The scalar type reached after following this route from `F`.
     type Output: Field;
 
+    /// Embeds a base-field value as a constant in the current presentation.
     fn constant(value: F) -> Self::Output;
 }
 
@@ -829,18 +848,26 @@ where
     }
 }
 
+/// A point together with a jet-valued tangent coordinate and its tower tag.
+///
+/// `Tower` distinguishes iterated tangent constructions that have identical
+/// runtime representations. Use [`TangentElement::new`] rather than spelling
+/// the marker explicitly.
 #[derive(Debug, Clone)]
 pub struct TangentElement<P: Point, V: Tensor, Tower>(pub P, pub JetVector<V>, PhantomData<Tower>);
 
 impl<P: Point, V: Tensor, Tower> TangentElement<P, V, Tower> {
+    /// Constructs a tangent element from its base point and local jet.
     pub fn new(p: P, v: JetVector<V>) -> Self {
         Self(p, v, PhantomData)
     }
 
+    /// Returns a clone of the base point.
     pub fn base_point(&self) -> P {
         self.0.clone()
     }
 
+    /// Borrows the jet-valued tangent coordinate.
     pub fn jet(&self) -> &JetVector<V> {
         &self.1
     }
@@ -848,8 +875,14 @@ impl<P: Point, V: Tensor, Tower> TangentElement<P, V, Tower> {
 
 type Prolongation<P, V, T> = TangentElement<P, V, Cons<T, Nil>>;
 
+/// A first [`TangentElement`] at a point of `P`, expressed in `V` coordinates.
 pub type Tangent<P, V> = TangentElement<P, V, Nil>;
+/// An iterated [`TangentElement`] with explicit [`TangentBundle`] witnesses.
 pub type TM<P, V, T, U> = TangentElement<P, V, Cons<T, Cons<U, Nil>>>;
+/// The tangent bundle of `T`, represented by the canonical jet prolongation.
+///
+/// This is the concrete iterated-tangent representation constructed by
+/// [`TangentLift`].
 pub type LiftedTM<P, V, T> = TM<P, V, T, Prolongation<P, V, T>>;
 
 impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<V>>> Chart<P, V>
@@ -917,8 +950,18 @@ impl<P: Point, V: Tensor, T: TangentLift<P, V>, U: TangentBundle<Self, JetVector
     }
 }
 
+/// Extends a tangent-bundle chart to jet-valued tangent coordinates.
+///
+/// Implementing this trait is the admission point for differentiating through
+/// a manifold. It states how a tangent element is expressed in the local chart
+/// at another tangent element, and how that local jet is returned to the global
+/// bundle. [`Tangent`] is the first lifted element; [`TM`] and [`LiftedTM`]
+/// describe its iterated tangent bundles. Vector spaces receive the canonical
+/// translation-based implementation.
 pub trait TangentLift<P: Point, V: Tensor>: TangentBundle<P, V> {
+    /// Expresses `local` in the lifted chart centred at `base`.
     fn tangent_to_local(base: Tangent<P, V>, local: Tangent<P, V>) -> Option<JetVector<V>>;
+    /// Reconstructs a global point and tangent jet from a lifted coordinate.
     fn tangent_to_global(base: Tangent<P, V>, coordinate: JetVector<V>) -> (P, JetVector<V>);
 }
 
@@ -980,15 +1023,29 @@ impl<V: Tensor> TangentLift<V, V> for V {
     }
 }
 
+/// A composable differential program for `F`.
+///
+/// Construct it as `d(f)`. Calling [`d::at`] evaluates the full derivative,
+/// while [`d::along`] contracts the next derivative slot with a direction.
+/// Since `d<F>` itself implements [`JetMap`], differential programs can be
+/// nested: `d(d(f))` and `d(d(d(f)))` use the same machinery as `d(f)`.
 #[allow(non_camel_case_types)]
 pub struct d<F>(pub F);
 
+/// A differential program with its next input slot contracted with `direction`.
+///
+/// This represents the function `p ↦ Dfₚ(direction)`. It remains a
+/// differentiable program until [`Along::at`] evaluates it.
 pub struct Along<F, V> {
     f: F,
     direction: V,
 }
 
 impl<F> d<F> {
+    /// Evaluates the full derivative at `point`.
+    ///
+    /// For `f: BT → FT`, the result is represented as `FT ⊗ BT*`, with
+    /// output coordinates outermost and input coordinates innermost.
     pub fn at<
         BT: Tensor<Hand = Right, Action: ActionExists>,
         FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
@@ -1003,6 +1060,7 @@ impl<F> d<F> {
         <Self as EvaluableAt<BT, TangentMap<BT, FT, FT, FT>, M>>::evaluate_at(self, point)
     }
 
+    /// Contracts the next derivative slot with `direction`.
     pub fn along<V>(self, direction: V) -> Along<F, V> {
         Along {
             f: self.0,
@@ -1012,6 +1070,7 @@ impl<F> d<F> {
 }
 
 impl<F, BT> Along<F, BT> {
+    /// Evaluates the directional derivative at `point`.
     pub fn at<FT, M>(&self, point: BT) -> FT
     where
         Self: EvaluableAt<BT, FT, M>,
@@ -1028,6 +1087,11 @@ impl<F, BT> Along<F, BT> {
     note = "a required form or musical isomorphism may not lift through nested jets"
 )]
 #[doc(hidden)]
+/// The diagnostic evaluation boundary used by [`d::at`] and [`Along::at`].
+///
+/// Keeping their large proof obligations behind this trait replaces a wall of
+/// nested associated-type failures with one explanation of why a differential
+/// program is not evaluable at a particular point type.
 pub trait EvaluableAt<Point, Output, Mode> {
     fn evaluate_at(&self, point: Point) -> Output;
 }
@@ -1039,6 +1103,7 @@ where
     M: JetMode,
     F: JetMap<BT, FT, M, 1, BT::F>,
     JetVector<BT, M>: Tensor<F = Jet<BT::F, M>>,
+    JetVector<FT, M, 1, BT::F>: Tensor<F = Jet<BT::F, M>>,
 {
     fn evaluate_at(&self, point: BT) -> TangentMap<BT, FT, FT, FT> {
         let columns: BT::Array<FT> = BT::Array::from_fn(|input_coordinate| {
@@ -1076,6 +1141,7 @@ where
     M: JetMode,
     F: JetMap<BT, FT, M, 1, BT::F>,
     JetVector<BT, M, 1, BT::F>: Tensor<F = Jet<BT::F, M, 1>>,
+    JetVector<FT, M, 1, BT::F>: Tensor<F = Jet<BT::F, M>>,
 {
     fn evaluate_at(&self, point: BT) -> FT {
         let input = JetVector::<BT, M, 1, BT::F>::from_fn(|coordinate| {
@@ -1089,6 +1155,12 @@ where
     }
 }
 
+/// A map that can be evaluated over a selected jet presentation.
+///
+/// Ordinary generic Rust functions implement this trait through the blanket
+/// `Fn(JetVector<BT, ..>)` implementation. Differential programs implement it
+/// recursively, adding jet layers while `Route` remembers how to inject
+/// captured base-field constants into the current scalar type.
 pub trait JetMap<
     BT: Tensor,
     FT: Tensor<F = BT::F>,
@@ -1098,6 +1170,7 @@ pub trait JetMap<
     Route = Nil,
 >
 {
+    /// Evaluates the map without discarding any jet coefficients.
     fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S>;
 }
 
@@ -1128,8 +1201,10 @@ impl<
 where
     // The outer presentation.
     JetVector<FT, M, N, S>: Vector<F = Jet<S, M, N>>,
+    JetVector<BT, M, N, S>: Tensor<F = Jet<S, M, N>>,
     // One additional derivative layer over the existing outer scalar.
     JetVector<BT, M, 1, Jet<S, M, N>>: Tensor<F = Jet<Jet<S, M, N>, M>>,
+    JetVector<FT, M, 1, Jet<S, M, N>>: Tensor<F = Jet<Jet<S, M, N>, M>>,
     Jet<S, M, N>: Field,
 {
     fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<HomOf<BT, FT>, M, N, S> {
@@ -1183,7 +1258,9 @@ where
     Route: ConstantRoute<BT::F, Output = S>,
     Jet<S, M, N>: Field,
     JetVector<FT, M, N, S>: Tensor<F = Jet<S, M, N>>,
+    JetVector<BT, M, N, S>: Tensor<F = Jet<S, M, N>>,
     JetVector<BT, M, 1, Jet<S, M, N>>: Tensor<F = Jet<Jet<S, M, N>, M>>,
+    JetVector<FT, M, 1, Jet<S, M, N>>: Tensor<F = Jet<Jet<S, M, N>, M>>,
     F: JetMap<BT, FT, M, 1, Jet<S, M, N>, Cons<JetLayer<M, N>, Route>>,
 {
     fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S> {
@@ -1206,13 +1283,22 @@ where
     }
 }
 
+/// Extends a lowering map through arbitrary jet scalar presentations.
+///
+/// Implementors provide the array-level operation, which avoids assuming that
+/// distinct tensor wrappers share a nominal array type. [`FormLift::jet_flat`]
+/// supplies the public tensor-valued wrapper. For a semilinear form the
+/// implementation must preserve the form's conjugation convention coefficient
+/// by coefficient.
 pub trait FormLift: Form {
+    /// Applies the lifted lowering map to raw coordinate arrays.
     fn jet_flat_array<S: Field, M: JetMode, const N: usize>(
         value: &<Self as Tensor>::Array<Jet<S, M, N>>,
     ) -> <Dual<Self> as Tensor>::Array<Jet<S, M, N>>
     where
         Jet<S, M, N>: Field;
 
+    /// Applies the lifted lowering map to a [`JetVector`].
     fn jet_flat<S: Field, M: JetMode, const N: usize>(
         value: &JetVector<Self, M, N, S>,
     ) -> Dual<JetVector<Self, M, N, S>>
@@ -1227,13 +1313,20 @@ pub trait FormLift: Form {
     }
 }
 
+/// Extends an invertible lowering map and its raising map through jets.
+///
+/// This is the recursive counterpart of [`Nondegenerate`]. Requiring it on a
+/// Euclidean space ensures generic Euclidean functions remain valid when their
+/// scalar and vector arguments acquire further derivative layers.
 pub trait NondegenerateLift: Nondegenerate + FormLift {
+    /// Applies the lifted raising map to raw coordinate arrays.
     fn jet_sharp_array<S: Field, M: JetMode, const N: usize>(
         value: &<Dual<Self> as Tensor>::Array<Jet<S, M, N>>,
     ) -> <Self as Tensor>::Array<Jet<S, M, N>>
     where
         Jet<S, M, N>: Field;
 
+    /// Applies the lifted raising map to a jet-valued covector.
     fn jet_sharp<S: Field, M: JetMode, const N: usize>(
         value: Dual<JetVector<Self, M, N, S>>,
     ) -> JetVector<Self, M, N, S>
@@ -1483,7 +1576,7 @@ impl<R: Real, const N: usize> Div<Self> for Jet<R, JetReal, N> {
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self::Output {
-        self * NonZero::new(rhs).unwrap().inv().0
+        self.mul(NonZero::new(rhs).unwrap().inv().0)
     }
 }
 
