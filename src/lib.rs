@@ -75,8 +75,8 @@
 //! ```
 //!
 //! This order is invisible over the reals or complexes but observable over the
-//! quaternions. [`Vector::pairing`](traits::Vector::pairing) selects it from
-//! [`Vector::Hand`](traits::Vector::Hand), while `Dual<Dual<V>>` restores the
+//! quaternions. [`Tensor::pairing`](traits::Tensor::pairing) selects it from
+//! [`Tensor::Hand`](traits::Tensor::Hand), while `Dual<Dual<V>>` restores the
 //! hand of `V`.
 //!
 //! The [`Dual<V>`](traits::Dual) wrapper is coordinate-identical to `V`, but raw
@@ -88,7 +88,7 @@
 //! V** ≅ V
 //! ```
 //!
-//! implemented by [`Vector::collapse`](traits::Vector::collapse). Geometry enters when [`Form`](traits::Form)
+//! implemented by [`Tensor::collapse`](traits::Tensor::collapse). Geometry enters when [`Form`](traits::Form)
 //! chooses a lowering map
 //!
 //! ```text

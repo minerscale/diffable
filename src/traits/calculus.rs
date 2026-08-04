@@ -945,6 +945,11 @@ impl<V: Tensor> TangentLift<V, V> for V {
 #[allow(non_camel_case_types)]
 pub struct d<F>(pub F);
 
+pub struct Along<F, V> {
+    f: F,
+    direction: V,
+}
+
 impl<F> d<F> {
     pub fn at<
         BT: Tensor<Hand = Right, Action: ActionExists>,
@@ -984,16 +989,48 @@ impl<F> d<F> {
 
         TangentMap::new(TensorProduct(TensorProductArray(rows, PhantomData)))
     }
+
+    pub fn along<V>(self, direction: V) -> Along<F, V> {
+        Along {
+            f: self.0,
+            direction,
+        }
+    }
+}
+
+impl<F, BT> Along<F, BT>
+where
+    BT: Vector,
+{
+    pub fn at<FT, M>(&self, point: BT) -> FT
+    where
+        FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+        M: JetMode,
+        F: JetMap<BT, FT, M, 1, BT::F>,
+        JetVector<BT, M, 1, BT::F>: Tensor<F = Jet<BT::F, M, 1>>,
+    {
+        let input = JetVector::<BT, M, 1, BT::F>::from_fn(|coordinate| {
+            Jet::new(point[coordinate], [self.direction[coordinate]])
+        });
+
+        let output: JetVector<FT, M, 1, BT::F> = self.f.jet_at(input);
+
+        FT::from_fn(|coordinate| output[coordinate][1])
+    }
 }
 
 pub trait JetMap<BT: Tensor, FT: Tensor<F = BT::F>, M: JetMode, const N: usize, S: Field> {
     fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S>;
 }
 
-impl<F, BT: Tensor, FT: Tensor<F = BT::F>, M: JetMode, const N: usize, S: Field>
-    JetMap<BT, FT, M, N, S> for F
-where
+impl<
     F: Fn(JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S>,
+    BT: Tensor,
+    FT: Tensor<F = BT::F>,
+    M: JetMode,
+    const N: usize,
+    S: Field,
+> JetMap<BT, FT, M, N, S> for F
 {
     fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S> {
         self(input)

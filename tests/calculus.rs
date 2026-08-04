@@ -49,11 +49,27 @@ fn differential_computes_a_multivariate_hessian() {
     //
     //     (V ⊗ V*) ⊗ V*
 
-    assert!(
-        hessian
-            .iter()
-            .eq(&[6.0, 4.0, 4.0, 0.0, 0.0, 6.0, 6.0, 4.0])
-    );
+    assert!(hessian.iter().eq(&[6.0, 4.0, 4.0, 0.0, 0.0, 6.0, 6.0, 4.0]));
+}
+
+#[test]
+fn differential_along_a_direction() {
+    // f(x, y) = (x² + y, xy)
+    fn f<V: Euclidean>(v: V) -> V {
+        V::from_iter([v[0] * v[0] + v[1], v[0] * v[1]])
+    }
+
+    let point = Coords([2.0, 3.0]);
+    let direction = Coords([5.0, 7.0]);
+
+    let derivative = d(f).along(direction).at(point);
+
+    // J_f(2,3) = [ 4  1 ]
+    //            [ 3  2 ]
+    //
+    // J_f(2,3) · (5,7) = (27,29)
+
+    assert!(derivative.iter().copied().eq([27.0, 29.0]));
 }
 
 #[test]

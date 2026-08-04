@@ -68,11 +68,11 @@ pub trait Euclidean: Bilinear<F: Real, Action = BothSided> + InnerProduct + Vect
 
 /// The dual space `V*` — the linear functionals on `V`.
 ///
-/// Stored as a `V` internally, because [`pairing`](Vector::pairing) is fixed to
+/// Stored as a `V` internally, because [`pairing`](Tensor::pairing) is fixed to
 /// the coordinate dot product, which identifies the dual basis with the primal
 /// basis component-wise. A `Dual<V>` is therefore coordinate-identical to the
 /// `V` holding its components — the wrapper exists purely so the type system
-/// keeps covariant and contravariant vectors apart. That separation is what
+/// keeps covariant and contravariant tensors apart. That separation is what
 /// lets [`Matrix`](crate::matrix::Matrix) enforce index variance and the musical
 /// maps [`flat`](Form::flat)/[`sharp`](Nondegenerate::sharp) land in the correct
 /// space.
@@ -261,7 +261,7 @@ pub enum Hand {
 
 /// A type-level choice of left- or right-handed scalar action.
 ///
-/// [`Vector::Hand`] uses this trait to determine both ordinary scalar
+/// [`Tensor::Hand`] uses this trait to determine both ordinary scalar
 /// multiplication and canonical evaluation order.
 pub trait Handedness {
     /// The hand elected by the dual module.
@@ -453,28 +453,28 @@ impl<T: Point, const N: usize> Array<T> for [T; N] {
 /// A finite-dimensional left or right module over a [`Field`], equipped with a
 /// basis.
 ///
-/// This is the base of the linear hierarchy. A `Vector` is nothing more than
+/// This is the base of the linear hierarchy. A `Tensor` is nothing more than
 /// `N` coordinates in `F` — it carries no metric, no notion of length or angle.
 /// Those arrive with the refinements: [`Form`] adds a lowering map,
 /// [`Nondegenerate`] makes it invertible, [`Sesquilinear`]/[`Bilinear`] fix how
 /// it interacts with the field involution, and [`InnerProduct`]/[`Euclidean`]
 /// add positive-definiteness.
 ///
-/// Every `Vector` is its own tangent space: it is an abelian [`LieGroup`] under
+/// Every `Tensor` is its own tangent space: it is an abelian [`LieGroup`] under
 /// addition, with `exp` and `log` the identity (`identity_exp(v) = v`). This is
 /// what lets a flat coordinate space and a curved manifold share the same chart
 /// machinery.
 ///
-/// [`Hand`](Vector::Hand) elects which side the field acts on. Concrete
+/// [`Hand`](Tensor::Hand) elects which side the field acts on. Concrete
 /// coordinate spaces conventionally elect [`Right`]; [`Dual<V>`](Dual) always
 /// elects the opposite hand. The ordinary `Mul<Self::F>` operation follows that
 /// election, so the same vector API represents either kind of module without
 /// silently commuting scalars.
 ///
 /// The dual space `V*` is [`Dual<Self>`](Dual), and the canonical evaluation
-/// pairing between them is [`pairing`](Vector::pairing). Because that pairing is
+/// pairing between them is [`pairing`](Tensor::pairing). Because that pairing is
 /// pinned to the coordinate dot product, `V`, `V*`, and `V**` are
-/// coordinate-identical, which is what makes [`collapse`](Vector::collapse) a
+/// coordinate-identical, which is what makes [`collapse`](Tensor::collapse) a
 /// free relabel. Double dualisation restores the original hand.
 pub trait Tensor:
     Add<Output = Self>
@@ -543,9 +543,9 @@ pub trait Tensor:
     ///
     /// This is the *evaluation* isomorphism `v ↦ (φ ↦ φ(v))`, which exists for
     /// any finite-dimensional space with no dependence on a metric or
-    /// nondegeneracy — every [`Vector`] qualifies via its fixed dimension `N`.
+    /// nondegeneracy — every [`Tensor`] qualifies via its fixed dimension `N`.
     /// It is a pure coordinate relabel (strip two [`Dual`] wrappers) precisely
-    /// because [`pairing`](Vector::pairing) is fixed to the coordinate dot
+    /// because [`pairing`](Tensor::pairing) is fixed to the coordinate dot
     /// product, which identifies each dual basis with its primal basis
     /// component-wise. Do not confuse this with the *musical* `V** ≅ V` of
     /// [`Nondegenerate`], which routes through the metric and requires an
@@ -710,7 +710,7 @@ pub trait Form: Tensor {
 ///
 /// [`sharp`](Nondegenerate::sharp) is the raising map `♯: V* → V`, inverse to
 /// [`flat`](Form::flat). This is the *musical* isomorphism `V ≅ V*` (and, via
-/// [`collapse`](Vector::collapse), `V ≅ V**`); it depends on the metric, unlike
+/// [`collapse`](Tensor::collapse), `V ≅ V**`); it depends on the metric, unlike
 /// the purely dimensional evaluation iso.
 pub trait Nondegenerate: Form {
     fn sharp(v: Dual<Self>) -> Self;
