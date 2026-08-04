@@ -4,7 +4,7 @@
 //! handedness of its underlying [`Tensor`]. The [`MatrixExponential`] refinement
 //! supplies the Lie-theoretic exponential and its local logarithm.
 
-use std::{
+use core::{
     array::from_fn,
     ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub},
 };
@@ -655,7 +655,7 @@ impl<
         let theta = <F::R as NumCast>::from(5.371920351148152).unwrap();
 
         // 13/13 pade approximant
-        const B: [usize; 14] = const {
+        const B: [u64; 14] = const {
             [
                 64764752532480000,
                 32382376266240000,

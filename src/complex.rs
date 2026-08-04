@@ -4,7 +4,7 @@
 //! involution and Hermitian norm. It is the scalar field used by constructions
 //! such as [`Sl2c`](crate::spacetime::Sl2c).
 
-use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
+use core::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
 use num_traits::{Inv, One, Zero};
 

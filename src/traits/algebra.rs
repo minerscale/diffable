@@ -10,8 +10,8 @@ use crate::{
     impl_group_via_mul,
     traits::{ExactCmp, FromReal, Interval, Metric, Real, Tensor},
 };
+use core::ops::{Add, Mul, Neg, Sub};
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
-use std::ops::{Add, Mul, Neg, Sub};
 
 use super::{Point, Smooth};
 
@@ -221,8 +221,8 @@ macro_rules! impl_group_via_add {
 ///
 /// [`impl_group_via_add`]: crate::impl_group_via_add
 /// [`Zero`]: num_traits::Zero
-/// [`Add`]: std::ops::Add
-/// [`Neg`]: std::ops::Neg
+/// [`Add`]: core::ops::Add
+/// [`Neg`]: core::ops::Neg
 #[macro_export]
 macro_rules! impl_abelian_group_via_grothendieck {
     ($target:ty, $monoid:ty, $($generics:tt)*) => {
@@ -236,7 +236,7 @@ macro_rules! impl_abelian_group_via_grothendieck {
             }
         }
 
-        impl<$($generics)*> std::ops::Add for $target {
+        impl<$($generics)*> core::ops::Add for $target {
             type Output = Self;
             fn add(self, other: Self) -> Self {
                 let (a, b) = self.into();
@@ -245,14 +245,14 @@ macro_rules! impl_abelian_group_via_grothendieck {
             }
         }
 
-        impl<$($generics)*> std::ops::Sub for $target {
+        impl<$($generics)*> core::ops::Sub for $target {
             type Output = Self;
             fn sub(self, other: Self) -> Self {
                 self + -other
             }
         }
 
-        impl<$($generics)*> std::ops::Neg for $target {
+        impl<$($generics)*> core::ops::Neg for $target {
             type Output = Self;
             fn neg(self) -> Self {
                 let (a, b) = self.into();
@@ -277,9 +277,9 @@ macro_rules! impl_abelian_group_via_grothendieck {
 ///
 /// [`Zero`]: num_traits::Zero
 /// [`One`]: num_traits::One
-/// [`Add`]: std::ops::Add
-/// [`Neg`]: std::ops::Neg
-/// [`Mul`]: std::ops::Mul
+/// [`Add`]: core::ops::Add
+/// [`Neg`]: core::ops::Neg
+/// [`Mul`]: core::ops::Mul
 #[macro_export]
 macro_rules! impl_ring_via_grothendieck {
     ($target:ty, $rig:ty, $($generics:tt)*) => {
@@ -291,7 +291,7 @@ macro_rules! impl_ring_via_grothendieck {
             }
         }
 
-        impl<$($generics)*> std::ops::Mul for $target {
+        impl<$($generics)*> core::ops::Mul for $target {
             type Output = Self;
             fn mul(self, other: Self) -> Self {
                 let (a, b) = self.into();
@@ -471,7 +471,7 @@ where
 /// an elected central involution, fixed field, characteristic, etc.
 ///
 /// “Field” here includes skew/noncommutative fields.
-pub trait Field: DivRing + Copy + PartialEq + std::fmt::Debug {
+pub trait Field: DivRing + Copy + PartialEq + core::fmt::Debug {
     /// A distinguished central subfield fixed pointwise by [`Self::conj`].
     ///
     /// Its embedding through [`Self::from_fixed`] must preserve the field
@@ -1147,15 +1147,8 @@ pub trait Group: Point {
     #[cfg(feature = "testing")]
     fn check_left_inverse(&self) -> bool
     where
-        Self: PartialEq + std::fmt::Debug,
+        Self: PartialEq + core::fmt::Debug,
     {
-        println!(
-            "{:#?}\n\n {:#?}\n\n {:#?}\n\n\n\n",
-            self,
-            (self.inverse()).compose(self),
-            Self::identity()
-        );
-
         // We test it this way to give tolerance relations a scale to measure the
         // relative error from, so that this test passes at all scales.
         // Solves catestrophic cancelling problems.

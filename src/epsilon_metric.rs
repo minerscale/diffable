@@ -5,9 +5,9 @@
 //! [`ExactCmp`](crate::traits::ExactCmp) remains available when an algorithm
 //! needs the underlying strict order.
 
+use core::ops::Neg;
 use num_derive::{Float, FromPrimitive, Num, NumCast, NumOps, One, Signed, ToPrimitive, Zero};
 use num_traits::{Euclid, Float, Inv};
-use std::ops::Neg;
 
 use crate::traits::NonZero;
 
@@ -59,10 +59,10 @@ macro_rules! define_epsilon_metric {
         }
 
         impl PartialOrd for $name {
-            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
                 if self == other {
                     // uses our epsilon PartialEq
-                    Some(std::cmp::Ordering::Equal)
+                    Some(core::cmp::Ordering::Equal)
                 } else {
                     self.0.partial_cmp(&other.0)
                 }
@@ -71,11 +71,11 @@ macro_rules! define_epsilon_metric {
 
         impl Euclid for $name {
             fn div_euclid(&self, v: &Self) -> Self {
-                Self(self.0.div_euclid(v.0))
+                Self(<$inner as Euclid>::div_euclid(&self.0, &v.0))
             }
 
             fn rem_euclid(&self, v: &Self) -> Self {
-                Self(self.0.rem_euclid(v.0))
+                Self(<$inner as Euclid>::rem_euclid(&self.0, &v.0))
             }
         }
 
@@ -87,8 +87,8 @@ macro_rules! define_epsilon_metric {
             }
         }
 
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        impl core::fmt::Display for $name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 write!(f, "{}", self.0)
             }
         }

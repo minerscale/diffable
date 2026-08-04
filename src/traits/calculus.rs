@@ -19,7 +19,7 @@
 //! bundles. [`FormLift`] and [`NondegenerateLift`] state that lowering and
 //! raising maps extend coherently when coordinates are replaced by jets.
 
-use std::{
+use core::{
     marker::PhantomData,
     ops::{Add, Deref, DerefMut, Div, Index, IndexMut, Mul, Neg, Rem, Sub},
 };
@@ -72,13 +72,13 @@ impl<T: Point, U: Array<T>, V: Array<T>> Array<T> for DirectSumArray<T, U, V> {
     const N: usize = U::N + V::N;
 
     type Iter<'a>
-        = std::iter::Chain<U::Iter<'a>, V::Iter<'a>>
+        = core::iter::Chain<U::Iter<'a>, V::Iter<'a>>
     where
         Self: 'a,
         T: 'a;
 
     type IterMut<'a>
-        = std::iter::Chain<U::IterMut<'a>, V::IterMut<'a>>
+        = core::iter::Chain<U::IterMut<'a>, V::IterMut<'a>>
     where
         Self: 'a,
         T: 'a;
@@ -92,11 +92,7 @@ impl<T: Point, U: Array<T>, V: Array<T>> Array<T> for DirectSumArray<T, U, V> {
     }
 
     fn from_fn(mut f: impl FnMut(usize) -> T) -> Self {
-        Self(
-            U::from_fn(&mut f),
-            V::from_fn(|i| f(U::N + i)),
-            PhantomData,
-        )
+        Self(U::from_fn(&mut f), V::from_fn(|i| f(U::N + i)), PhantomData)
     }
 }
 
@@ -123,7 +119,7 @@ impl<T: Point, U: Array<T>, V: Array<T>> IndexMut<usize> for DirectSumArray<T, U
 impl<T: Point, U: Array<T>, V: Array<T>> IntoIterator for DirectSumArray<T, U, V> {
     type Item = T;
 
-    type IntoIter = std::iter::Chain<U::IntoIter, V::IntoIter>;
+    type IntoIter = core::iter::Chain<U::IntoIter, V::IntoIter>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter().chain(self.1)
@@ -187,13 +183,13 @@ impl<T: Point, U: Array<V>, V: Array<T>> Array<T> for TensorProductArray<T, U, V
     const N: usize = U::N * V::N;
 
     type Iter<'a>
-        = std::iter::FlatMap<U::Iter<'a>, V::Iter<'a>, fn(&'a V) -> V::Iter<'a>>
+        = core::iter::FlatMap<U::Iter<'a>, V::Iter<'a>, fn(&'a V) -> V::Iter<'a>>
     where
         Self: 'a,
         T: 'a;
 
     type IterMut<'a>
-        = std::iter::FlatMap<U::IterMut<'a>, V::IterMut<'a>, fn(&'a mut V) -> V::IterMut<'a>>
+        = core::iter::FlatMap<U::IterMut<'a>, V::IterMut<'a>, fn(&'a mut V) -> V::IterMut<'a>>
     where
         Self: 'a,
         T: 'a;
@@ -241,7 +237,7 @@ impl<T: Point, U: Array<V>, V: Array<T>> IndexMut<(usize, usize)> for TensorProd
 
 impl<T: Point, U: Array<V>, V: Array<T>> IntoIterator for TensorProductArray<T, U, V> {
     type Item = T;
-    type IntoIter = std::iter::Flatten<U::IntoIter>;
+    type IntoIter = core::iter::Flatten<U::IntoIter>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter().flatten()
@@ -474,7 +470,7 @@ impl<
 /// [`Algebraic`] works over arbitrary fields. [`JetReal`] additionally exposes
 /// the projection semantics required by [`Real`], allowing generic real
 /// functions to be evaluated by forward automatic differentiation.
-pub trait JetMode: Copy + Clone + std::fmt::Debug {}
+pub trait JetMode: Copy + Clone + core::fmt::Debug {}
 
 /// Algebraic jets over an arbitrary [`Field`].
 #[derive(Debug, Copy, Clone)]
@@ -1503,7 +1499,7 @@ impl<V: Euclidean, const N: usize, S: Real> Euclidean for JetVector<V, JetReal, 
 }
 
 impl<R: Real, const N: usize> PartialOrd for Jet<R, JetReal, N> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         self[0].partial_cmp(&other[0])
     }
 }

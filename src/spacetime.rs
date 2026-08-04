@@ -5,7 +5,7 @@
 //! algebra, while [`Lorentz`] realises the restricted Lorentz group as the
 //! quotient of [`Sl2c`] by `{+1, -1}`.
 
-use std::ops::Mul;
+use core::ops::Mul;
 
 use num_traits::{Inv, One, Zero};
 

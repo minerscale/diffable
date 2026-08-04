@@ -6,16 +6,14 @@
 //! global topology.
 //!
 //! [`NerveComplex`]: crate::traits::simplicial::NerveComplex
+//! [`Bounded`]: crate::traits::simplicial::Bounded
 
 use crate::{
     discrete::Z,
-    impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
-    traits::{
-        Interval, Tensor,
-        simplicial::{Bounded, BuildNodes, NerveComplexParameters},
-    },
+    impl_lie_group_via_quotient,
+    traits::{Interval, Tensor},
 };
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 use crate::traits::{Chart, Euclidean, Group, LieGroup, Quotient, Real, Smooth};
 use num_traits::{Euclid, NumCast, One, Zero, real::Real as _};
@@ -244,240 +242,252 @@ impl<I: ICompatible<V>, V: VCompatible<I>> Interval for KleinBottle<I, V> {
     }
 }
 
-/// A bounded chart domain in the regular finite cover of [`Torus`].
-#[derive(Debug, Copy, Clone)]
-pub struct TorusCover<I: ICompatible<V>, V: VCompatible<I>>(Torus<I, V>);
+#[cfg(feature = "simplicial")]
+mod simplicial {
+    use super::*;
+    use crate::{
+        impl_tangent_bundle_via_bounded,
+        traits::simplicial::{Bounded, BuildNodes, NerveComplexParameters},
+    };
+    use std::vec::Vec;
+    /// A bounded chart domain in the regular finite cover of [`Torus`].
+    #[derive(Debug, Copy, Clone)]
+    pub struct TorusCover<I: ICompatible<V>, V: VCompatible<I>>(Torus<I, V>);
 
-impl<I: ICompatible<V>, V: VCompatible<I>> From<Torus<I, V>> for TorusCover<I, V> {
-    fn from(value: Torus<I, V>) -> Self {
-        Self(value)
+    impl<I: ICompatible<V>, V: VCompatible<I>> From<Torus<I, V>> for TorusCover<I, V> {
+        fn from(value: Torus<I, V>) -> Self {
+            Self(value)
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<Torus<I, V>> for TorusCover<I, V> {
+        fn as_ref(&self) -> &Torus<I, V> {
+            &self.0
+        }
+    }
+
+    const S: usize = 4;
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
+        for TorusCover<I, V>
+    {
+        fn sdf(&self, v: &V) -> <V as Tensor>::F {
+            let to = |x| <V::F as NumCast>::from(x).unwrap();
+            v.norm() - (to(2).sqrt() + to(2)) / to(4 * S)
+        }
+    }
+
+    impl_tangent_bundle_via_bounded!(
+        TorusCover<I, V>,
+        Torus<I, V>,
+        Torus<I, V>,
+        V,
+        I: ICompatible<V>,
+    V: VCompatible<I>
+    );
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<TorusCover<I, V>> for TorusCover<I, V> {
+        fn build_nodes() -> Vec<Self> {
+            let to = |x| <I::F as NumCast>::from(x).unwrap();
+            let s = to(S);
+            let offset = to(1) / (to(2) * s);
+
+            (0..S)
+                .flat_map(|y| (0..S).map(move |x| (x, y)))
+                .map(|(x, y)| {
+                    Torus::new(
+                        S1([offset + to(x) / s].into()),
+                        S1([offset + to(y) / s].into()),
+                    )
+                    .into()
+                })
+                .collect()
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>>
+        NerveComplexParameters<Torus<I, V>, V, Torus<I, V>, TorusCover<I, V>> for TorusCover<I, V>
+    {
+    }
+
+    /// A bounded chart domain in the regular finite cover of [`KleinBottle`].
+    #[derive(Debug, Copy, Clone)]
+    pub struct KleinBottleCover<I: ICompatible<V>, V: VCompatible<I>>(KleinBottle<I, V>);
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> From<KleinBottle<I, V>> for KleinBottleCover<I, V> {
+        fn from(value: KleinBottle<I, V>) -> Self {
+            Self(value)
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<KleinBottle<I, V>> for KleinBottleCover<I, V> {
+        fn as_ref(&self) -> &KleinBottle<I, V> {
+            &self.0
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<KleinBottle<I, V>, KleinBottle<I, V>, V>
+        for KleinBottleCover<I, V>
+    {
+        fn sdf(&self, v: &V) -> <V as Tensor>::F {
+            let to = |x| <V::F as NumCast>::from(x).unwrap();
+            v.norm() - (to(2).sqrt() + to(2)) / to(4 * S)
+        }
+    }
+
+    impl_tangent_bundle_via_bounded!(
+        KleinBottleCover<I, V>,
+        KleinBottle<I, V>,
+        KleinBottle<I, V>,
+        V,
+        I: ICompatible<V>, V: VCompatible<I>
+    );
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<KleinBottleCover<I, V>>
+        for KleinBottleCover<I, V>
+    {
+        fn build_nodes() -> Vec<Self> {
+            let to = |x| <I::F as NumCast>::from(x).unwrap();
+            let s = to(S);
+            let offset = to(1) / (to(2) * s);
+
+            (0..S)
+                .flat_map(|y| (0..S).map(move |x| (x, y)))
+                .map(|(x, y)| {
+                    KleinBottle::new(
+                        S1([offset + to(x) / s].into()),
+                        S1([offset + to(y) / s].into()),
+                    )
+                    .into()
+                })
+                .collect()
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>>
+        NerveComplexParameters<KleinBottle<I, V>, V, KleinBottle<I, V>, KleinBottleCover<I, V>>
+        for KleinBottleCover<I, V>
+    {
+    }
+
+    /// A deliberately overlapping bounded domain on [`Torus`].
+    ///
+    /// This exercises [`NerveComplex`](crate::traits::simplicial::NerveComplex)
+    /// when many cover nodes see the same region rather than forming the regular
+    /// cover represented by [`TorusCover`].
+    #[derive(Debug, Clone)]
+    pub struct MyopicTorus<I: ICompatible<V>, V: VCompatible<I>>(pub Torus<I, V>);
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> MyopicTorus<I, V> {
+        /// Returns the number of cover samples along each torus coordinate.
+        pub fn s() -> usize {
+            8
+        }
+
+        fn radius() -> V::F {
+            // 2/s, quite a lot larger than the lattice spacing.
+            (V::F::one() + V::F::one()) / <V::F as NumCast>::from(Self::s()).unwrap()
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<Torus<I, V>> for MyopicTorus<I, V> {
+        fn as_ref(&self) -> &Torus<I, V> {
+            &self.0
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> From<Torus<I, V>> for MyopicTorus<I, V> {
+        fn from(value: Torus<I, V>) -> Self {
+            Self(value)
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
+        for MyopicTorus<I, V>
+    {
+        fn sdf(&self, v: &V) -> <V as Tensor>::F {
+            v.norm() - Self::radius()
+        }
+    }
+
+    impl_tangent_bundle_via_bounded!(
+        MyopicTorus<I, V>,
+        Torus<I, V>,
+        Torus<I, V>,
+        V,
+        I: ICompatible<V>, V: VCompatible<I>
+    );
+
+    /// The tangent-bundle chart wrapper associated with [`MyopicTorus`].
+    #[derive(Debug, Clone)]
+    pub struct MyopicTorusCover<I: ICompatible<V>, V: VCompatible<I>>(MyopicTorus<I, V>);
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<MyopicTorus<I, V>> for MyopicTorusCover<I, V> {
+        fn as_ref(&self) -> &MyopicTorus<I, V> {
+            &self.0
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> From<MyopicTorus<I, V>> for MyopicTorusCover<I, V> {
+        fn from(value: MyopicTorus<I, V>) -> Self {
+            Self(value)
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<MyopicTorus<I, V>, Torus<I, V>, V>
+        for MyopicTorusCover<I, V>
+    {
+        fn sdf(&self, v: &V) -> <V as Tensor>::F {
+            let to = |x| <V::F as NumCast>::from(x).unwrap();
+            v.norm() - (to(2).sqrt() + to(2)) / to(4 * MyopicTorus::<I, V>::s())
+        }
+    }
+
+    impl_tangent_bundle_via_bounded!(
+        MyopicTorusCover<I, V>,
+        MyopicTorus<I, V>,
+        Torus<I, V>,
+        V,
+        I: ICompatible<V>, V: VCompatible<I>
+    );
+
+    impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<MyopicTorusCover<I, V>>
+        for MyopicTorusCover<I, V>
+    {
+        fn build_nodes() -> Vec<Self> {
+            let to = |x| <I::F as NumCast>::from(x).unwrap();
+            let s_usize = MyopicTorus::<I, V>::s();
+            let s = to(s_usize);
+            let offset = to(1) / (to(2) * s);
+
+            (0..s_usize)
+                .flat_map(|y| (0..s_usize).map(move |x| (x, y)))
+                .map(|(x, y)| {
+                    MyopicTorus(Torus::new(
+                        S1([offset + to(x) / s].into()),
+                        S1([offset + to(y) / s].into()),
+                    ))
+                    .into()
+                })
+                .collect()
+        }
+    }
+
+    impl<I: ICompatible<V>, V: VCompatible<I>>
+        NerveComplexParameters<Torus<I, V>, V, MyopicTorus<I, V>, MyopicTorusCover<I, V>>
+        for MyopicTorusCover<I, V>
+    {
+        fn overestimation_bound() -> Option<(V::F, V::F)> {
+            let to = |x| <V::F as NumCast>::from(x).unwrap();
+            let s = to(MyopicTorus::<I, V>::s());
+            // κ: king-graph worst case at 22.5°, √(4 − 2√2). Scale-free.
+            let kappa = (to(4) - to(2) * to(2).sqrt()).sqrt();
+            // C = (1+κ)·2δ_s, with δ_s = √2/(2S) the lattice half-diagonal.
+            let delta_s = to(2).sqrt() / (to(2) * s);
+            Some((kappa, (V::F::one() + kappa) * to(2) * delta_s))
+        }
     }
 }
 
-impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<Torus<I, V>> for TorusCover<I, V> {
-    fn as_ref(&self) -> &Torus<I, V> {
-        &self.0
-    }
-}
-
-const S: usize = 4;
-
-impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
-    for TorusCover<I, V>
-{
-    fn sdf(&self, v: &V) -> <V as Tensor>::F {
-        let to = |x| <V::F as NumCast>::from(x).unwrap();
-        v.norm() - (to(2).sqrt() + to(2)) / to(4 * S)
-    }
-}
-
-impl_tangent_bundle_via_bounded!(
-    TorusCover<I, V>,
-    Torus<I, V>,
-    Torus<I, V>,
-    V,
-    I: ICompatible<V>,
-V: VCompatible<I>
-);
-
-impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<TorusCover<I, V>> for TorusCover<I, V> {
-    fn build_nodes() -> Vec<Self> {
-        let to = |x| <I::F as NumCast>::from(x).unwrap();
-        let s = to(S);
-        let offset = to(1) / (to(2) * s);
-
-        (0..S)
-            .flat_map(|y| (0..S).map(move |x| (x, y)))
-            .map(|(x, y)| {
-                Torus::new(
-                    S1([offset + to(x) / s].into()),
-                    S1([offset + to(y) / s].into()),
-                )
-                .into()
-            })
-            .collect()
-    }
-}
-
-impl<I: ICompatible<V>, V: VCompatible<I>>
-    NerveComplexParameters<Torus<I, V>, V, Torus<I, V>, TorusCover<I, V>> for TorusCover<I, V>
-{
-}
-
-/// A bounded chart domain in the regular finite cover of [`KleinBottle`].
-#[derive(Debug, Copy, Clone)]
-pub struct KleinBottleCover<I: ICompatible<V>, V: VCompatible<I>>(KleinBottle<I, V>);
-
-impl<I: ICompatible<V>, V: VCompatible<I>> From<KleinBottle<I, V>> for KleinBottleCover<I, V> {
-    fn from(value: KleinBottle<I, V>) -> Self {
-        Self(value)
-    }
-}
-
-impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<KleinBottle<I, V>> for KleinBottleCover<I, V> {
-    fn as_ref(&self) -> &KleinBottle<I, V> {
-        &self.0
-    }
-}
-
-impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<KleinBottle<I, V>, KleinBottle<I, V>, V>
-    for KleinBottleCover<I, V>
-{
-    fn sdf(&self, v: &V) -> <V as Tensor>::F {
-        let to = |x| <V::F as NumCast>::from(x).unwrap();
-        v.norm() - (to(2).sqrt() + to(2)) / to(4 * S)
-    }
-}
-
-impl_tangent_bundle_via_bounded!(
-    KleinBottleCover<I, V>,
-    KleinBottle<I, V>,
-    KleinBottle<I, V>,
-    V,
-    I: ICompatible<V>, V: VCompatible<I>
-);
-
-impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<KleinBottleCover<I, V>>
-    for KleinBottleCover<I, V>
-{
-    fn build_nodes() -> Vec<Self> {
-        let to = |x| <I::F as NumCast>::from(x).unwrap();
-        let s = to(S);
-        let offset = to(1) / (to(2) * s);
-
-        (0..S)
-            .flat_map(|y| (0..S).map(move |x| (x, y)))
-            .map(|(x, y)| {
-                KleinBottle::new(
-                    S1([offset + to(x) / s].into()),
-                    S1([offset + to(y) / s].into()),
-                )
-                .into()
-            })
-            .collect()
-    }
-}
-
-impl<I: ICompatible<V>, V: VCompatible<I>>
-    NerveComplexParameters<KleinBottle<I, V>, V, KleinBottle<I, V>, KleinBottleCover<I, V>>
-    for KleinBottleCover<I, V>
-{
-}
-
-/// A deliberately overlapping bounded domain on [`Torus`].
-///
-/// This exercises [`NerveComplex`](crate::traits::simplicial::NerveComplex)
-/// when many cover nodes see the same region rather than forming the regular
-/// cover represented by [`TorusCover`].
-#[derive(Debug, Clone)]
-pub struct MyopicTorus<I: ICompatible<V>, V: VCompatible<I>>(pub Torus<I, V>);
-
-impl<I: ICompatible<V>, V: VCompatible<I>> MyopicTorus<I, V> {
-    /// Returns the number of cover samples along each torus coordinate.
-    pub fn s() -> usize {
-        8
-    }
-
-    fn radius() -> V::F {
-        // 2/s, quite a lot larger than the lattice spacing.
-        (V::F::one() + V::F::one()) / <V::F as NumCast>::from(Self::s()).unwrap()
-    }
-}
-
-impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<Torus<I, V>> for MyopicTorus<I, V> {
-    fn as_ref(&self) -> &Torus<I, V> {
-        &self.0
-    }
-}
-
-impl<I: ICompatible<V>, V: VCompatible<I>> From<Torus<I, V>> for MyopicTorus<I, V> {
-    fn from(value: Torus<I, V>) -> Self {
-        Self(value)
-    }
-}
-
-impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
-    for MyopicTorus<I, V>
-{
-    fn sdf(&self, v: &V) -> <V as Tensor>::F {
-        v.norm() - Self::radius()
-    }
-}
-
-impl_tangent_bundle_via_bounded!(
-    MyopicTorus<I, V>,
-    Torus<I, V>,
-    Torus<I, V>,
-    V,
-    I: ICompatible<V>, V: VCompatible<I>
-);
-
-/// The tangent-bundle chart wrapper associated with [`MyopicTorus`].
-#[derive(Debug, Clone)]
-pub struct MyopicTorusCover<I: ICompatible<V>, V: VCompatible<I>>(MyopicTorus<I, V>);
-
-impl<I: ICompatible<V>, V: VCompatible<I>> AsRef<MyopicTorus<I, V>> for MyopicTorusCover<I, V> {
-    fn as_ref(&self) -> &MyopicTorus<I, V> {
-        &self.0
-    }
-}
-
-impl<I: ICompatible<V>, V: VCompatible<I>> From<MyopicTorus<I, V>> for MyopicTorusCover<I, V> {
-    fn from(value: MyopicTorus<I, V>) -> Self {
-        Self(value)
-    }
-}
-
-impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<MyopicTorus<I, V>, Torus<I, V>, V>
-    for MyopicTorusCover<I, V>
-{
-    fn sdf(&self, v: &V) -> <V as Tensor>::F {
-        let to = |x| <V::F as NumCast>::from(x).unwrap();
-        v.norm() - (to(2).sqrt() + to(2)) / to(4 * MyopicTorus::<I, V>::s())
-    }
-}
-
-impl_tangent_bundle_via_bounded!(
-    MyopicTorusCover<I, V>,
-    MyopicTorus<I, V>,
-    Torus<I, V>,
-    V,
-    I: ICompatible<V>, V: VCompatible<I>
-);
-
-impl<I: ICompatible<V>, V: VCompatible<I>> BuildNodes<MyopicTorusCover<I, V>>
-    for MyopicTorusCover<I, V>
-{
-    fn build_nodes() -> Vec<Self> {
-        let to = |x| <I::F as NumCast>::from(x).unwrap();
-        let s_usize = MyopicTorus::<I, V>::s();
-        let s = to(s_usize);
-        let offset = to(1) / (to(2) * s);
-
-        (0..s_usize)
-            .flat_map(|y| (0..s_usize).map(move |x| (x, y)))
-            .map(|(x, y)| {
-                MyopicTorus(Torus::new(
-                    S1([offset + to(x) / s].into()),
-                    S1([offset + to(y) / s].into()),
-                ))
-                .into()
-            })
-            .collect()
-    }
-}
-
-impl<I: ICompatible<V>, V: VCompatible<I>>
-    NerveComplexParameters<Torus<I, V>, V, MyopicTorus<I, V>, MyopicTorusCover<I, V>>
-    for MyopicTorusCover<I, V>
-{
-    fn overestimation_bound() -> Option<(V::F, V::F)> {
-        let to = |x| <V::F as NumCast>::from(x).unwrap();
-        let s = to(MyopicTorus::<I, V>::s());
-        // κ: king-graph worst case at 22.5°, √(4 − 2√2). Scale-free.
-        let kappa = (to(4) - to(2) * to(2).sqrt()).sqrt();
-        // C = (1+κ)·2δ_s, with δ_s = √2/(2S) the lattice half-diagonal.
-        let delta_s = to(2).sqrt() / (to(2) * s);
-        Some((kappa, (V::F::one() + kappa) * to(2) * delta_s))
-    }
-}
+#[cfg(feature = "simplicial")]
+pub use simplicial::*;

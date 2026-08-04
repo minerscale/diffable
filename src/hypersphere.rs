@@ -5,18 +5,13 @@
 //! available in dimensions zero, one, and three; [`So3`] then forms the
 //! antipodal quotient of `S3`.
 
-use std::{marker::PhantomData, ops::Mul};
+use core::{marker::PhantomData, ops::Mul};
 
 use crate::{
     complex::Complex,
-    coords::Coords,
-    impl_group_via_mul, impl_lie_group_via_quotient, impl_tangent_bundle_via_bounded,
+    impl_group_via_mul, impl_lie_group_via_quotient,
     quaternion::Quaternion,
-    traits::{
-        Chart, Euclidean, ExpMap, InnerProduct, Interval, LieGroup, Metric, Quotient, Real,
-        RootOfUnity, Smooth, TangentBundle,
-        simplicial::{Bounded, BuildNodes, NerveComplexParameters},
-    },
+    traits::{Chart, Euclidean, Interval, LieGroup, Metric, Quotient, Real, RootOfUnity, Smooth},
 };
 
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
@@ -566,8 +561,8 @@ impl<V: Euclidean> Quotient<S3<V>, RootOfUnity<V::F, 2>, V> for So3<V> {
             .unwrap()
             .then(g.0.imag().iter().partial_cmp(V::zero().iter()).unwrap())
         {
-            std::cmp::Ordering::Less => So3(S3(Sphere::new(-g.0.real(), -g.0.imag()))),
-            std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => So3(g),
+            core::cmp::Ordering::Less => So3(S3(Sphere::new(-g.0.real(), -g.0.imag()))),
+            core::cmp::Ordering::Equal | core::cmp::Ordering::Greater => So3(g),
         }
     }
 
@@ -582,224 +577,240 @@ impl<V: Euclidean> Quotient<S3<V>, RootOfUnity<V::F, 2>, V> for So3<V> {
 
 impl_lie_group_via_quotient!(So3<V>, S3<V>, RootOfUnity<V::F, 2>, V, V: Euclidean);
 
-use crate::epsilon_metric::R64;
+#[cfg(feature = "simplicial")]
+mod simplicial {
+    use super::*;
+    use crate::epsilon_metric::R64;
+    use crate::{
+        coords::Coords,
+        impl_tangent_bundle_via_bounded,
+        traits::{
+            ExpMap, InnerProduct, TangentBundle,
+            simplicial::{Bounded, BuildNodes, NerveComplexParameters},
+        },
+    };
+    use std::vec::Vec;
 
-/// The six-chart good cover of [`UnitComplex`] used by [`NerveComplex`](crate::traits::simplicial::NerveComplex).
-#[derive(PartialEq, Debug, Clone)]
-pub struct S1Cover(UnitComplex<Coords<R64, 1>>);
+    /// The six-chart good cover of [`UnitComplex`] used by [`NerveComplex`](crate::traits::simplicial::NerveComplex).
+    #[derive(PartialEq, Debug, Clone)]
+    pub struct S1Cover(UnitComplex<Coords<R64, 1>>);
 
-impl Bounded<UnitComplex<Coords<R64, 1>>, UnitComplex<Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
-    // Each node's domain is the open arc of radius ρ = π/6 + 0.05 about its
-    // base point. Six such arcs centred at the sixth roots of unity form an
-    // open good cover of S¹:
-    //   - covering:   arcs of half-length ρ > π/6 centred π/3 apart cover S¹
-    //   - goodness:   arcs and their pairwise intersections are arcs (or
-    //                 empty), hence contractible
-    //   - nerve:      adjacent arcs (d = π/3 < 2ρ ≈ 1.147) overlap;
-    //                 next-nearest (d = 2π/3 > 2ρ) do not — the nerve is a
-    //                 hexagon, whose π₁ is free on one generator: π₁(S¹) = Z
-    fn sdf(&self, v: &Coords<R64, 1>) -> R64 {
-        v.norm() - R64(std::f64::consts::PI / 6.0 + 0.05)
-    }
-}
-
-impl From<UnitComplex<Coords<R64, 1>>> for S1Cover {
-    fn from(value: UnitComplex<Coords<R64, 1>>) -> Self {
-        Self(value)
-    }
-}
-
-impl AsRef<UnitComplex<Coords<R64, 1>>> for S1Cover {
-    fn as_ref(&self) -> &UnitComplex<Coords<R64, 1>> {
-        &self.0
-    }
-}
-
-impl_tangent_bundle_via_bounded!(
-    S1Cover, UnitComplex<Coords<R64, 1>>, UnitComplex<Coords<R64, 1>>, Coords<R64, 1>,
-);
-
-impl BuildNodes<S1Cover> for S1Cover {
-    fn build_nodes() -> Vec<Self> {
-        (0..6)
-            .map(|i| {
-                let angle: R64 = R64(i.into()) * R64(std::f64::consts::TAU) / R64(6.0);
-                S1Cover(UnitComplex(Sphere::new(angle.cos(), [angle.sin()].into())))
-            })
-            .collect()
-    }
-}
-
-impl
-    NerveComplexParameters<
-        UnitComplex<Coords<R64, 1>>,
-        Coords<R64, 1>,
-        UnitComplex<Coords<R64, 1>>,
-        S1Cover,
-    > for S1Cover
-{
-}
-
-/// A finite geodesic-ball cover of [`So3`] centred on icosahedral rotations.
-///
-/// The cover supplies [`Bounded`] domains and nodes for the global simplicial
-/// and geodesic algorithms.
-#[derive(PartialEq, Debug, Clone)]
-pub struct So3Cover(So3<Coords<R64, 3>>);
-
-impl Chart<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {
-    type Global = So3<Coords<R64, 3>>;
-
-    fn to_local(&self, point: &So3<Coords<R64, 3>>) -> Option<Coords<R64, 3>> {
-        self.0.to_local(point)
-    }
-    fn to_global(&self, coord: Coords<R64, 3>) -> So3<Coords<R64, 3>> {
-        self.0.to_global(coord)
-    }
-    fn chart_at(p: &So3<Coords<R64, 3>>) -> Self {
-        Self(So3::chart_at(p))
-    }
-}
-
-impl ExpMap<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {}
-
-impl TangentBundle<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {}
-
-/// Radius of the geodesic-ball domains of [`So3Cover`].
-///
-/// The 60 nodes are the icosahedral rotation group I ≅ A₅ ⊂ SO(3) — the
-/// image of the 120 icosian unit quaternions (the vertices of the 600-cell)
-/// under the double cover S³ → SO(3). In the bi-invariant metric
-/// `d = |identity_log|` (half the rotation angle; diameter π/2), the
-/// pairwise distances realised between nodes are exactly
-///
-/// ```text
-///   π/5 ≈ 0.628,   π/3 ≈ 1.047,   2π/5 ≈ 1.257,   π/2 ≈ 1.571
-/// ```
-///
-/// and the covering radius of the node set is ≈ 0.3857 (the circumradius
-/// of a cell of the 600-cell). The radius ρ = 0.42 is chosen so that:
-///
-/// - **covering**: ρ > 0.3857, so the 60 open balls cover SO(3);
-/// - **goodness**: ρ < π/4, the convexity radius of SO(3) ≅ RP³, so every
-///   ball is geodesically convex and all intersections of balls are convex,
-///   hence contractible or empty — an open *good* cover;
-/// - **faithful 1-skeleton**: two equal balls overlap iff their centres are
-///   closer than 2ρ = 0.84, which separates π/5 from π/3 with a wide margin
-///   on both sides — the nerve's edges are exactly the 600-cell's edges
-///   (mod ±1), and the computation is robust to floating-point error;
-/// - **faithful 2-skeleton**: every triangle of the overlap graph is an
-///   equilateral triangle of side π/5 with spherical circumradius ≈ 0.365
-///   < ρ, so all three balls genuinely share a point — mutual pairwise
-///   overlap coincides with triple intersection, and the triangles of the
-///   nerve are exactly the 600-cell's 2-faces (mod ±1).
-///
-/// The nerve of this cover is therefore the *hemi-600-cell*: the classical
-/// vertex-transitive 60-vertex triangulation of RP³ with f-vector
-/// (60, 360, 600, 300), obtained from the boundary complex of the 600-cell
-/// by identifying antipodes. By the nerve theorem the nerve is homotopy
-/// equivalent to SO(3), and π₁ computed from its 2-skeleton is
-/// ⟨x | x²⟩ ≅ Z/2Z.
-impl Bounded<So3<Coords<R64, 3>>, So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {
-    // Open geodesic ball of radius 0.42 about the base point.
-    // In an exponential chart the geodesic distance from the base point is
-    // exactly the coordinate norm, so the ball's true signed distance field
-    // is radial.
-    fn sdf(&self, v: &Coords<R64, 3>) -> R64 {
-        v.norm() - R64(0.42)
-    }
-}
-
-impl From<So3<Coords<R64, 3>>> for So3Cover {
-    fn from(value: So3<Coords<R64, 3>>) -> Self {
-        Self(value)
-    }
-}
-
-impl AsRef<So3<Coords<R64, 3>>> for So3Cover {
-    fn as_ref(&self) -> &So3<Coords<R64, 3>> {
-        &self.0
-    }
-}
-
-impl BuildNodes<Self> for So3Cover {
-    fn build_nodes() -> Vec<Self> {
-        // The 120 icosians: vertices of the 600-cell on S³.
-        let phi = (1.0 + 5f64.sqrt()) / 2.0;
-        let mut quats: Vec<[f64; 4]> = Vec::new();
-
-        // 8 unit quaternions: ±1, ±i, ±j, ±k
-        for i in 0..4 {
-            for s in [-1.0, 1.0] {
-                let mut q = [0.0; 4];
-                q[i] = s;
-                quats.push(q);
-            }
+    impl Bounded<UnitComplex<Coords<R64, 1>>, UnitComplex<Coords<R64, 1>>, Coords<R64, 1>> for S1Cover {
+        // Each node's domain is the open arc of radius ρ = π/6 + 0.05 about its
+        // base point. Six such arcs centred at the sixth roots of unity form an
+        // open good cover of S¹:
+        //   - covering:   arcs of half-length ρ > π/6 centred π/3 apart cover S¹
+        //   - goodness:   arcs and their pairwise intersections are arcs (or
+        //                 empty), hence contractible
+        //   - nerve:      adjacent arcs (d = π/3 < 2ρ ≈ 1.147) overlap;
+        //                 next-nearest (d = 2π/3 > 2ρ) do not — the nerve is a
+        //                 hexagon, whose π₁ is free on one generator: π₁(S¹) = Z
+        fn sdf(&self, v: &Coords<R64, 1>) -> R64 {
+            v.norm() - R64(std::f64::consts::PI / 6.0 + 0.05)
         }
-        // 16: (±1 ± i ± j ± k)/2
-        for a in [-0.5, 0.5] {
-            for b in [-0.5, 0.5] {
-                for c in [-0.5, 0.5] {
-                    for d in [-0.5, 0.5] {
-                        quats.push([a, b, c, d]);
-                    }
+    }
+
+    impl From<UnitComplex<Coords<R64, 1>>> for S1Cover {
+        fn from(value: UnitComplex<Coords<R64, 1>>) -> Self {
+            Self(value)
+        }
+    }
+
+    impl AsRef<UnitComplex<Coords<R64, 1>>> for S1Cover {
+        fn as_ref(&self) -> &UnitComplex<Coords<R64, 1>> {
+            &self.0
+        }
+    }
+
+    impl_tangent_bundle_via_bounded!(
+        S1Cover, UnitComplex<Coords<R64, 1>>, UnitComplex<Coords<R64, 1>>, Coords<R64, 1>,
+    );
+
+    impl BuildNodes<S1Cover> for S1Cover {
+        fn build_nodes() -> Vec<Self> {
+            (0..6)
+                .map(|i| {
+                    let angle: R64 = R64(i.into()) * R64(std::f64::consts::TAU) / R64(6.0);
+                    S1Cover(UnitComplex(Sphere::new(angle.cos(), [angle.sin()].into())))
+                })
+                .collect()
+        }
+    }
+
+    impl
+        NerveComplexParameters<
+            UnitComplex<Coords<R64, 1>>,
+            Coords<R64, 1>,
+            UnitComplex<Coords<R64, 1>>,
+            S1Cover,
+        > for S1Cover
+    {
+    }
+
+    /// A finite geodesic-ball cover of [`So3`] centred on icosahedral rotations.
+    ///
+    /// The cover supplies [`Bounded`] domains and nodes for the global simplicial
+    /// and geodesic algorithms.
+    #[derive(PartialEq, Debug, Clone)]
+    pub struct So3Cover(So3<Coords<R64, 3>>);
+
+    impl Chart<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {
+        type Global = So3<Coords<R64, 3>>;
+
+        fn to_local(&self, point: &So3<Coords<R64, 3>>) -> Option<Coords<R64, 3>> {
+            self.0.to_local(point)
+        }
+        fn to_global(&self, coord: Coords<R64, 3>) -> So3<Coords<R64, 3>> {
+            self.0.to_global(coord)
+        }
+        fn chart_at(p: &So3<Coords<R64, 3>>) -> Self {
+            Self(So3::chart_at(p))
+        }
+    }
+
+    impl ExpMap<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {}
+
+    impl TangentBundle<So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {}
+
+    /// Radius of the geodesic-ball domains of [`So3Cover`].
+    ///
+    /// The 60 nodes are the icosahedral rotation group I ≅ A₅ ⊂ SO(3) — the
+    /// image of the 120 icosian unit quaternions (the vertices of the 600-cell)
+    /// under the double cover S³ → SO(3). In the bi-invariant metric
+    /// `d = |identity_log|` (half the rotation angle; diameter π/2), the
+    /// pairwise distances realised between nodes are exactly
+    ///
+    /// ```text
+    ///   π/5 ≈ 0.628,   π/3 ≈ 1.047,   2π/5 ≈ 1.257,   π/2 ≈ 1.571
+    /// ```
+    ///
+    /// and the covering radius of the node set is ≈ 0.3857 (the circumradius
+    /// of a cell of the 600-cell). The radius ρ = 0.42 is chosen so that:
+    ///
+    /// - **covering**: ρ > 0.3857, so the 60 open balls cover SO(3);
+    /// - **goodness**: ρ < π/4, the convexity radius of SO(3) ≅ RP³, so every
+    ///   ball is geodesically convex and all intersections of balls are convex,
+    ///   hence contractible or empty — an open *good* cover;
+    /// - **faithful 1-skeleton**: two equal balls overlap iff their centres are
+    ///   closer than 2ρ = 0.84, which separates π/5 from π/3 with a wide margin
+    ///   on both sides — the nerve's edges are exactly the 600-cell's edges
+    ///   (mod ±1), and the computation is robust to floating-point error;
+    /// - **faithful 2-skeleton**: every triangle of the overlap graph is an
+    ///   equilateral triangle of side π/5 with spherical circumradius ≈ 0.365
+    ///   < ρ, so all three balls genuinely share a point — mutual pairwise
+    ///   overlap coincides with triple intersection, and the triangles of the
+    ///   nerve are exactly the 600-cell's 2-faces (mod ±1).
+    ///
+    /// The nerve of this cover is therefore the *hemi-600-cell*: the classical
+    /// vertex-transitive 60-vertex triangulation of RP³ with f-vector
+    /// (60, 360, 600, 300), obtained from the boundary complex of the 600-cell
+    /// by identifying antipodes. By the nerve theorem the nerve is homotopy
+    /// equivalent to SO(3), and π₁ computed from its 2-skeleton is
+    /// ⟨x | x²⟩ ≅ Z/2Z.
+    impl Bounded<So3<Coords<R64, 3>>, So3<Coords<R64, 3>>, Coords<R64, 3>> for So3Cover {
+        // Open geodesic ball of radius 0.42 about the base point.
+        // In an exponential chart the geodesic distance from the base point is
+        // exactly the coordinate norm, so the ball's true signed distance field
+        // is radial.
+        fn sdf(&self, v: &Coords<R64, 3>) -> R64 {
+            v.norm() - R64(0.42)
+        }
+    }
+
+    impl From<So3<Coords<R64, 3>>> for So3Cover {
+        fn from(value: So3<Coords<R64, 3>>) -> Self {
+            Self(value)
+        }
+    }
+
+    impl AsRef<So3<Coords<R64, 3>>> for So3Cover {
+        fn as_ref(&self) -> &So3<Coords<R64, 3>> {
+            &self.0
+        }
+    }
+
+    impl BuildNodes<Self> for So3Cover {
+        fn build_nodes() -> Vec<Self> {
+            // The 120 icosians: vertices of the 600-cell on S³.
+            let phi = (1.0 + 5f64.sqrt()) / 2.0;
+            let mut quats: Vec<[f64; 4]> = Vec::new();
+
+            // 8 unit quaternions: ±1, ±i, ±j, ±k
+            for i in 0..4 {
+                for s in [-1.0, 1.0] {
+                    let mut q = [0.0; 4];
+                    q[i] = s;
+                    quats.push(q);
                 }
             }
-        }
-        // 96: all even permutations of (±φ, ±1, ±1/φ, 0)/2
-        let even_perms: [[usize; 4]; 12] = [
-            [0, 1, 2, 3],
-            [0, 2, 3, 1],
-            [0, 3, 1, 2],
-            [1, 0, 3, 2],
-            [1, 2, 0, 3],
-            [1, 3, 2, 0],
-            [2, 0, 1, 3],
-            [2, 1, 3, 0],
-            [2, 3, 0, 1],
-            [3, 0, 2, 1],
-            [3, 1, 0, 2],
-            [3, 2, 1, 0],
-        ];
-        let base = [phi / 2.0, 0.5, 1.0 / (2.0 * phi), 0.0];
-        for p in even_perms {
-            for s0 in [-1.0, 1.0] {
-                for s1 in [-1.0, 1.0] {
-                    for s2 in [-1.0, 1.0] {
-                        let vals = [s0 * base[0], s1 * base[1], s2 * base[2], base[3]];
-                        let mut q = [0.0; 4];
-                        for i in 0..4 {
-                            q[p[i]] = vals[i];
+            // 16: (±1 ± i ± j ± k)/2
+            for a in [-0.5, 0.5] {
+                for b in [-0.5, 0.5] {
+                    for c in [-0.5, 0.5] {
+                        for d in [-0.5, 0.5] {
+                            quats.push([a, b, c, d]);
                         }
-                        quats.push(q);
                     }
                 }
             }
-        }
-        debug_assert_eq!(quats.len(), 120);
+            // 96: all even permutations of (±φ, ±1, ±1/φ, 0)/2
+            let even_perms: [[usize; 4]; 12] = [
+                [0, 1, 2, 3],
+                [0, 2, 3, 1],
+                [0, 3, 1, 2],
+                [1, 0, 3, 2],
+                [1, 2, 0, 3],
+                [1, 3, 2, 0],
+                [2, 0, 1, 3],
+                [2, 1, 3, 0],
+                [2, 3, 0, 1],
+                [3, 0, 2, 1],
+                [3, 1, 0, 2],
+                [3, 2, 1, 0],
+            ];
+            let base = [phi / 2.0, 0.5, 1.0 / (2.0 * phi), 0.0];
+            for p in even_perms {
+                for s0 in [-1.0, 1.0] {
+                    for s1 in [-1.0, 1.0] {
+                        for s2 in [-1.0, 1.0] {
+                            let vals = [s0 * base[0], s1 * base[1], s2 * base[2], base[3]];
+                            let mut q = [0.0; 4];
+                            for i in 0..4 {
+                                q[p[i]] = vals[i];
+                            }
+                            quats.push(q);
+                        }
+                    }
+                }
+            }
+            debug_assert_eq!(quats.len(), 120);
 
-        // Quotient by ±1: canonicalise the sign (first non-zero
-        // coordinate positive) and deduplicate, leaving one
-        // representative per rotation — 60 in total.
-        let mut seen = std::collections::HashSet::new();
-        let mut nodes = Vec::new();
-        for mut q in quats {
-            if let Some(c) = q.iter().find(|c| c.abs() > 1e-9)
-                && *c < 0.0
-            {
-                q = q.map(|x| -x);
+            // Quotient by ±1: canonicalise the sign (first non-zero
+            // coordinate positive) and deduplicate, leaving one
+            // representative per rotation — 60 in total.
+            let mut seen = std::collections::HashSet::new();
+            let mut nodes = Vec::new();
+            for mut q in quats {
+                if let Some(c) = q.iter().find(|c| c.abs() > 1e-9)
+                    && *c < 0.0
+                {
+                    q = q.map(|x| -x);
+                }
+                if seen.insert(q.map(|c| (c * 1e6).round() as i64)) {
+                    let [w, x, y, z] = q.map(R64);
+                    nodes.push(So3Cover(So3::new(S3(Sphere::new(w, [x, y, z].into())))));
+                }
             }
-            if seen.insert(q.map(|c| (c * 1e6).round() as i64)) {
-                let [w, x, y, z] = q.map(R64);
-                nodes.push(So3Cover(So3::new(S3(Sphere::new(w, [x, y, z].into())))));
-            }
+            debug_assert_eq!(nodes.len(), 60);
+            nodes
         }
-        debug_assert_eq!(nodes.len(), 60);
-        nodes
+    }
+
+    impl NerveComplexParameters<So3<Coords<R64, 3>>, Coords<R64, 3>, So3<Coords<R64, 3>>, So3Cover>
+        for So3Cover
+    {
     }
 }
 
-impl NerveComplexParameters<So3<Coords<R64, 3>>, Coords<R64, 3>, So3<Coords<R64, 3>>, So3Cover>
-    for So3Cover
-{
-}
+#[cfg(feature = "simplicial")]
+pub use simplicial::*;

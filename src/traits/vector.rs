@@ -6,8 +6,8 @@
 //! a lowering map, and [`Nondegenerate`], [`Sesquilinear`], and [`InnerProduct`]
 //! progressively refine its geometry.
 
+use core::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{Zero, real::Real as _};
-use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
 #[cfg(feature = "testing")]
 use super::Chart;
@@ -334,7 +334,7 @@ impl Handedness for Right {
 /// side elected by [`Tensor::Hand`], and [`BothSided`] exposes compatible
 /// actions on both sides. Direct sums take the weaker sidedness through
 /// [`Sidedness::Meet`].
-pub trait Sidedness: Copy + Clone + std::fmt::Debug {
+pub trait Sidedness: Copy + Clone + core::fmt::Debug {
     /// The lesser of this sidedness and the other sidedness.
     type Meet<T: Sidedness>: Sidedness;
     #[doc(hidden)]
@@ -524,13 +524,13 @@ impl<T: Point, const N: usize> Array<T> for [T; N] {
     const N: usize = N;
 
     type Iter<'a>
-        = std::slice::Iter<'a, T>
+        = core::slice::Iter<'a, T>
     where
         Self: 'a,
         T: 'a;
 
     type IterMut<'a>
-        = std::slice::IterMut<'a, T>
+        = core::slice::IterMut<'a, T>
     where
         Self: 'a,
         T: 'a;
@@ -544,7 +544,7 @@ impl<T: Point, const N: usize> Array<T> for [T; N] {
     }
 
     fn from_fn(f: impl FnMut(usize) -> T) -> Self {
-        std::array::from_fn(f)
+        core::array::from_fn(f)
     }
 }
 
@@ -853,19 +853,19 @@ impl<V: Tensor<Action: ActionExists> + Mul<Self::F, Output = Self>> Vector for V
 /// Writing any of the generated implementations manually for the same type will
 /// produce conflicting trait implementations.
 ///
-/// [`Add`]: std::ops::Add
-/// [`Sub`]: std::ops::Sub
-/// [`Neg`]: std::ops::Neg
-/// [`Mul`]: std::ops::Mul
-/// [`Index`]: std::ops::Index
-/// [`IndexMut`]: std::ops::IndexMut
+/// [`Add`]: core::ops::Add
+/// [`Sub`]: core::ops::Sub
+/// [`Neg`]: core::ops::Neg
+/// [`Mul`]: core::ops::Mul
+/// [`Index`]: core::ops::Index
+/// [`IndexMut`]: core::ops::IndexMut
 /// [`Zero`]: num_traits::Zero
-/// [`AsRef`]: std::convert::AsRef
-/// [`AsMut`]: std::convert::AsMut
+/// [`AsRef`]: core::convert::AsRef
+/// [`AsMut`]: core::convert::AsMut
 #[macro_export]
 macro_rules! impl_vector_ops {
     ($target:ty, $($generics:tt)*) => {
-        impl<$($generics)*> std::ops::Add<Self> for $target {
+        impl<$($generics)*> core::ops::Add<Self> for $target {
             type Output = $target;
 
             fn add(self, rhs: Self) -> Self::Output {
@@ -873,7 +873,7 @@ macro_rules! impl_vector_ops {
             }
         }
 
-        impl<$($generics)*> std::ops::Sub<Self> for $target {
+        impl<$($generics)*> core::ops::Sub<Self> for $target {
             type Output = $target;
 
             fn sub(self, rhs: Self) -> Self::Output {
@@ -881,7 +881,7 @@ macro_rules! impl_vector_ops {
             }
         }
 
-        impl<$($generics)*> std::ops::Neg for $target {
+        impl<$($generics)*> core::ops::Neg for $target {
             type Output = $target;
 
             fn neg(self) -> Self::Output {
@@ -889,7 +889,7 @@ macro_rules! impl_vector_ops {
             }
         }
 
-        impl<$($generics)*> std::ops::Mul<<$target as $crate::traits::Tensor>::F> for $target
+        impl<$($generics)*> core::ops::Mul<<$target as $crate::traits::Tensor>::F> for $target
         where
             $target: $crate::traits::Tensor<Action: $crate::traits::ActionExists>,
         {
@@ -913,7 +913,7 @@ macro_rules! impl_vector_ops {
             }
         }
 
-        impl<$($generics)*> std::ops::Index<usize> for $target {
+        impl<$($generics)*> core::ops::Index<usize> for $target {
             type Output = <$target as $crate::traits::Tensor>::F;
 
             fn index(&self, index: usize) -> &Self::Output {
@@ -921,7 +921,7 @@ macro_rules! impl_vector_ops {
             }
         }
 
-        impl<$($generics)*> std::ops::IndexMut<usize> for $target {
+        impl<$($generics)*> core::ops::IndexMut<usize> for $target {
             fn index_mut(&mut self, index: usize) -> &mut Self::Output {
                 &mut self.as_mut()[index]
             }

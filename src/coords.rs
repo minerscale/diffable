@@ -5,7 +5,7 @@
 //! representation to model Euclidean coordinates and spaces such as
 //! [`Minkowski`](crate::spacetime::Minkowski).
 
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 use num_traits::{ConstZero, Zero};
 
@@ -92,7 +92,7 @@ pub(crate) fn array_zip_map<A, B, C, const N: usize>(
     b: [B; N],
     f: fn(&A, &B) -> C,
 ) -> [C; N] {
-    std::array::from_fn(|i| f(&a[i], &b[i]))
+    core::array::from_fn(|i| f(&a[i], &b[i]))
 }
 
 impl_vector_ops!(Coords<F, N, M>, F: Field, const N: usize, const M: usize);
@@ -105,7 +105,7 @@ impl<F: Field, const N: usize, const M: usize> Tensor for Coords<F, N, M> {
     type Array<T: Point> = [T; N];
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
-        Self(std::array::from_fn(f))
+        Self(core::array::from_fn(f))
     }
 }
 

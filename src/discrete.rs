@@ -4,7 +4,7 @@
 //! Grothendieck completion. The latter also acts as the lattice used to form
 //! the circle [`S1`](crate::flat::S1) as a quotient of the real line.
 
-use std::{
+use core::{
     marker::PhantomData,
     ops::{Add, Mul},
 };

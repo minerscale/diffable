@@ -7,14 +7,8 @@ use common::*;
 use diffable::{
     coords::Coords,
     epsilon_metric::R64,
-    flat::{KleinBottle, KleinBottleCover, MyopicTorus, MyopicTorusCover, S1, Torus, TorusCover},
-    group_presentation, test_pseudo_riemannian, test_quotient, test_tangent_bundle,
-    traits::{
-        Chart, InnerProduct,
-        simplicial::{
-            Abelianisation, GroupPresentation, NerveComplex, NerveComplexParameters, Nodes,
-        },
-    },
+    flat::{KleinBottle, S1, Torus},
+    test_pseudo_riemannian, test_quotient, test_tangent_bundle,
 };
 
 use proptest::prelude::*;
@@ -64,120 +58,136 @@ test_pseudo_riemannian!(
     arb_vec2()
 );
 
-#[test]
-fn klein_bottle_fundamental_group() {
-    let presentation = KleinBottleCover::<Coords<R64, 1>, Coords<R64, 2>>::fundamental_group();
+#[cfg(feature = "simplicial")]
+mod simplicial {
+    use super::*;
 
-    group_presentation!(
-        KLEIN_BOTTLE,
-        n_generators = 2,
-        relations = [[(0, false), (0, false), (1, false), (1, false)],]
-    );
+    use diffable::{
+        flat::{KleinBottleCover, MyopicTorus, MyopicTorusCover, TorusCover},
+        group_presentation,
+        traits::{
+            Chart, InnerProduct,
+            simplicial::{
+                Abelianisation, GroupPresentation, NerveComplex, NerveComplexParameters, Nodes,
+            },
+        },
+    };
 
-    assert!(
-        presentation.check_exactly_equal(&KLEIN_BOTTLE),
-        "Expected: {:?}\nActual: {:?}",
-        presentation,
-        KLEIN_BOTTLE
-    );
-}
-
-#[test]
-fn torus_fundamental_group() {
-    let presentation = TorusCover::<Coords<R64, 1>, Coords<R64, 2>>::fundamental_group();
-
-    group_presentation!(
-        TORUS,
-        n_generators = 2,
-        relations = [[(0, false), (1, false), (0, true), (1, true)],]
-    );
-
-    assert!(
-        presentation.check_exactly_equal(&TORUS),
-        "Expected: {:?}\nActual: {:?}",
-        presentation,
-        TORUS
-    );
-}
-
-#[test]
-fn myopic_torus_cover_invariants() {
-    type T = MyopicTorus<Coords<f64, 1>, Coords<f64, 2>>;
-    type Cover = MyopicTorusCover<Coords<f64, 1>, Coords<f64, 2>>;
-    let s = T::s() as f64;
-    let h = 1.0 / s; // lattice spacing
-    let delta_s = 2f64.sqrt() / (2.0 * s); // covering radius
-    let rho = (2f64.sqrt() + 2.0) / (4.0 * s); // node radius, from `sdf`
-    let big_r = 2.0 / s; // myopia radius
-
-    assert!(
-        2.0 * rho < big_r,
-        "2ρ < R: adjacent base points must see each other"
-    );
-    assert!(delta_s < rho, "δ_s < ρ: the cover must actually cover");
-    assert!(h < big_r, "adjacent base points within myopia radius");
-
-    // `covering_radius()` inverts `C = (1+κ)·2δ_s`. If they disagree, `C` was
-    // hardcoded from a different `S` — the bug that cost 512 geodesic flows.
-    let recovered = Cover::covering_radius().unwrap();
-    assert_eq!(R64(recovered), R64(delta_s));
-}
-
-proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10))]
     #[test]
-    fn myopic_torus_geodesic(
-        p in (arb_s1_quotient_f64(), arb_s1_quotient_f64()).prop_map(
-            |(a, b)| Torus::<Coords<f64, 1>, Coords<f64, 2>>::new(a, b)
-        ),
-        q in (arb_s1_quotient_f64(), arb_s1_quotient_f64()).prop_map(
-            |(a, b)| Torus::<Coords<f64, 1>, Coords<f64, 2>>::new(a, b)
-        )) {
+    fn klein_bottle_fundamental_group() {
+        let presentation = KleinBottleCover::<Coords<R64, 1>, Coords<R64, 2>>::fundamental_group();
 
-        type Cover = MyopicTorusCover::<Coords<f64, 1>, Coords<f64, 2>>;
+        group_presentation!(
+            KLEIN_BOTTLE,
+            n_generators = 2,
+            relations = [[(0, false), (0, false), (1, false), (1, false)],]
+        );
 
-        let n = Cover::nodes().len();
-        for i in 0..n {
-            let ns: Vec<_> = Cover::get_neighbors(i).collect();
-            for j in &ns {
-                assert!(Cover::edge_weight(i, *j).is_some(), "{i}-{j} invisible");
-            }
-        }
-
-        let expected_distance = p.to_local(&q).unwrap().norm();
-        let Some(diffable::traits::simplicial::Geodesic {path: _, length, certificate}) =
-            Cover::geodesic_path(&p, &q) else {
-                panic!("no geodesic found")
-            };
-
-        prop_assert!(certificate.is_global(), "not certified as global minimum {certificate:?}");
-        prop_assert_eq!(R64(length), R64(expected_distance));
+        assert!(
+            presentation.check_exactly_equal(&KLEIN_BOTTLE),
+            "Expected: {:?}\nActual: {:?}",
+            presentation,
+            KLEIN_BOTTLE
+        );
     }
-}
 
-#[test]
-fn invariant_factor_reporting_preserves_generator_images() {
-    // ℤ² / ⟨(2, 0), (0, 3)⟩ ≅ ℤ/2 ⊕ ℤ/3 ≅ ℤ/6.
-    let abel = Abelianisation::from_relations(2, vec![vec![2, 0], vec![0, 3]]);
+    #[test]
+    fn torus_fundamental_group() {
+        let presentation = TorusCover::<Coords<R64, 1>, Coords<R64, 2>>::fundamental_group();
 
-    let zero = abel.identity();
+        group_presentation!(
+            TORUS,
+            n_generators = 2,
+            relations = [[(0, false), (1, false), (0, true), (1, true)],]
+        );
 
-    let a = abel.extend(&zero, Some((0, false)));
-    let b = abel.extend(&zero, Some((1, false)));
+        assert!(
+            presentation.check_exactly_equal(&TORUS),
+            "Expected: {:?}\nActual: {:?}",
+            presentation,
+            TORUS
+        );
+    }
 
-    // Neither original generator is zero.
-    assert_ne!(a, zero);
-    assert_ne!(b, zero);
+    #[test]
+    fn myopic_torus_cover_invariants() {
+        type T = MyopicTorus<Coords<f64, 1>, Coords<f64, 2>>;
+        type Cover = MyopicTorusCover<Coords<f64, 1>, Coords<f64, 2>>;
+        let s = T::s() as f64;
+        let h = 1.0 / s; // lattice spacing
+        let delta_s = 2f64.sqrt() / (2.0 * s); // covering radius
+        let rho = (2f64.sqrt() + 2.0) / (4.0 * s); // node radius, from `sdf`
+        let big_r = 2.0 / s; // myopia radius
 
-    // The first generator has order two.
-    let two_a = abel.extend(&a, Some((0, false)));
-    assert_eq!(two_a, zero);
+        assert!(
+            2.0 * rho < big_r,
+            "2ρ < R: adjacent base points must see each other"
+        );
+        assert!(delta_s < rho, "δ_s < ρ: the cover must actually cover");
+        assert!(h < big_r, "adjacent base points within myopia radius");
 
-    // The second generator has order three.
-    let two_b = abel.extend(&b, Some((1, false)));
-    let three_b = abel.extend(&two_b, Some((1, false)));
-    assert_eq!(three_b, zero);
+        // `covering_radius()` inverts `C = (1+κ)·2δ_s`. If they disagree, `C` was
+        // hardcoded from a different `S` — the bug that cost 512 geodesic flows.
+        let recovered = Cover::covering_radius().unwrap();
+        assert_eq!(R64(recovered), R64(delta_s));
+    }
 
-    // Public reporting remains canonical.
-    assert_eq!(abel.torsion(), vec![6]);
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(10))]
+        #[test]
+        fn myopic_torus_geodesic(
+            p in (arb_s1_quotient_f64(), arb_s1_quotient_f64()).prop_map(
+                |(a, b)| Torus::<Coords<f64, 1>, Coords<f64, 2>>::new(a, b)
+            ),
+            q in (arb_s1_quotient_f64(), arb_s1_quotient_f64()).prop_map(
+                |(a, b)| Torus::<Coords<f64, 1>, Coords<f64, 2>>::new(a, b)
+            )) {
+
+            type Cover = MyopicTorusCover::<Coords<f64, 1>, Coords<f64, 2>>;
+
+            let n = Cover::nodes().len();
+            for i in 0..n {
+                let ns: Vec<_> = Cover::get_neighbors(i).collect();
+                for j in &ns {
+                    assert!(Cover::edge_weight(i, *j).is_some(), "{i}-{j} invisible");
+                }
+            }
+
+            let expected_distance = p.to_local(&q).unwrap().norm();
+            let Some(diffable::traits::simplicial::Geodesic {path: _, length, certificate}) =
+                Cover::geodesic_path(&p, &q) else {
+                    panic!("no geodesic found")
+                };
+
+            prop_assert!(certificate.is_global(), "not certified as global minimum {certificate:?}");
+            prop_assert_eq!(R64(length), R64(expected_distance));
+        }
+    }
+
+    #[test]
+    fn invariant_factor_reporting_preserves_generator_images() {
+        // ℤ² / ⟨(2, 0), (0, 3)⟩ ≅ ℤ/2 ⊕ ℤ/3 ≅ ℤ/6.
+        let abel = Abelianisation::from_relations(2, vec![vec![2, 0], vec![0, 3]]);
+
+        let zero = abel.identity();
+
+        let a = abel.extend(&zero, Some((0, false)));
+        let b = abel.extend(&zero, Some((1, false)));
+
+        // Neither original generator is zero.
+        assert_ne!(a, zero);
+        assert_ne!(b, zero);
+
+        // The first generator has order two.
+        let two_a = abel.extend(&a, Some((0, false)));
+        assert_eq!(two_a, zero);
+
+        // The second generator has order three.
+        let two_b = abel.extend(&b, Some((1, false)));
+        let three_b = abel.extend(&two_b, Some((1, false)));
+        assert_eq!(three_b, zero);
+
+        // Public reporting remains canonical.
+        assert_eq!(abel.torsion(), vec![6]);
+    }
 }

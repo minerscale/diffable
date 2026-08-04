@@ -6,6 +6,8 @@
 //! feature-gated property-test suites in `testing`.
 
 pub mod calculus;
+
+#[cfg(feature = "simplicial")]
 pub mod simplicial;
 
 mod algebra;

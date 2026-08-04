@@ -350,12 +350,27 @@
 //!
 //! Optional features:
 //!
-//! - `testing` — property-testing macros and tolerance-aware real scalars
-//! - `all` — all optional features
+//! - `std` *(enabled by default)* — enables standard-library integration.
+//! - `simplicial` *(enabled by default; implies `std`)* — enables finite
+//!   covers, nerve complexes, fundamental-group recovery, and certified global
+//!   geodesic search.
+//! - `testing` *(implies `std`)* — enables the property-testing macros and
+//!   tolerance-aware real scalars. It does not enable `simplicial`, so the core
+//!   algebraic and differential hierarchy can be tested independently.
+//! - `all` — enables `simplicial` and `testing`.
+//!
+//! For a core-only `no_std` build, disable default features:
+//!
+//! ```toml
+//! diffable = { version = "0.4", default-features = false }
+//! ```
 //!
 //! Licensed under either MIT or Apache-2.0.
 //!
 #![allow(clippy::needless_range_loop, clippy::type_complexity)]
+#![no_std]
+#[cfg(feature = "std")]
+extern crate std;
 
 pub mod complex;
 pub mod coords;

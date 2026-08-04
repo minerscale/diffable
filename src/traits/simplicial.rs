@@ -6,7 +6,11 @@
 //! [`GroupPresentation`]; the same finite structure drives certified global
 //! geodesic search through [`Geodesic`] and [`GeodesicCertificate`].
 
-use std::collections::{BinaryHeap, HashMap};
+use std::{
+    collections::{BinaryHeap, HashMap},
+    vec,
+    vec::Vec,
+};
 
 use num_traits::{NumCast, One, ToPrimitive, Zero, real::Real as _};
 
@@ -543,8 +547,10 @@ macro_rules! group_presentation {
 // ============================================================
 mod nodes_cache {
     use std::any::{Any, TypeId};
+    use std::boxed::Box;
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
+    use std::vec::Vec;
 
     fn registry() -> &'static Mutex<HashMap<(TypeId, TypeId), &'static (dyn Any + Send + Sync)>> {
         type Registry =

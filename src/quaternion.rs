@@ -4,7 +4,7 @@
 //! [`Field`], exercising multiplication order, handedness, duality, and
 //! sesquilinear forms throughout the library.
 
-use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
+use core::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
 use num_traits::{Inv, One, Zero};
 

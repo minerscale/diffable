@@ -39,9 +39,9 @@ use num_traits::{Euclid, Inv, ToPrimitive, real::Real as _};
 /// [`Chart`]: crate::traits::Chart
 /// [`Group`]: crate::traits::Group
 /// [`Real`]: crate::traits::Real
-pub trait Point: Clone + std::fmt::Debug {}
+pub trait Point: Clone + core::fmt::Debug {}
 
-impl<T: Clone + std::fmt::Debug> Point for T {}
+impl<T: Clone + core::fmt::Debug> Point for T {}
 
 /// A scalar field for use as the coordinate type of a Euclidean space.
 ///
@@ -83,8 +83,8 @@ impl<T: Clone + std::fmt::Debug> Point for T {}
 ///
 /// [`R64`]: crate::epsilon_metric::R64
 /// [`R32`]: crate::epsilon_metric::R32
-pub trait RealNum: num_traits::real::Real + Euclid + std::fmt::Debug {}
-impl<R: num_traits::real::Real + Euclid + std::fmt::Debug> RealNum for R {}
+pub trait RealNum: num_traits::real::Real + Euclid + core::fmt::Debug {}
+impl<R: num_traits::real::Real + Euclid + core::fmt::Debug> RealNum for R {}
 impl<R: RealNum> Field for R
 where
     NonZero<R>: Inv<Output = NonZero<R>>,

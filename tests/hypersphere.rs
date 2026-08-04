@@ -8,14 +8,10 @@ use common::*;
 use diffable::{
     coords::Coords,
     epsilon_metric::R64,
-    group_presentation,
-    hypersphere::{S0, S1Cover, S3, So3, So3Cover, Sphere, Stereographic, UnitComplex},
-    test_chart, test_exp_map, test_group, test_metric, test_pseudo_riemannian, test_quotient,
+    hypersphere::{S0, S3, So3, Sphere, Stereographic, UnitComplex},
+    test_chart, test_group, test_metric, test_pseudo_riemannian, test_quotient,
     test_tangent_bundle,
-    traits::{
-        Chart, ExpMap, Group, InnerProduct, LieGroup, Quotient,
-        simplicial::{GroupPresentation, NerveComplex, NerveComplexParameters, Nodes},
-    },
+    traits::{Chart, Group, InnerProduct, LieGroup, Quotient},
 };
 
 use num_traits::{One, Zero};
@@ -138,8 +134,6 @@ test_quotient!(
     arb_root_of_unity()
 );
 
-test_exp_map!(so3_cover, So3Cover, arb_so3());
-
 // ---------------------------------------------------------------------------
 // Bespoke tests: properties specific to these manifolds, not general laws
 // ---------------------------------------------------------------------------
@@ -225,101 +219,117 @@ fn dirac_belt_trick() {
     );
 }
 
-#[test]
-fn s1_fundamental_group() {
-    let presentation = S1Cover::fundamental_group();
+#[cfg(feature = "simplicial")]
+mod simplicial {
+    use super::*;
+    use diffable::{
+        group_presentation,
+        hypersphere::{S1Cover, So3Cover},
+        test_exp_map,
+        traits::{
+            ExpMap,
+            simplicial::{GroupPresentation, NerveComplex, NerveComplexParameters, Nodes},
+        },
+    };
 
-    group_presentation!(S1, n_generators = 1, relations = []);
+    test_exp_map!(so3_cover, So3Cover, arb_so3());
 
-    assert!(
-        presentation.check_exactly_equal(&S1),
-        "Expected: {:?}\nActual: {:?}",
-        presentation,
-        S1
-    );
-}
+    #[test]
+    fn s1_fundamental_group() {
+        let presentation = S1Cover::fundamental_group();
 
-#[test]
-fn so3_fundamental_group() {
-    let presentation = So3Cover::fundamental_group();
+        group_presentation!(S1, n_generators = 1, relations = []);
 
-    group_presentation!(
-        SO3,
-        n_generators = 1,
-        relations = [[(0, false), (0, false)],]
-    );
-
-    assert!(
-        presentation.check_exactly_equal(&SO3),
-        "Expected: {:?}\nActual: {:?}",
-        presentation,
-        SO3
-    );
-}
-
-#[test]
-fn so3_check_graph_structure() {
-    // The nerve of the So3Cover ball cover is the hemi-600-cell: the
-    // 60-vertex vertex-transitive triangulation of RP^3 obtained from the
-    // boundary complex of the 600-cell by identifying antipodal vertices.
-    // Its f-vector is (60, 360, 600, 300); here we verify the 1- and
-    // 2-skeleton, which is what fundamental_group consumes.
-    //
-    // (Why not Walkup's 11-vertex RP^3_11? Its graph is K_11 minus 4 edges,
-    // which contains ~129 triangles while the complex has only 80 2-faces —
-    // so no cover whose 2-simplices are detected as mutually-overlapping
-    // triples can ever reproduce it. The hemi-600-cell is "flag" in the
-    // relevant sense: mutually overlapping triples of balls all genuinely
-    // share a point, and every such triple is a 2-face.)
-    let nodes = So3Cover::nodes();
-    let n = nodes.len();
-    assert_eq!(n, 60);
-
-    let neighbors: Vec<Vec<usize>> = (0..n)
-        .map(|i| So3Cover::get_neighbors(i).collect())
-        .collect();
-
-    // vertex-transitive: every node has exactly 12 neighbours,
-    // at distance pi/5 (the 600-cell edge length)
-    for (i, nbrs) in neighbors.iter().enumerate() {
-        assert_eq!(nbrs.len(), 12, "node {} has wrong degree", i);
-        for &j in nbrs {
-            let d = nodes[i].local_distance(&nodes[j].base_point()).unwrap();
-            assert!(
-                d == R64(std::f64::consts::PI / 5.0),
-                "edge {}-{} has length {} != pi/5",
-                i,
-                j,
-                d
-            );
-        }
+        assert!(
+            presentation.check_exactly_equal(&S1),
+            "Expected: {:?}\nActual: {:?}",
+            presentation,
+            S1
+        );
     }
 
-    // adjacency is symmetric
-    for i in 0..n {
-        for &j in &neighbors[i] {
-            assert!(neighbors[j].contains(&i), "asymmetric edge {}-{}", i, j);
-        }
+    #[test]
+    fn so3_fundamental_group() {
+        let presentation = So3Cover::fundamental_group();
+
+        group_presentation!(
+            SO3,
+            n_generators = 1,
+            relations = [[(0, false), (0, false)],]
+        );
+
+        assert!(
+            presentation.check_exactly_equal(&SO3),
+            "Expected: {:?}\nActual: {:?}",
+            presentation,
+            SO3
+        );
     }
 
-    let mut edges = std::collections::HashSet::new();
-    let mut triangles = std::collections::HashSet::new();
-    for i in 0..n {
-        for &j in &neighbors[i] {
-            if j > i {
-                edges.insert((i, j));
-            }
-            for &k in &neighbors[i] {
-                if k <= j {
-                    continue;
-                }
-                if j > i && neighbors[j].contains(&k) {
-                    triangles.insert((i, j, k));
-                }
+    #[test]
+    fn so3_check_graph_structure() {
+        // The nerve of the So3Cover ball cover is the hemi-600-cell: the
+        // 60-vertex vertex-transitive triangulation of RP^3 obtained from the
+        // boundary complex of the 600-cell by identifying antipodal vertices.
+        // Its f-vector is (60, 360, 600, 300); here we verify the 1- and
+        // 2-skeleton, which is what fundamental_group consumes.
+        //
+        // (Why not Walkup's 11-vertex RP^3_11? Its graph is K_11 minus 4 edges,
+        // which contains ~129 triangles while the complex has only 80 2-faces —
+        // so no cover whose 2-simplices are detected as mutually-overlapping
+        // triples can ever reproduce it. The hemi-600-cell is "flag" in the
+        // relevant sense: mutually overlapping triples of balls all genuinely
+        // share a point, and every such triple is a 2-face.)
+        let nodes = So3Cover::nodes();
+        let n = nodes.len();
+        assert_eq!(n, 60);
+
+        let neighbors: Vec<Vec<usize>> = (0..n)
+            .map(|i| So3Cover::get_neighbors(i).collect())
+            .collect();
+
+        // vertex-transitive: every node has exactly 12 neighbours,
+        // at distance pi/5 (the 600-cell edge length)
+        for (i, nbrs) in neighbors.iter().enumerate() {
+            assert_eq!(nbrs.len(), 12, "node {} has wrong degree", i);
+            for &j in nbrs {
+                let d = nodes[i].local_distance(&nodes[j].base_point()).unwrap();
+                assert!(
+                    d == R64(std::f64::consts::PI / 5.0),
+                    "edge {}-{} has length {} != pi/5",
+                    i,
+                    j,
+                    d
+                );
             }
         }
-    }
 
-    assert_eq!(edges.len(), 360);
-    assert_eq!(triangles.len(), 600);
+        // adjacency is symmetric
+        for i in 0..n {
+            for &j in &neighbors[i] {
+                assert!(neighbors[j].contains(&i), "asymmetric edge {}-{}", i, j);
+            }
+        }
+
+        let mut edges = std::collections::HashSet::new();
+        let mut triangles = std::collections::HashSet::new();
+        for i in 0..n {
+            for &j in &neighbors[i] {
+                if j > i {
+                    edges.insert((i, j));
+                }
+                for &k in &neighbors[i] {
+                    if k <= j {
+                        continue;
+                    }
+                    if j > i && neighbors[j].contains(&k) {
+                        triangles.insert((i, j, k));
+                    }
+                }
+            }
+        }
+
+        assert_eq!(edges.len(), 360);
+        assert_eq!(triangles.len(), 600);
+    }
 }
