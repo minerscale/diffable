@@ -316,7 +316,7 @@
 //!
 //! ```toml
 //! [dev-dependencies]
-//! diffable = { version = "0.2", features = ["testing"] }
+//! diffable = { version = "0.4", features = ["testing"] }
 //! ```
 //!
 //! The testing module includes tolerance-aware [`R32`](epsilon_metric::R32) and
