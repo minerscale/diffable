@@ -3,9 +3,94 @@
 use diffable::{
     complex::Complex,
     coords::Coords,
-    traits::{Euclidean, Field, Form, Sinister, Tensor, Vector, calculus::d},
+    traits::{
+        Dual, Euclidean, Field, Form, Right, Sinister, Tensor, Vector,
+        calculus::{Contract, OnLeft, Reassociate, TensorProduct, d},
+    },
 };
 use num_traits::Zero;
+
+#[test]
+fn reassociation_is_selected_by_a_tree_path() {
+    type A = Coords<f64, 2>;
+    type B = Dual<Coords<f64, 3>>;
+    type C = Dual<Coords<f64, 5>>;
+    type LeftAssociated = TensorProduct<TensorProduct<A, B>, C>;
+
+    let tensor = LeftAssociated::from_fn(|i| i as f64);
+    let right = tensor.reassociate();
+    let left = right.reassociate();
+
+    assert!(left.iter().copied().eq((0..30).map(|i| i as f64)));
+
+    type Outer = TensorProduct<LeftAssociated, Dual<Coords<f64, 7>>>;
+    let tensor = Outer::from_fn(|i| i as f64);
+
+    let reassociated = tensor.reassociate::<OnLeft<Right>>();
+
+    assert!(reassociated.iter().copied().eq((0..210).map(|i| i as f64)));
+}
+
+#[test]
+fn contraction_is_selected_by_the_same_tree_paths() {
+    type V = Coords<f64, 2>;
+    type W = Coords<f64, 3>;
+    type X = Coords<f64, 5>;
+
+    let endomorphism = TensorProduct::<V, Dual<V>>::from_iter([1.0, 2.0, 3.0, 4.0]);
+    let trace = endomorphism.contract();
+    assert_eq!(trace, 5.0);
+
+    type Tensor = TensorProduct<TensorProduct<W, Dual<W>>, Dual<X>>;
+    let tensor = Tensor::from_fn(|i| i as f64);
+    let contracted = tensor.contract();
+
+    // For each X* coordinate k, sum (i, i, k) over the W/W* pair.
+    assert!(
+        contracted
+            .iter()
+            .copied()
+            .eq([60.0, 63.0, 66.0, 69.0, 72.0])
+    );
+
+    type Opposite = TensorProduct<Dual<Sinister<V>>, Sinister<V>>;
+    let tensor = Opposite::from_iter([1.0, 2.0, 3.0, 4.0]);
+    let trace = tensor.contract();
+    assert_eq!(trace, 5.0);
+
+    type OnTheRight = TensorProduct<W, Sinister<TensorProduct<V, Dual<V>>>>;
+    let tensor = OnTheRight::from_fn(|i| i as f64);
+    let contracted = tensor.contract();
+    assert!(contracted.iter().copied().eq([3.0, 11.0, 19.0]));
+
+    type Deep = TensorProduct<TensorProduct<TensorProduct<V, Dual<V>>, Dual<W>>, Dual<X>>;
+    let tensor = Deep::from_fn(|i| i as f64);
+    let contracted = tensor.contract();
+
+    assert!(
+        contracted
+            .iter()
+            .copied()
+            .eq((0..W::N * X::N).map(|i| 45.0 + 2.0 * i as f64))
+    );
+}
+
+#[test]
+fn reassociation_exposes_the_other_contraction() {
+    type V = Coords<f64, 2>;
+    type Tensor = TensorProduct<TensorProduct<V, Dual<V>>, Sinister<V>>;
+
+    let tensor = Tensor::from_fn(|i| i as f64);
+
+    // Contract (V ⊗ V*) first.
+    let first_pair = tensor.contract();
+
+    // Reassociate to V ⊗ (V* ⊗ V), then contract the second pair.
+    let second_pair = tensor.reassociate().contract();
+
+    assert!(first_pair.0.0.iter().copied().eq([6.0, 8.0]));
+    assert!(second_pair.iter().copied().eq([3.0, 11.0]));
+}
 
 #[test]
 fn differential_of_scalar_linear_function() {

@@ -31,8 +31,8 @@ use crate::{
     impl_vector_ops,
     traits::{
         ActionExists, Array, BothSided, CField, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap,
-        Field, Form, Handedness, Interval, Left, Metric, NonZero, Nondegenerate, Point, Real,
-        Right, Sesquilinear, Sidedness, Sinister, TangentBundle, Tensor, TensorProductAction,
+        Field, Form, Handedness, Interval, Left, Metric, NonZero, Nondegenerate, OneSided, Point,
+        Real, Right, Sesquilinear, Sidedness, Sinister, TangentBundle, Tensor, TensorProductAction,
         Vector,
     },
 };
@@ -324,6 +324,349 @@ impl_vector_ops!(
     U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
     V: Tensor<F = U::F, Hand = Left, Action: ActionExists>,
 );
+
+/// Descends into the left operand of a tensor product.
+#[derive(Debug, Copy, Clone)]
+pub struct OnLeft<P>(PhantomData<P>);
+
+/// Descends into the right operand of a tensor product.
+#[derive(Debug, Copy, Clone)]
+pub struct OnRight<P>(PhantomData<P>);
+
+/// Passes through an explicitly selected [`Sinister`] presentation.
+#[derive(Debug, Copy, Clone)]
+pub struct ThroughSinister<P>(PhantomData<P>);
+
+/// Applies one reassociation at a node selected by a type-level tree path.
+///
+/// Tensor subtrees are atomic unless the path explicitly enters them. Thus a
+/// `TensorProduct<A, B>` may be treated as one vector space by an operation at
+/// its parent, or opened by [`OnLeft`] and [`OnRight`] when its construction is
+/// relevant.
+pub trait ReassociateKernel<P>: Tensor {
+    /// The same tensor factors and coordinate order in the new presentation.
+    type Reassociated: Tensor<F = Self::F, Hand = Self::Hand, Action = Self::Action>;
+
+    /// Performs the selected coordinate-preserving associativity isomorphism.
+    fn reassociate_kernel(self) -> Self::Reassociated;
+}
+
+pub trait Reassociate {
+    fn reassociate<P>(self) -> <Self as ReassociateKernel<P>>::Reassociated
+    where
+        Self: ReassociateKernel<P>,
+    {
+        <Self as ReassociateKernel<P>>::reassociate_kernel(self)
+    }
+}
+
+impl<T> Reassociate for T {}
+
+impl<A, B, C> ReassociateKernel<Right> for TensorProduct<TensorProduct<A, B>, C>
+where
+    A: Tensor<Hand = Right, Action = BothSided>,
+    B: Tensor<F = A::F, Hand = Left, Action = BothSided>,
+    C: Tensor<F = A::F, Hand = Left, Action = BothSided>,
+{
+    type Reassociated = TensorProduct<A, Sinister<TensorProduct<Sinister<B>, C>>>;
+
+    fn reassociate_kernel(self) -> Self::Reassociated {
+        Self::Reassociated::from_fn(|i| self[i])
+    }
+}
+
+impl<A, B, C> ReassociateKernel<Left> for TensorProduct<A, Sinister<TensorProduct<Sinister<B>, C>>>
+where
+    A: Tensor<Hand = Right, Action = BothSided>,
+    B: Tensor<F = A::F, Hand = Left, Action = BothSided>,
+    C: Tensor<F = A::F, Hand = Left, Action = BothSided>,
+{
+    type Reassociated = TensorProduct<TensorProduct<A, B>, C>;
+
+    fn reassociate_kernel(self) -> Self::Reassociated {
+        Self::Reassociated::from_fn(|i| self[i])
+    }
+}
+
+impl<A, B, P> ReassociateKernel<OnLeft<P>> for TensorProduct<A, B>
+where
+    A: Tensor<Hand = Right, Action: TensorProductAction<B::Action>> + ReassociateKernel<P>,
+    B: Tensor<F = A::F, Hand = Left, Action: ActionExists>,
+    <A as ReassociateKernel<P>>::Reassociated: Tensor<F = A::F, Hand = Right, Action = A::Action>,
+{
+    type Reassociated = TensorProduct<<A as ReassociateKernel<P>>::Reassociated, B>;
+
+    fn reassociate_kernel(self) -> Self::Reassociated {
+        Self::Reassociated::from_fn(|i| self[i])
+    }
+}
+
+impl<A, B, P> ReassociateKernel<OnRight<P>> for TensorProduct<A, B>
+where
+    A: Tensor<Hand = Right, Action: TensorProductAction<B::Action>>,
+    B: Tensor<F = A::F, Hand = Left, Action: ActionExists> + ReassociateKernel<P>,
+    <B as ReassociateKernel<P>>::Reassociated: Tensor<F = A::F, Hand = Left, Action = B::Action>,
+{
+    type Reassociated = TensorProduct<A, <B as ReassociateKernel<P>>::Reassociated>;
+
+    fn reassociate_kernel(self) -> Self::Reassociated {
+        Self::Reassociated::from_fn(|i| self[i])
+    }
+}
+
+impl<T, P> ReassociateKernel<ThroughSinister<P>> for Sinister<T>
+where
+    T: Tensor<Action = BothSided> + ReassociateKernel<P>,
+    <T as ReassociateKernel<P>>::Reassociated: Tensor<F = T::F, Hand = T::Hand, Action = BothSided>,
+{
+    type Reassociated = Sinister<<T as ReassociateKernel<P>>::Reassociated>;
+
+    fn reassociate_kernel(self) -> Self::Reassociated {
+        Self::Reassociated::from_fn(|i| self[i])
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Here {}
+
+pub trait Contract: Tensor {
+    fn contract<P>(
+        self,
+    ) -> <<Self as ContractKernel<P>>::Shape as ContractionShape<Self::F>>::Output
+    where
+        Self: ContractKernel<P>,
+    {
+        <<Self as ContractKernel<P>>::Shape as ContractionShape<Self::F>>::from_fn(|output| {
+            (0..<Self as ContractKernel<P>>::CONTRACTED_N).fold(
+                Self::F::zero(),
+                |sum, contracted| {
+                    sum + self[<Self as ContractKernel<P>>::source_index(output, contracted)]
+                },
+            )
+        })
+    }
+}
+
+impl<T: Tensor> Contract for T {}
+
+#[doc(hidden)]
+pub trait ContractionShape<F: Field> {
+    type Output;
+
+    fn from_fn(f: impl FnMut(usize) -> F) -> Self::Output;
+}
+
+#[doc(hidden)]
+pub enum ScalarContraction {}
+
+#[doc(hidden)]
+pub struct TensorContraction<T: Tensor>(PhantomData<T>);
+
+#[doc(hidden)]
+pub trait SinisterContraction<F: Field>: ContractionShape<F> {
+    type Shape: ContractionShape<F>;
+}
+
+impl<F: Field> SinisterContraction<F> for ScalarContraction {
+    type Shape = ScalarContraction;
+}
+
+impl<F: Field, T: Tensor<F = F, Action = BothSided>> SinisterContraction<F>
+    for TensorContraction<T>
+{
+    type Shape = TensorContraction<Sinister<T>>;
+}
+
+impl<F: Field> ContractionShape<F> for ScalarContraction {
+    type Output = F;
+
+    fn from_fn(mut f: impl FnMut(usize) -> F) -> Self::Output {
+        f(0)
+    }
+}
+
+impl<F: Field, T: Tensor<F = F>> ContractionShape<F> for TensorContraction<T> {
+    type Output = T;
+
+    fn from_fn(f: impl FnMut(usize) -> F) -> Self::Output {
+        T::from_fn(f)
+    }
+}
+
+#[doc(hidden)]
+pub trait AppendContractionRight<F: Field, B: Tensor<F = F>>: ContractionShape<F> {
+    type Shape: ContractionShape<F>;
+
+    fn split_output(index: usize) -> (usize, usize);
+}
+
+#[doc(hidden)]
+pub trait AppendScalarContractionRight<F: Field, B: Tensor<F = F>>: Sidedness {
+    type Shape: ContractionShape<F>;
+}
+
+impl<F: Field, B: Tensor<F = F, Hand = Left, Action = OneSided>> AppendScalarContractionRight<F, B>
+    for OneSided
+{
+    type Shape = TensorContraction<B>;
+}
+
+impl<F: Field, B: Tensor<F = F, Hand = Left, Action = BothSided>> AppendScalarContractionRight<F, B>
+    for BothSided
+{
+    type Shape = TensorContraction<Sinister<B>>;
+}
+
+impl<F, B> AppendContractionRight<F, B> for ScalarContraction
+where
+    F: Field,
+    B: Tensor<F = F, Hand = Left>,
+    B::Action: AppendScalarContractionRight<F, B>,
+{
+    type Shape = <B::Action as AppendScalarContractionRight<F, B>>::Shape;
+
+    fn split_output(index: usize) -> (usize, usize) {
+        (0, index)
+    }
+}
+
+impl<F, A, B> AppendContractionRight<F, B> for TensorContraction<A>
+where
+    F: Field,
+    A: Tensor<F = F, Hand = Right, Action: TensorProductAction<B::Action>>,
+    B: Tensor<F = F, Hand = Left, Action: ActionExists>,
+{
+    type Shape = TensorContraction<TensorProduct<A, B>>;
+
+    fn split_output(index: usize) -> (usize, usize) {
+        (index / B::N, index % B::N)
+    }
+}
+
+#[doc(hidden)]
+pub trait AppendContractionLeft<F: Field, A: Tensor<F = F>>: ContractionShape<F> {
+    type Shape: ContractionShape<F>;
+
+    fn split_output(index: usize) -> (usize, usize);
+}
+
+impl<F: Field, A: Tensor<F = F>> AppendContractionLeft<F, A> for ScalarContraction {
+    type Shape = TensorContraction<A>;
+
+    fn split_output(index: usize) -> (usize, usize) {
+        (index, 0)
+    }
+}
+
+impl<F, A, B> AppendContractionLeft<F, A> for TensorContraction<B>
+where
+    F: Field,
+    A: Tensor<Hand = Right, F = F, Action: TensorProductAction<B::Action>>,
+    B: Tensor<Hand = Left, F = F, Action: ActionExists>,
+{
+    type Shape = TensorContraction<TensorProduct<A, B>>;
+
+    fn split_output(index: usize) -> (usize, usize) {
+        (index / B::N, index % B::N)
+    }
+}
+
+#[doc(hidden)]
+pub trait ContractKernel<P>: Tensor {
+    type Shape: ContractionShape<Self::F>;
+    const CONTRACTED_N: usize;
+
+    fn source_index(output: usize, contracted: usize) -> usize;
+}
+
+#[doc(hidden)]
+pub trait ContractibleWith<Rhs: Tensor<F = Self::F>>: Tensor {}
+
+impl<V> ContractibleWith<Dual<V>> for V
+where
+    V: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V::Action: ActionExists,
+{
+}
+
+impl<V> ContractibleWith<V> for Dual<V>
+where
+    V: Tensor<Hand = Left, Action: ActionExists>,
+    V::Action: TensorProductAction<V::Action>,
+{
+}
+
+impl<V> ContractibleWith<Sinister<V>> for Sinister<Dual<V>> where
+    V: Tensor<Hand = Right, Action = BothSided>
+{
+}
+
+impl<V> ContractibleWith<Sinister<Dual<V>>> for Sinister<V> where
+    V: Tensor<Hand = Left, Action = BothSided>
+{
+}
+
+impl<A, B> ContractKernel<Here> for TensorProduct<A, B>
+where
+    A: Tensor<Hand = Right, Action: TensorProductAction<B::Action>> + ContractibleWith<B>,
+    B: Tensor<F = A::F, Hand = Left, Action: ActionExists>,
+{
+    type Shape = ScalarContraction;
+    const CONTRACTED_N: usize = A::N;
+
+    fn source_index(_output: usize, contracted: usize) -> usize {
+        contracted * B::N + contracted
+    }
+}
+
+impl<A, B, P> ContractKernel<OnLeft<P>> for TensorProduct<A, B>
+where
+    A: Tensor<Hand = Right, Action: TensorProductAction<B::Action>> + ContractKernel<P>,
+    B: Tensor<F = A::F, Hand = Left, Action: ActionExists>,
+    <A as ContractKernel<P>>::Shape: AppendContractionRight<A::F, B>,
+{
+    type Shape = <<A as ContractKernel<P>>::Shape as AppendContractionRight<A::F, B>>::Shape;
+    const CONTRACTED_N: usize = <A as ContractKernel<P>>::CONTRACTED_N;
+
+    fn source_index(output: usize, contracted: usize) -> usize {
+        let (left, right) =
+            <<A as ContractKernel<P>>::Shape as AppendContractionRight<A::F, B>>::split_output(
+                output,
+            );
+        <A as ContractKernel<P>>::source_index(left, contracted) * B::N + right
+    }
+}
+
+impl<A, B, P> ContractKernel<OnRight<P>> for TensorProduct<A, B>
+where
+    A: Tensor<Hand = Right, Action: TensorProductAction<B::Action>>,
+    B: Tensor<F = A::F, Hand = Left, Action: ActionExists> + ContractKernel<P>,
+    <B as ContractKernel<P>>::Shape: AppendContractionLeft<A::F, A>,
+{
+    type Shape = <<B as ContractKernel<P>>::Shape as AppendContractionLeft<A::F, A>>::Shape;
+    const CONTRACTED_N: usize = <B as ContractKernel<P>>::CONTRACTED_N;
+
+    fn source_index(output: usize, contracted: usize) -> usize {
+        let (left, right) =
+            <<B as ContractKernel<P>>::Shape as AppendContractionLeft<A::F, A>>::split_output(
+                output,
+            );
+        left * B::N + <B as ContractKernel<P>>::source_index(right, contracted)
+    }
+}
+
+impl<T, P> ContractKernel<ThroughSinister<P>> for Sinister<T>
+where
+    T: Tensor<Action = BothSided> + ContractKernel<P>,
+    <T as ContractKernel<P>>::Shape: SinisterContraction<T::F>,
+{
+    type Shape = <<T as ContractKernel<P>>::Shape as SinisterContraction<T::F>>::Shape;
+    const CONTRACTED_N: usize = <T as ContractKernel<P>>::CONTRACTED_N;
+
+    fn source_index(output: usize, contracted: usize) -> usize {
+        <T as ContractKernel<P>>::source_index(output, contracted)
+    }
+}
 
 type HomOf<BT, FT> = TensorProduct<FT, Dual<BT>>;
 
