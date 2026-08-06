@@ -548,6 +548,52 @@ impl<T: Point, const N: usize> Array<T> for [T; N] {
     }
 }
 
+impl<V: Tensor<Action = BothSided>> Sinister<Sinister<V>> {
+    /// The enemy of my enemy is my friend.
+    /// Dancing with two left feet.
+    /// Two wrongs make a right.
+    /// You get the point.
+    pub fn collapse(self: Self) -> V {
+        self.0.0
+    }
+}
+
+impl<V: Tensor> Dual<Dual<V>> {
+    /// The canonical identification `V** ≅ V`, collapsing a twice-dualised
+    /// vector back to `V`.
+    ///
+    /// This is the *evaluation* isomorphism `v ↦ (φ ↦ φ(v))`, which exists for
+    /// any finite-dimensional space with no dependence on a metric or
+    /// nondegeneracy — every [`Tensor`] qualifies via its fixed dimension `N`.
+    /// It is a pure coordinate relabel (strip two [`Dual`] wrappers) precisely
+    /// because [`pairing`](Tensor::pairing) is fixed to the coordinate dot
+    /// product, which identifies each dual basis with its primal basis
+    /// component-wise. Do not confuse this with the *musical* `V** ≅ V` of
+    /// [`Nondegenerate`], which routes through the metric and requires an
+    /// invertible form.
+    pub fn collapse(self) -> V {
+        self.0.0
+    }
+}
+
+impl<V: Tensor<Action = BothSided>> Dual<Sinister<V>> {
+    /// The canonical relabelling
+    /// `Dual<Sinister<Self>> ≅ Sinister<Dual<Self>>`.
+    pub fn dual_sinister(self) -> Sinister<Dual<V>>
+    {
+        Sinister(Dual(self.0.0))
+    }
+}
+    
+impl<V: Tensor<Action = BothSided>> Sinister<Dual<V>> {
+    /// The inverse canonical relabelling
+    /// `Sinister<Dual<Self>> ≅ Dual<Sinister<Self>>`.
+    pub fn sinister_dual(self) -> Dual<Sinister<V>>
+    {
+        Dual(Sinister(self.0.0))
+    }
+}
+
 /// A finite-dimensional element of the tensor algebra, represented in a basis.
 ///
 /// A `Tensor` records its scalar field, coordinates, preferred hand, and
@@ -639,40 +685,6 @@ pub trait Tensor:
                     Hand::Right => covector * vector,
                 }
             })
-    }
-
-    /// The canonical identification `V** ≅ V`, collapsing a twice-dualised
-    /// vector back to `V`.
-    ///
-    /// This is the *evaluation* isomorphism `v ↦ (φ ↦ φ(v))`, which exists for
-    /// any finite-dimensional space with no dependence on a metric or
-    /// nondegeneracy — every [`Tensor`] qualifies via its fixed dimension `N`.
-    /// It is a pure coordinate relabel (strip two [`Dual`] wrappers) precisely
-    /// because [`pairing`](Tensor::pairing) is fixed to the coordinate dot
-    /// product, which identifies each dual basis with its primal basis
-    /// component-wise. Do not confuse this with the *musical* `V** ≅ V` of
-    /// [`Nondegenerate`], which routes through the metric and requires an
-    /// invertible form.
-    fn collapse(v: Dual<Dual<Self>>) -> Self {
-        v.0.0
-    }
-
-    /// The canonical relabelling
-    /// `Dual<Sinister<Self>> ≅ Sinister<Dual<Self>>`.
-    fn dual_sinister(v: Dual<Sinister<Self>>) -> Sinister<Dual<Self>>
-    where
-        Self: Tensor<Action = BothSided>,
-    {
-        Sinister(Dual(v.0.0))
-    }
-
-    /// The inverse canonical relabelling
-    /// `Sinister<Dual<Self>> ≅ Dual<Sinister<Self>>`.
-    fn sinister_dual(v: Sinister<Dual<Self>>) -> Dual<Sinister<Self>>
-    where
-        Self: Tensor<Action = BothSided>,
-    {
-        Dual(Sinister(v.0.0))
     }
 
     /// Constructs a tensor from its coordinates in canonical flat-index order.

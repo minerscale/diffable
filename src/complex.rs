@@ -28,6 +28,10 @@ impl<R: Real> FieldExp for Complex<R> {
 }
 
 impl<R: Real> Complex<R> {
+    pub fn new(real: R, imag: R) -> Self {
+        Self(Coords([real, imag]))
+    }
+
     /// Returns the principal square root of a real value in the complex plane.
     ///
     /// Non-negative inputs lie on the real axis and negative inputs on the

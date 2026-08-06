@@ -4,7 +4,7 @@ use diffable::{
     complex::Complex,
     coords::Coords,
     traits::{
-        Dual, Euclidean, Field, Form, Right, Sinister, Tensor, Vector,
+        Dual, Euclidean, Field, Form, Left, Right, Sinister, Tensor, Vector,
         calculus::{Contract, OnLeft, Reassociate, TensorProduct, d},
     },
 };
@@ -76,6 +76,36 @@ fn contraction_is_selected_by_the_same_tree_paths() {
 }
 
 #[test]
+fn matrix_multiplication_is_tensor_contraction() {
+    type F = f64;
+    type V = Coords<F, 2>;
+    type Endomorphism = TensorProduct<V, Dual<V>>;
+    type Product = TensorProduct<Endomorphism, Sinister<Endomorphism>>;
+
+    let a = Endomorphism::from_iter([1.0, 2.0, 3.0, 4.0]);
+    let b = Sinister(Endomorphism::from_iter([5.0, 6.0, 7.0, 8.0]));
+
+    // Coordinates are A[i, j] B[k, l], flattened as (i, j, k, l).
+    let tensor = Product::pure(a, b);
+
+    assert!(tensor.iter().copied().eq([
+        5.0, 6.0, 7.0, 8.0, 10.0, 12.0, 14.0, 16.0, 15.0, 18.0, 21.0, 24.0, 20.0, 24.0, 28.0, 32.0,
+    ]));
+
+    // Reassociate and contract j with k:
+    //
+    // Aⁱⱼ Bᵏₗ  ↦  Aⁱⱼ Bʲₗ.
+    let product: Endomorphism = tensor
+        .reassociate::<Left>()
+        .reassociate::<OnLeft<Right>>()
+        .contract();
+
+    let expected = Endomorphism::from_iter([19.0, 22.0, 43.0, 50.0]);
+
+    assert!(product.iter().eq(expected.iter()));
+}
+
+#[test]
 fn reassociation_exposes_the_other_contraction() {
     type V = Coords<f64, 2>;
     type Tensor = TensorProduct<TensorProduct<V, Dual<V>>, Sinister<V>>;
@@ -83,12 +113,12 @@ fn reassociation_exposes_the_other_contraction() {
     let tensor = Tensor::from_fn(|i| i as f64);
 
     // Contract (V ⊗ V*) first.
-    let first_pair = tensor.contract();
+    let first_pair = tensor.contract().collapse();
 
     // Reassociate to V ⊗ (V* ⊗ V), then contract the second pair.
     let second_pair = tensor.reassociate().contract();
 
-    assert!(first_pair.0.0.iter().copied().eq([6.0, 8.0]));
+    assert!(first_pair.iter().copied().eq([6.0, 8.0]));
     assert!(second_pair.iter().copied().eq([3.0, 11.0]));
 }
 

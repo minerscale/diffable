@@ -171,6 +171,17 @@ impl_vector_ops!(
 #[derive(Debug, Copy, Clone)]
 pub struct TensorProductArray<T: Point, U: Array<V>, V: Array<T>>(U, PhantomData<(T, V)>);
 
+impl<T: Point, U: Array<V>, V: Array<T>> TensorProductArray<T, U, V> {
+    pub fn from_fn_ij(mut f: impl FnMut(usize, usize) -> T) -> Self {
+        Self::from_fn(|n| {
+            let i = n / V::N;
+            let j = n % V::N;
+
+            f(i, j)
+        })
+    }
+}
+
 fn iter_inner<'a, T: Point, V: Array<T>>(v: &'a V) -> V::Iter<'a> {
     v.iter()
 }
@@ -256,6 +267,20 @@ pub struct TensorProduct<
     U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
     V: Tensor<F = U::F, Hand = Left, Action: ActionExists>,
 >(TensorProductArray<V::F, U::Array<V::Array<V::F>>, V::Array<V::F>>);
+
+impl<
+    U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Tensor<F = U::F, Hand = Left, Action: ActionExists>,
+> TensorProduct<U, V>
+{
+    pub fn pure(a: U, b: V) -> Self {
+        Self::from_fn_ij(|i, j| a[i] * b[j])
+    }
+
+    pub fn from_fn_ij(f: impl FnMut(usize, usize) -> V::F) -> Self {
+        Self(TensorProductArray::from_fn_ij(f))
+    }
+}
 
 impl<
     U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
@@ -375,13 +400,13 @@ where
     }
 }
 
-impl<A, B, C> ReassociateKernel<Left> for TensorProduct<A, Sinister<TensorProduct<Sinister<B>, C>>>
+impl<A, B, C> ReassociateKernel<Left> for TensorProduct<A, Sinister<TensorProduct<B, C>>>
 where
     A: Tensor<Hand = Right, Action = BothSided>,
-    B: Tensor<F = A::F, Hand = Left, Action = BothSided>,
+    B: Tensor<F = A::F, Hand = Right, Action = BothSided>,
     C: Tensor<F = A::F, Hand = Left, Action = BothSided>,
 {
-    type Reassociated = TensorProduct<TensorProduct<A, B>, C>;
+    type Reassociated = TensorProduct<TensorProduct<A, Sinister<B>>, C>;
 
     fn reassociate_kernel(self) -> Self::Reassociated {
         Self::Reassociated::from_fn(|i| self[i])
