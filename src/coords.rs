@@ -12,8 +12,8 @@ use num_traits::{ConstZero, Zero};
 use crate::{
     impl_vector_ops,
     traits::{
-        Array, BothSided, DivRing, Dual, Euclidean, Field, Form, Interval, Metric, Nondegenerate,
-        Point, Real, Right, Sesquilinear, Tensor,
+        Array, Atomic, BothSided, DivRing, Dual, Euclidean, Field, Form, Interval, Metric,
+        Nondegenerate, Point, Real, Right, Sesquilinear, Tensor,
         calculus::{FormLift, Jet, JetMode, NondegenerateLift},
     },
 };
@@ -101,6 +101,7 @@ impl<F: Field, const N: usize, const M: usize> Tensor for Coords<F, N, M> {
     type F = F;
     type Hand = Right;
     type Action = BothSided;
+    type Normalization = Atomic;
 
     type Array<T: Point> = [T; N];
 

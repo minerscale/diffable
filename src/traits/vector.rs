@@ -102,6 +102,120 @@ pub trait Euclidean:
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Dual<V: Tensor>(V);
 
+#[doc(hidden)]
+pub enum Undecorated {}
+#[doc(hidden)]
+pub enum Dualized {}
+#[doc(hidden)]
+pub enum Sinistered {}
+#[doc(hidden)]
+pub enum DualSinistered {}
+
+#[doc(hidden)]
+pub trait TensorDecoration {
+    type ToggleDual: TensorDecoration;
+    type ToggleSinister: TensorDecoration;
+}
+impl TensorDecoration for Undecorated {
+    type ToggleDual = Dualized;
+    type ToggleSinister = Sinistered;
+}
+impl TensorDecoration for Dualized {
+    type ToggleDual = Undecorated;
+    type ToggleSinister = DualSinistered;
+}
+impl TensorDecoration for Sinistered {
+    type ToggleDual = DualSinistered;
+    type ToggleSinister = Undecorated;
+}
+impl TensorDecoration for DualSinistered {
+    type ToggleDual = Sinistered;
+    type ToggleSinister = Dualized;
+}
+
+#[doc(hidden)]
+pub trait ApplyTensorDecoration<V: Tensor>: TensorDecoration {
+    type Output: Tensor<F = V::F, Action = V::Action>;
+    fn apply(v: V) -> Self::Output;
+}
+impl<V: Tensor> ApplyTensorDecoration<V> for Undecorated {
+    type Output = V;
+    fn apply(v: V) -> V {
+        v
+    }
+}
+impl<V: Tensor> ApplyTensorDecoration<V> for Dualized {
+    type Output = Dual<V>;
+    fn apply(v: V) -> Dual<V> {
+        Dual(v)
+    }
+}
+impl<V: Tensor<Action = BothSided>> ApplyTensorDecoration<V> for Sinistered {
+    type Output = Sinister<V>;
+    fn apply(v: V) -> Sinister<V> {
+        Sinister(v)
+    }
+}
+impl<V: Tensor<Action = BothSided>> ApplyTensorDecoration<V> for DualSinistered {
+    type Output = Sinister<Dual<V>>;
+    fn apply(v: V) -> Sinister<Dual<V>> {
+        Sinister(Dual(v))
+    }
+}
+
+#[doc(hidden)]
+pub trait NormalizeWith<D: TensorDecoration>: Tensor {
+    type Normalized: Tensor<F = Self::F, Action = Self::Action>;
+    fn normalize_with(self) -> Self::Normalized;
+}
+
+/// Marks a tensor as a leaf in the tensor-expression normalization tree.
+pub struct Atomic;
+
+#[doc(hidden)]
+pub struct NormalizeDual;
+
+#[doc(hidden)]
+pub struct NormalizeSinister;
+
+#[doc(hidden)]
+pub trait TensorNormalization<T: Tensor, D: TensorDecoration> {
+    type Normalized: Tensor<F = T::F, Action = T::Action>;
+    fn normalize(tensor: T) -> Self::Normalized;
+}
+
+impl<T, D> TensorNormalization<T, D> for Atomic
+where
+    T: Tensor,
+    D: TensorDecoration + ApplyTensorDecoration<T>,
+{
+    type Normalized = <D as ApplyTensorDecoration<T>>::Output;
+
+    fn normalize(tensor: T) -> Self::Normalized {
+        D::apply(tensor)
+    }
+}
+
+impl<T, D> NormalizeWith<D> for T
+where
+    T: Tensor,
+    D: TensorDecoration,
+    T::Normalization: TensorNormalization<T, D>,
+{
+    type Normalized = <T::Normalization as TensorNormalization<T, D>>::Normalized;
+
+    fn normalize_with(self) -> Self::Normalized {
+        <T::Normalization as TensorNormalization<T, D>>::normalize(self)
+    }
+}
+
+pub trait Normalize: Tensor + NormalizeWith<Undecorated> {
+    fn normalize(self) -> <Self as NormalizeWith<Undecorated>>::Normalized {
+        <Self as NormalizeWith<Undecorated>>::normalize_with(self)
+    }
+}
+impl<T: Tensor + NormalizeWith<Undecorated>> Normalize for T {}
+
 impl<V: Tensor> Dual<V> {
     /// This is a naive constructor! Do not use this
     /// for geometric computation. It exists only to help
@@ -119,6 +233,7 @@ impl<V: Tensor> Dual<V> {
 }
 
 impl<V: Tensor> Tensor for Dual<V> {
+    type Normalization = NormalizeDual;
     type F = V::F;
     type Hand = <V::Hand as Handedness>::Opposite;
     type Action = V::Action;
@@ -127,6 +242,18 @@ impl<V: Tensor> Tensor for Dual<V> {
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(V::from_fn(f))
+    }
+}
+
+impl<V, D> TensorNormalization<Dual<V>, D> for NormalizeDual
+where
+    V: Tensor + NormalizeWith<D::ToggleDual>,
+    D: TensorDecoration,
+{
+    type Normalized = <V as NormalizeWith<D::ToggleDual>>::Normalized;
+
+    fn normalize(tensor: Dual<V>) -> Self::Normalized {
+        <V as NormalizeWith<D::ToggleDual>>::normalize_with(tensor.0)
     }
 }
 
@@ -228,6 +355,7 @@ impl<V: Euclidean> Euclidean for Dual<V> {}
 pub struct Sinister<V: Tensor<Action = BothSided>>(pub V);
 
 impl<V: Tensor<Action = BothSided>> Tensor for Sinister<V> {
+    type Normalization = NormalizeSinister;
     type F = V::F;
     type Hand = <V::Hand as Handedness>::Opposite;
     type Action = V::Action;
@@ -236,6 +364,18 @@ impl<V: Tensor<Action = BothSided>> Tensor for Sinister<V> {
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(V::from_fn(f))
+    }
+}
+
+impl<V, D> TensorNormalization<Sinister<V>, D> for NormalizeSinister
+where
+    V: Tensor<Action = BothSided> + NormalizeWith<D::ToggleSinister>,
+    D: TensorDecoration,
+{
+    type Normalized = <V as NormalizeWith<D::ToggleSinister>>::Normalized;
+
+    fn normalize(tensor: Sinister<V>) -> Self::Normalized {
+        <V as NormalizeWith<D::ToggleSinister>>::normalize_with(tensor.0)
     }
 }
 
@@ -579,17 +719,15 @@ impl<V: Tensor> Dual<Dual<V>> {
 impl<V: Tensor<Action = BothSided>> Dual<Sinister<V>> {
     /// The canonical relabelling
     /// `Dual<Sinister<Self>> ≅ Sinister<Dual<Self>>`.
-    pub fn dual_sinister(self) -> Sinister<Dual<V>>
-    {
+    pub fn dual_sinister(self) -> Sinister<Dual<V>> {
         Sinister(Dual(self.0.0))
     }
 }
-    
+
 impl<V: Tensor<Action = BothSided>> Sinister<Dual<V>> {
     /// The inverse canonical relabelling
     /// `Sinister<Dual<Self>> ≅ Dual<Sinister<Self>>`.
-    pub fn sinister_dual(self) -> Dual<Sinister<V>>
-    {
+    pub fn sinister_dual(self) -> Dual<Sinister<V>> {
         Dual(Sinister(self.0.0))
     }
 }
@@ -643,14 +781,20 @@ pub trait Tensor:
     /// The dimension of the space — the number of coordinates.
     const N: usize = Self::Array::<Self::F>::N;
 
+    /// The underlying storage of this tensor; generic over any point.
     type Array<T: Point>: Array<T>;
 
     /// The side on which `F` acts. [`Dual<Self>`](Dual) elects the opposite
     /// hand, and `Dual<Dual<Self>>` therefore restores this one.
     type Hand: Handedness;
 
-    // Whether `Self` has a one-sided or both-sided action.
+    /// Whether `Self` has a one-sided or both-sided action.
     type Action: Sidedness;
+
+    /// Selects how this constructor participates in tensor normalization.
+    /// Ordinary tensor spaces use [`Atomic`]; expression constructors provide
+    /// their corresponding structural normalizer.
+    type Normalization;
 
     /// Builds a vector from a function of coordinate index. The canonical
     /// constructor — most other constructors reduce to this.

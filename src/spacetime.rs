@@ -15,8 +15,8 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient, impl_vector_ops,
     matrix::{Matrix, MatrixExponential},
     traits::{
-        BothSided, CField, Dual, Form, LieGroup, NatZero, Nondegenerate, Point, Quotient, Real,
-        Right, RootOfUnity, Sesquilinear, Tensor,
+        Atomic, BothSided, CField, Dual, Form, LieGroup, NatZero, Nondegenerate, Point, Quotient,
+        Real, Right, RootOfUnity, Sesquilinear, Tensor,
     },
 };
 
@@ -396,6 +396,7 @@ impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> Tensor
     type F = F;
     type Hand = Right;
     type Action = BothSided;
+    type Normalization = Atomic;
 
     type Array<T: Point> = [T; D];
 
@@ -406,7 +407,6 @@ impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> Tensor
         Self(Coords::<F, D>::from_fn(f))
     }
 }
-
 impl<F: CField<Characteristic = NatZero>, const N: usize, const D: usize> AsRef<[F; D]>
     for SlAlgebra<F, N, D>
 {

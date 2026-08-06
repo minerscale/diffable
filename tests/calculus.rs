@@ -4,8 +4,8 @@ use diffable::{
     complex::Complex,
     coords::Coords,
     traits::{
-        Dual, Euclidean, Field, Form, Left, Right, Sinister, Tensor, Vector,
-        calculus::{Contract, OnLeft, Reassociate, TensorProduct, d},
+        Dual, Euclidean, Field, Form, Left, Normalize, Right, Sinister, Tensor, Vector,
+        calculus::{Contract, Here, OnLeft, Reassociate, Swap, TensorProduct, d},
     },
 };
 use num_traits::Zero;
@@ -111,15 +111,32 @@ fn reassociation_exposes_the_other_contraction() {
     type Tensor = TensorProduct<TensorProduct<V, Dual<V>>, Sinister<V>>;
 
     let tensor = Tensor::from_fn(|i| i as f64);
+    let sinister = tensor.swap::<OnLeft<Here>>().swap::<Here>();
 
     // Contract (V ⊗ V*) first.
-    let first_pair = tensor.contract().collapse();
+    let first_pair = tensor.contract();
+    let first_pair_sinister = sinister.contract();
+    assert_eq!(first_pair, first_pair_sinister);
 
     // Reassociate to V ⊗ (V* ⊗ V), then contract the second pair.
     let second_pair = tensor.reassociate().contract();
+    let second_pair_sinister = sinister.reassociate().contract();
+    assert_eq!(second_pair, second_pair_sinister);
 
     assert!(first_pair.iter().copied().eq([6.0, 8.0]));
     assert!(second_pair.iter().copied().eq([3.0, 11.0]));
+}
+
+#[test]
+fn normalization_reduces_an_entire_tensor_tree() {
+    type V = Coords<f64, 2>;
+    type Raw = TensorProduct<Sinister<Sinister<V>>, Dual<Dual<Dual<V>>>>;
+    type Canonical = TensorProduct<V, Dual<V>>;
+
+    let raw = Raw::from_iter([1.0, 2.0, 3.0, 4.0]);
+    let canonical: Canonical = raw.normalize();
+
+    assert!(canonical.iter().copied().eq([1.0, 2.0, 3.0, 4.0]));
 }
 
 #[test]

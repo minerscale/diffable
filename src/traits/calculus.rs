@@ -30,12 +30,19 @@ use crate::{
     coords::Coords,
     impl_vector_ops,
     traits::{
-        ActionExists, Array, BothSided, CField, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap,
-        Field, Form, Handedness, Interval, Left, Metric, NonZero, Nondegenerate, OneSided, Point,
-        Real, Right, Sesquilinear, Sidedness, Sinister, TangentBundle, Tensor, TensorProductAction,
-        Vector,
+        ActionExists, ApplyTensorDecoration, Array, Atomic, BothSided, CField, Chart, DivRing,
+        Dual, Euclidean, ExactCmp, ExpMap, Field, Form, Handedness, Interval, Left, Metric,
+        NonZero, Nondegenerate, NormalizeWith, OneSided, Point, Real, Right, Sesquilinear,
+        Sidedness, Sinister, TangentBundle, Tensor, TensorDecoration, TensorNormalization,
+        TensorProductAction, Undecorated, Vector,
     },
 };
+
+#[doc(hidden)]
+pub struct NormalizeDirectSum;
+
+#[doc(hidden)]
+pub struct NormalizeTensorProduct;
 
 /// The external direct sum `U ⊕ V` of tensors with a common field and hand.
 ///
@@ -129,6 +136,7 @@ impl<T: Point, U: Array<T>, V: Array<T>> IntoIterator for DirectSumArray<T, U, V
 impl<F: Field, H: Handedness, U: Tensor<F = F, Hand = H>, V: Tensor<F = F, Hand = H>> Tensor
     for DirectSum<U, V>
 {
+    type Normalization = NormalizeDirectSum;
     type F = U::F;
     type Hand = H;
     type Action = <U::Action as Sidedness>::Meet<V::Action>;
@@ -137,6 +145,33 @@ impl<F: Field, H: Handedness, U: Tensor<F = F, Hand = H>, V: Tensor<F = F, Hand 
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(Self::Array::<V::F>::from_fn(f))
+    }
+}
+impl<U, V, D> TensorNormalization<DirectSum<U, V>, D> for NormalizeDirectSum
+where
+    U: Tensor + NormalizeWith<Undecorated>,
+    V: Tensor<F = U::F, Hand = U::Hand> + NormalizeWith<Undecorated>,
+    <U as NormalizeWith<Undecorated>>::Normalized:
+        Tensor<F = U::F, Hand = U::Hand, Action = U::Action>,
+    <V as NormalizeWith<Undecorated>>::Normalized:
+        Tensor<F = U::F, Hand = U::Hand, Action = V::Action>,
+    D: TensorDecoration
+        + ApplyTensorDecoration<
+            DirectSum<
+                <U as NormalizeWith<Undecorated>>::Normalized,
+                <V as NormalizeWith<Undecorated>>::Normalized,
+            >,
+        >,
+{
+    type Normalized = <D as ApplyTensorDecoration<
+        DirectSum<
+            <U as NormalizeWith<Undecorated>>::Normalized,
+            <V as NormalizeWith<Undecorated>>::Normalized,
+        >,
+    >>::Output;
+
+    fn normalize(tensor: DirectSum<U, V>) -> Self::Normalized {
+        D::apply(DirectSum::from_fn(|i| tensor[i]))
     }
 }
 
@@ -287,6 +322,7 @@ impl<
     V: Tensor<F = U::F, Hand = Left, Action: ActionExists>,
 > Tensor for TensorProduct<U, V>
 {
+    type Normalization = NormalizeTensorProduct;
     type F = V::F;
     type Action = <U::Action as TensorProductAction<V::Action>>::Action;
     type Hand = <U::Action as TensorProductAction<V::Action>>::Hand;
@@ -295,6 +331,32 @@ impl<
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(Self::Array::from_fn(f))
+    }
+}
+impl<U, V, D> TensorNormalization<TensorProduct<U, V>, D> for NormalizeTensorProduct
+where
+    U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>> + NormalizeWith<Undecorated>,
+    V: Tensor<F = U::F, Hand = Left, Action: ActionExists> + NormalizeWith<Undecorated>,
+    <U as NormalizeWith<Undecorated>>::Normalized:
+        Tensor<F = U::F, Hand = Right, Action = U::Action>,
+    <V as NormalizeWith<Undecorated>>::Normalized:
+        Tensor<F = U::F, Hand = Left, Action = V::Action>,
+    D: TensorDecoration
+        + ApplyTensorDecoration<
+            TensorProduct<
+                <U as NormalizeWith<Undecorated>>::Normalized,
+                <V as NormalizeWith<Undecorated>>::Normalized,
+            >,
+        >,
+{
+    type Normalized = <D as ApplyTensorDecoration<
+        TensorProduct<
+            <U as NormalizeWith<Undecorated>>::Normalized,
+            <V as NormalizeWith<Undecorated>>::Normalized,
+        >,
+    >>::Output;
+    fn normalize(tensor: TensorProduct<U, V>) -> Self::Normalized {
+        D::apply(TensorProduct::from_fn(|i| tensor[i]))
     }
 }
 
@@ -362,6 +424,10 @@ pub struct OnRight<P>(PhantomData<P>);
 #[derive(Debug, Copy, Clone)]
 pub struct ThroughSinister<P>(PhantomData<P>);
 
+/// Passes through an explicitly selected [`Dual`] presentation.
+#[derive(Debug, Copy, Clone)]
+pub struct ThroughDual<P>(PhantomData<P>);
+
 /// Applies one reassociation at a node selected by a type-level tree path.
 ///
 /// Tensor subtrees are atomic unless the path explicitly enters them. Thus a
@@ -377,11 +443,16 @@ pub trait ReassociateKernel<P>: Tensor {
 }
 
 pub trait Reassociate {
-    fn reassociate<P>(self) -> <Self as ReassociateKernel<P>>::Reassociated
+    fn reassociate<P>(
+        self,
+    ) -> <<Self as ReassociateKernel<P>>::Reassociated as NormalizeWith<Undecorated>>::Normalized
     where
         Self: ReassociateKernel<P>,
+        <Self as ReassociateKernel<P>>::Reassociated: NormalizeWith<Undecorated>,
     {
-        <Self as ReassociateKernel<P>>::reassociate_kernel(self)
+        NormalizeWith::<Undecorated>::normalize_with(
+            <Self as ReassociateKernel<P>>::reassociate_kernel(self),
+        )
     }
 }
 
@@ -454,21 +525,81 @@ where
 #[derive(Debug, Copy, Clone)]
 pub enum Here {}
 
+#[doc(hidden)]
+pub trait SwapKernel<P>: Tensor {
+    type Swapped: Tensor<F = Self::F, Hand = Self::Hand, Action = Self::Action>;
+    fn source_index(output: usize) -> usize;
+}
+
+pub trait Swap: Tensor {
+    fn swap<P>(self) -> <<Self as SwapKernel<P>>::Swapped as NormalizeWith<Undecorated>>::Normalized
+    where
+        Self: SwapKernel<P>,
+        <Self as SwapKernel<P>>::Swapped: NormalizeWith<Undecorated>,
+    {
+        let raw = <Self as SwapKernel<P>>::Swapped::from_fn(|i| {
+            self[<Self as SwapKernel<P>>::source_index(i)]
+        });
+        NormalizeWith::<Undecorated>::normalize_with(raw)
+    }
+}
+impl<T: Tensor> Swap for T {}
+
+impl<A, B> SwapKernel<Here> for TensorProduct<A, B>
+where
+    A: Tensor<Hand = Right, Action = BothSided>,
+    B: Tensor<F = A::F, Hand = Left, Action = BothSided>,
+{
+    type Swapped = TensorProduct<Sinister<B>, Sinister<A>>;
+    fn source_index(output: usize) -> usize {
+        let right = output / A::N;
+        let left = output % A::N;
+        left * B::N + right
+    }
+}
+impl<A, B, P> SwapKernel<OnLeft<P>> for TensorProduct<A, B>
+where
+    A: Tensor<Hand = Right, Action: TensorProductAction<B::Action>> + SwapKernel<P>,
+    B: Tensor<F = A::F, Hand = Left, Action: ActionExists>,
+    <A as SwapKernel<P>>::Swapped: Tensor<F = A::F, Hand = Right, Action = A::Action>,
+{
+    type Swapped = TensorProduct<<A as SwapKernel<P>>::Swapped, B>;
+    fn source_index(output: usize) -> usize {
+        let (left, right) = (output / B::N, output % B::N);
+        <A as SwapKernel<P>>::source_index(left) * B::N + right
+    }
+}
+impl<A, B, P> SwapKernel<OnRight<P>> for TensorProduct<A, B>
+where
+    A: Tensor<Hand = Right, Action: TensorProductAction<B::Action>>,
+    B: Tensor<F = A::F, Hand = Left, Action: ActionExists> + SwapKernel<P>,
+    <B as SwapKernel<P>>::Swapped: Tensor<F = A::F, Hand = Left, Action = B::Action>,
+{
+    type Swapped = TensorProduct<A, <B as SwapKernel<P>>::Swapped>;
+    fn source_index(output: usize) -> usize {
+        let (left, right) = (output / B::N, output % B::N);
+        left * B::N + <B as SwapKernel<P>>::source_index(right)
+    }
+}
+
 pub trait Contract: Tensor {
     fn contract<P>(
         self,
-    ) -> <<Self as ContractKernel<P>>::Shape as ContractionShape<Self::F>>::Output
+    ) -> <<Self as ContractKernel<P>>::Shape as NormalizedContractionShape<Self::F>>::Output
     where
         Self: ContractKernel<P>,
+        <Self as ContractKernel<P>>::Shape: NormalizedContractionShape<Self::F>,
     {
-        <<Self as ContractKernel<P>>::Shape as ContractionShape<Self::F>>::from_fn(|output| {
-            (0..<Self as ContractKernel<P>>::CONTRACTED_N).fold(
-                Self::F::zero(),
-                |sum, contracted| {
-                    sum + self[<Self as ContractKernel<P>>::source_index(output, contracted)]
-                },
-            )
-        })
+        <<Self as ContractKernel<P>>::Shape as NormalizedContractionShape<Self::F>>::from_fn(
+            |output| {
+                (0..<Self as ContractKernel<P>>::CONTRACTED_N).fold(
+                    Self::F::zero(),
+                    |sum, contracted| {
+                        sum + self[<Self as ContractKernel<P>>::source_index(output, contracted)]
+                    },
+                )
+            },
+        )
     }
 }
 
@@ -479,6 +610,12 @@ pub trait ContractionShape<F: Field> {
     type Output;
 
     fn from_fn(f: impl FnMut(usize) -> F) -> Self::Output;
+}
+
+#[doc(hidden)]
+pub trait NormalizedContractionShape<F: Field>: ContractionShape<F> {
+    type Output;
+    fn from_fn(f: impl FnMut(usize) -> F) -> <Self as NormalizedContractionShape<F>>::Output;
 }
 
 #[doc(hidden)]
@@ -510,11 +647,27 @@ impl<F: Field> ContractionShape<F> for ScalarContraction {
     }
 }
 
+impl<F: Field> NormalizedContractionShape<F> for ScalarContraction {
+    type Output = F;
+    fn from_fn(mut f: impl FnMut(usize) -> F) -> F {
+        f(0)
+    }
+}
+
 impl<F: Field, T: Tensor<F = F>> ContractionShape<F> for TensorContraction<T> {
     type Output = T;
 
     fn from_fn(f: impl FnMut(usize) -> F) -> Self::Output {
         T::from_fn(f)
+    }
+}
+
+impl<F: Field, T: Tensor<F = F> + NormalizeWith<Undecorated>> NormalizedContractionShape<F>
+    for TensorContraction<T>
+{
+    type Output = <T as NormalizeWith<Undecorated>>::Normalized;
+    fn from_fn(f: impl FnMut(usize) -> F) -> <Self as NormalizedContractionShape<F>>::Output {
+        NormalizeWith::<Undecorated>::normalize_with(T::from_fn(f))
     }
 }
 
@@ -790,6 +943,7 @@ impl<
     Fiber: TangentBundle<FP, FT>,
 > Tensor for TangentMap<BT, FP, FT, Fiber>
 {
+    type Normalization = Atomic;
     type F = <HomOf<BT, FT> as Tensor>::F;
     type Array<T: Point> = <HomOf<BT, FT> as Tensor>::Array<T>;
     type Hand = <HomOf<BT, FT> as Tensor>::Hand;
@@ -799,7 +953,6 @@ impl<
         Self(HomOf::<BT, FT>::from_fn(f), PhantomData)
     }
 }
-
 impl_vector_ops!(TangentMap<BT, FP, FT, Fiber>,
     BT: Tensor<Hand = Right, Action: ActionExists>,
     FP: Point,
@@ -882,6 +1035,7 @@ impl<V: Tensor, const N: usize, S: Field> Tensor for JetVector<V, Algebraic, N, 
 where
     Jet<S, Algebraic, N>: Field,
 {
+    type Normalization = Atomic;
     type F = Jet<S, Algebraic, N>;
 
     type Array<T: Point> = V::Array<T>;
@@ -893,8 +1047,8 @@ where
         Self(V::Array::from_fn(f))
     }
 }
-
 impl<V: Tensor<F: Real>, const N: usize, S: Real> Tensor for JetVector<V, JetReal, N, S> {
+    type Normalization = Atomic;
     type F = Jet<S, JetReal, N>;
 
     type Array<T: Point> = V::Array<T>;
@@ -906,7 +1060,6 @@ impl<V: Tensor<F: Real>, const N: usize, S: Real> Tensor for JetVector<V, JetRea
         Self(V::Array::from_fn(f))
     }
 }
-
 impl<V: Tensor, M: JetMode, const N: usize, S: Field> AsRef<V::Array<Jet<S, M, N>>>
     for JetVector<V, M, N, S>
 {
