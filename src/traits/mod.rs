@@ -11,11 +11,13 @@ pub mod calculus;
 pub mod simplicial;
 
 mod algebra;
+mod category;
 mod chart;
 mod foundation;
 mod vector;
 
 pub use algebra::*;
+pub use category::*;
 pub use chart::*;
 pub use foundation::*;
 pub use vector::*;

@@ -7,8 +7,7 @@
 //! structural approach into geometry.
 
 use crate::{
-    impl_group_via_mul,
-    traits::{ExactCmp, FromReal, Interval, Metric, Real, Tensor},
+    impl_group_via_mul, traits::{Different, ExactCmp, FromReal, Interval, Metric, Real, Same, Tensor},
 };
 use core::ops::{Add, Mul, Neg, Sub};
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
@@ -750,12 +749,13 @@ pub trait FieldExp: Field<Characteristic = NatZero> {
 /// rather than checked at runtime. [`N`](Nat::N) reflects the numeral back to a
 /// `usize` for the rare cases that need the value (e.g. the finite characteristic
 /// audit in [`check_characteristic_up_to`](Field::check_characteristic_up_to)).
-pub trait Nat {
+pub trait Nat: Copy + Clone + core::fmt::Debug + Send + Sync + 'static {
     /// The numeral's value as a `usize`. `NatZero::N == 0`, `Succ<N>::N == N::N + 1`.
     const N: usize;
 }
 
 /// The successor `n + 1` at the type level. See [`Nat`].
+#[derive(Copy, Clone, Debug)]
 pub struct Succ<N: Nat>(N);
 
 /// Type-level zero — the base of the [`Nat`] tower.
@@ -764,7 +764,10 @@ pub struct Succ<N: Nat>(N);
 /// (`0`) matches the numeral it denotes. A field with `Characteristic = NatZero`
 /// is characteristic zero (contains ℚ), which is exactly the precondition the
 /// matrix exponential needs to form `1/k!`.
+#[derive(Copy, Clone, Debug)]
 pub enum NatZero {}
+
+pub type NatOne = Succ<NatZero>;
 
 impl Nat for NatZero {
     const N: usize = 0;
@@ -772,6 +775,38 @@ impl Nat for NatZero {
 
 impl<N: Nat> Nat for Succ<N> {
     const N: usize = N::N + 1;
+}
+
+pub trait NatEq<Rhs: Nat>: Nat {
+    type Output: Nat;
+}
+
+impl NatEq<NatZero> for NatZero {
+    type Output = NatOne;
+}
+
+impl<N: Nat> NatEq<Succ<N>> for NatZero {
+    type Output = NatZero;
+}
+
+pub trait NatCompare<M: Nat>: Nat {
+    type Relation;
+}
+
+impl NatCompare<NatZero> for NatZero {
+    type Relation = Same;
+}
+
+impl<N: Nat> NatCompare<Succ<N>> for NatZero {
+    type Relation = Different;
+}
+
+impl<N: Nat> NatCompare<NatZero> for Succ<N> {
+    type Relation = Different;
+}
+
+impl<N: Nat + NatCompare<M>, M: Nat> NatCompare<Succ<M>> for Succ<N> {
+    type Relation = <N as NatCompare<M>>::Relation;
 }
 
 /// A field `F` with its involution *trivialised*: `conj = id`, hence

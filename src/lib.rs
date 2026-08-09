@@ -367,7 +367,12 @@
 //!
 //! Licensed under either MIT or Apache-2.0.
 //!
-#![allow(clippy::needless_range_loop, clippy::type_complexity)]
+#![allow(
+    clippy::needless_range_loop,
+    clippy::type_complexity,
+    confusable_idents,
+    uncommon_codepoints
+)]
 #![no_std]
 #[cfg(feature = "std")]
 extern crate std;

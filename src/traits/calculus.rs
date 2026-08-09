@@ -30,11 +30,11 @@ use crate::{
     coords::Coords,
     impl_vector_ops,
     traits::{
-        ActionExists, ApplyTensorDecoration, Array, Atomic, BothSided, CField, Chart, DivRing,
-        Dual, Euclidean, ExactCmp, ExpMap, Field, Form, Handedness, Interval, Left, Metric,
-        NonZero, Nondegenerate, NormalizeWith, OneSided, Point, Real, Right, Sesquilinear,
+        ActionExists, ApplyTensorDecoration, Array, Atomic, BothSided, CField, Chart, Cons,
+        DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field, Form, Handedness, Interval, Left,
+        Metric, NonZero, Nondegenerate, NormalizeWith, OneSided, Point, Real, Right, Sesquilinear,
         Sidedness, Sinister, TangentBundle, Tensor, TensorDecoration, TensorNormalization,
-        TensorProductAction, Undecorated, Vector,
+        TensorProductAction, Undecorated, Vector, Ø,
     },
 };
 
@@ -1309,20 +1309,6 @@ impl<F: Field, M: JetMode, const N: usize> Inv for NonZero<Jet<F, M, N>> {
     }
 }
 
-/// The empty type-level list.
-///
-/// In the differentiation machinery this denotes both an empty tangent tower
-/// and the identity [`ConstantRoute`].
-#[derive(Debug, Copy, Clone)]
-pub struct Nil;
-
-/// A type-level list node with `Head` followed by `Tail`.
-///
-/// [`ConstantRoute`] uses these nodes to remember each [`JetLayer`] in a
-/// scalar-presentation tower without storing any runtime data.
-#[derive(Debug, Copy, Clone)]
-pub struct Cons<Head, Tail>(PhantomData<(Head, Tail)>);
-
 /// One step through a jet-valued scalar presentation in a [`ConstantRoute`].
 ///
 /// `JetLayer<M, N>` records that the current scalar was obtained by wrapping
@@ -1343,7 +1329,7 @@ pub trait ConstantRoute<F: Field> {
     fn constant(value: F) -> Self::Output;
 }
 
-impl<F: Field> ConstantRoute<F> for Nil {
+impl<F: Field> ConstantRoute<F> for Ø {
     type Output = F;
 
     fn constant(value: F) -> Self::Output {
@@ -1390,12 +1376,12 @@ impl<P: Point, V: Tensor, Tower> TangentElement<P, V, Tower> {
     }
 }
 
-type Prolongation<P, V, T> = TangentElement<P, V, Cons<T, Nil>>;
+type Prolongation<P, V, T> = TangentElement<P, V, Cons<T, Ø>>;
 
 /// A first [`TangentElement`] at a point of `P`, expressed in `V` coordinates.
-pub type Tangent<P, V> = TangentElement<P, V, Nil>;
+pub type Tangent<P, V> = TangentElement<P, V, Ø>;
 /// An iterated [`TangentElement`] with explicit [`TangentBundle`] witnesses.
-pub type TM<P, V, T, U> = TangentElement<P, V, Cons<T, Cons<U, Nil>>>;
+pub type TM<P, V, T, U> = TangentElement<P, V, Cons<T, Cons<U, Ø>>>;
 /// The tangent bundle of `T`, represented by the canonical jet prolongation.
 ///
 /// This is the concrete iterated-tangent representation constructed by
@@ -1635,7 +1621,7 @@ where
                 )
             });
 
-            let output = <F as JetMap<BT, FT, M, 1, BT::F, Nil>>::jet_at(&self.0, input);
+            let output = <F as JetMap<BT, FT, M, 1, BT::F, Ø>>::jet_at(&self.0, input);
 
             FT::from_fn(|output_coordinate| output[output_coordinate][1])
         });
@@ -1666,7 +1652,7 @@ where
         });
 
         let output: JetVector<FT, M, 1, BT::F> =
-            <F as JetMap<BT, FT, M, 1, BT::F, Nil>>::jet_at(&self.f, input);
+            <F as JetMap<BT, FT, M, 1, BT::F, Ø>>::jet_at(&self.f, input);
 
         FT::from_fn(|coordinate| output[coordinate][1])
     }
@@ -1678,14 +1664,7 @@ where
 /// `Fn(JetVector<BT, ..>)` implementation. Differential programs implement it
 /// recursively, adding jet layers while `Route` remembers how to inject
 /// captured base-field constants into the current scalar type.
-pub trait JetMap<
-    BT: Tensor,
-    FT: Tensor<F = BT::F>,
-    M: JetMode,
-    const N: usize,
-    S: Field,
-    Route = Nil,
->
+pub trait JetMap<BT: Tensor, FT: Tensor<F = BT::F>, M: JetMode, const N: usize, S: Field, Route = Ø>
 {
     /// Evaluates the map without discarding any jet coefficients.
     fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S>;
