@@ -14,12 +14,14 @@ mod algebra;
 mod category;
 mod chart;
 mod foundation;
+mod topology;
 mod vector;
 
 pub use algebra::*;
 pub use category::*;
 pub use chart::*;
 pub use foundation::*;
+pub use topology::*;
 pub use vector::*;
 
 #[cfg(feature = "testing")]

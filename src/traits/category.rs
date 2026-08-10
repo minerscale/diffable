@@ -94,6 +94,14 @@ pub trait Cat: Copy + Clone + Debug + Send + Sync + 'static {
     type C: Category;
 }
 
+/// A concrete Rust type carrying a structural interpretation as category `C`.
+///
+/// Unlike [`Reflect`], `C` need not have a nominal [`Cat`] name. This is the
+/// bridge used by higher-order constructions such as `𝐎𝐛<C>` and `𝐌𝐚𝐩<C>`.
+pub trait Realizes<C: Category> {
+    type Context: Category + RefinesCategory<C>;
+}
+
 // -----------------------------------------------------------------------------
 // Structural dependencies: reflected associated types
 // -----------------------------------------------------------------------------
@@ -115,6 +123,12 @@ pub struct Requires<Name: AssocName, Role: Cat>(PhantomData<(Name, Role)>);
 #[derive(Debug, Copy, Clone)]
 pub struct Binds<Name: AssocName, Role: Cat, Value>(PhantomData<(Name, Role, Value)>);
 
+/// A concrete binding whose role is witnessed by an explicit structural context.
+#[derive(Debug, Copy, Clone)]
+pub struct BindsAs<Name: AssocName, Role: Cat, Value, Context: Category>(
+    PhantomData<(Name, Role, Value, Context)>,
+);
+
 /// Placeholder used as [`AssocEntry::Value`] by a canonical requirement.
 #[derive(Debug, Copy, Clone)]
 pub struct Unspecified;
@@ -134,6 +148,13 @@ impl<N: AssocName, R: Cat> AssocEntry for Requires<N, R> {
 
 impl<N: AssocName, R: Cat, V> sealed::AssocEntry for Binds<N, R, V> {}
 impl<N: AssocName, R: Cat, V> AssocEntry for Binds<N, R, V> {
+    type Name = N;
+    type Role = R;
+    type Value = V;
+}
+
+impl<N: AssocName, R: Cat, V, C: Category> sealed::AssocEntry for BindsAs<N, R, V, C> {}
+impl<N: AssocName, R: Cat, V, C: Category> AssocEntry for BindsAs<N, R, V, C> {
     type Name = N;
     type Role = R;
     type Value = V;
@@ -180,7 +201,16 @@ macro_rules! assoc_names {
 
 // These names intentionally mirror the associated type spellings of the
 // reflected traits.
-assoc_names!(F, Fixed, Characteristic);
+assoc_names!(
+    F,
+    Fixed,
+    Characteristic,
+    Tangent,
+    Domain,
+    Codomain,
+    From,
+    To
+);
 
 /// Find a structural dependency by associated-type name.
 ///
@@ -277,6 +307,75 @@ impl sealed::PropertyList for Ø {}
 impl PropertyList for Ø {}
 impl<H: PropertyEntry, T: PropertyList> sealed::PropertyList for Cons<H, T> {}
 impl<H: PropertyEntry, T: PropertyList> PropertyList for Cons<H, T> {}
+
+/// Append two type-level property lists.
+pub trait AppendProperties<Rhs: PropertyList>: PropertyList {
+    type Output: PropertyList;
+}
+
+impl<Rhs: PropertyList> AppendProperties<Rhs> for Ø {
+    type Output = Rhs;
+}
+
+impl<Head, Tail, Rhs> AppendProperties<Rhs> for Cons<Head, Tail>
+where
+    Head: PropertyEntry,
+    Tail: PropertyList + AppendProperties<Rhs>,
+    Rhs: PropertyList,
+{
+    type Output = Cons<Head, <Tail as AppendProperties<Rhs>>::Output>;
+}
+
+/// The transitive properties supplied by one property edge.
+pub trait ExpandProperty: PropertyEntry {
+    type Expansion: PropertyList;
+}
+
+impl<𝒞> ExpandProperty for Property<𝒞>
+where
+    𝒞: Cat,
+    <𝒞::C as Category>::Properties: ExpandProperties,
+{
+    type Expansion =
+        <<𝒞::C as Category>::Properties as ExpandProperties>::Expansion;
+}
+
+impl<𝒞, Context> ExpandProperty for BindsProperty<𝒞, Context>
+where
+    𝒞: Cat,
+    Context: Category,
+    <Context as Category>::Properties: ExpandProperties,
+{
+    type Expansion =
+        <<Context as Category>::Properties as ExpandProperties>::Expansion;
+}
+
+/// Flatten the transitive closure of a property graph.
+///
+/// Every direct property remains present, followed by all properties reachable
+/// through its resolved context.
+pub trait ExpandProperties: PropertyList {
+    type Expansion: PropertyList;
+}
+
+impl ExpandProperties for Ø {
+    type Expansion = Ø;
+}
+
+impl<Head, Tail> ExpandProperties for Cons<Head, Tail>
+where
+    Head: PropertyEntry + ExpandProperty,
+    Tail: PropertyList + ExpandProperties,
+    <Head as ExpandProperty>::Expansion:
+        AppendProperties<<Tail as ExpandProperties>::Expansion>,
+{
+    type Expansion = Cons<
+        Head,
+        <<Head as ExpandProperty>::Expansion as AppendProperties<
+            <Tail as ExpandProperties>::Expansion,
+        >>::Output,
+    >;
+}
 
 /// Find a property edge by reflected category name.
 pub trait FindProperty<𝒞: Cat>: PropertyList {
@@ -623,6 +722,66 @@ macro_rules! cat {
     };
 }
 
+// -----------------------------------------------------------------------------
+// Higher-order category constructors
+// -----------------------------------------------------------------------------
+
+/// The theory of an object carrying structural category `C`.
+pub struct 𝐎𝐛<C: Category + 'static>(PhantomData<fn() -> C>);
+
+impl<C: Category + 'static> Copy for 𝐎𝐛<C> {}
+impl<C: Category + 'static> Clone for 𝐎𝐛<C> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<C: Category + 'static> Debug for 𝐎𝐛<C> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("𝐎𝐛")
+    }
+}
+impl<C: Category + 'static> Cat for 𝐎𝐛<C> {
+    type C = C;
+}
+
+/// The theory of arrows in structural category `C`.
+pub struct 𝐌𝐚𝐩<C: Category + 'static>(PhantomData<fn() -> C>);
+
+impl<C: Category + 'static> Copy for 𝐌𝐚𝐩<C> {}
+impl<C: Category + 'static> Clone for 𝐌𝐚𝐩<C> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<C: Category + 'static> Debug for 𝐌𝐚𝐩<C> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("𝐌𝐚𝐩")
+    }
+}
+impl<C: Category + 'static> Cat for 𝐌𝐚𝐩<C> {
+    type C = cat![(Domain: 𝐎𝐛<C>, Codomain: 𝐎𝐛<C>), {}];
+}
+
+/// The theory of homotopies between arrows in `C`.
+pub struct 𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲<C: Category + 'static>(PhantomData<fn() -> C>);
+
+impl<C: Category + 'static> Copy for 𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲<C> {}
+impl<C: Category + 'static> Clone for 𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲<C> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<C: Category + 'static> Debug for 𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲<C> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲")
+    }
+}
+impl<C: Category + 'static> Cat for 𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲<C> {
+    type C = cat![(From: 𝐌𝐚𝐩<C>, To: 𝐌𝐚𝐩<C>), {}];
+}
+
+pub type C<𝒞> = <𝒞 as Cat>::C;
+
 /// Declare ordinary reflected traits plus Nat-indexed higher families.
 macro_rules! categories {
     (
@@ -770,7 +929,7 @@ categories! {
     ];
     𝐓𝐞𝐧𝐬     => cat![(F: 𝐅𝐥𝐝), {𝐂𝐌𝐨𝐧}];
     𝐕𝐞𝐜𝐭     => cat!{𝐓𝐞𝐧𝐬, 𝐆𝐫𝐩};
-    𝐌𝐚𝐧      => cat!{𝐓𝐨𝐩, 𝐓𝐞𝐧𝐬};
+    𝐌𝐚𝐧      => cat![(Tangent: 𝐓𝐞𝐧𝐬), {𝐓𝐨𝐩}];
 
     @𝐇𝐨𝐦<N> => cat!{𝐌𝐚𝐧};
 }
@@ -821,13 +980,19 @@ impl<S: PropertyList> RefinesProperties<Ø> for S {
 
 impl<S, 𝒞, Tail> RefinesProperties<Cons<Property<𝒞>, Tail>> for S
 where
-    S: PropertyList + FindProperty<𝒞> + RefinesProperties<Tail>,
+    S: PropertyList + ExpandProperties + RefinesProperties<Tail>,
     𝒞: Cat,
     Tail: PropertyList,
-    <S as FindProperty<𝒞>>::Found: RefineProperty<𝒞>,
+    <S as ExpandProperties>::Expansion: FindProperty<𝒞>,
+    <<S as ExpandProperties>::Expansion as FindProperty<𝒞>>::Found:
+        RefineProperty<𝒞>,
 {
     type Refinement = Cons<
-        BindsProperty<𝒞, <<S as FindProperty<𝒞>>::Found as RefineProperty<𝒞>>::Refinement>,
+        BindsProperty<
+            𝒞,
+            <<<S as ExpandProperties>::Expansion as FindProperty<𝒞>>::Found
+                as RefineProperty<𝒞>>::Refinement,
+        >,
         <S as RefinesProperties<Tail>>::Refinement,
     >;
 }
@@ -844,6 +1009,17 @@ where
     ActualRole: Cat + Compare<RequiredRole, Relation = Same>,
     RequiredRole: Cat,
     Value: Reflect<RequiredRole>,
+{
+}
+
+impl<Name, Value, Context, Actual, Required> SatisfiesAssoc<𝐎𝐛<Required>>
+    for BindsAs<Name, 𝐎𝐛<Actual>, Value, Context>
+where
+    Name: AssocName,
+    Actual: Category + 'static,
+    Required: Category + 'static,
+    Value: Realizes<Actual, Context = Context>,
+    Context: Category + RefinesCategory<Actual> + RefinesCategory<Required>,
 {
 }
 
@@ -927,7 +1103,7 @@ pub trait Reflect<𝒞: Cat> {
 }
 
 impl<N: Nat> Reflect<𝐍𝐚𝐭> for N {
-    type C = <𝐍𝐚𝐭 as Cat>::C;
+    type C = C<𝐍𝐚𝐭>;
 }
 
 impl<T: Field> Reflect<𝐅𝐥𝐝> for T {
