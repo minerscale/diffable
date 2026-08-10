@@ -109,13 +109,7 @@ pub trait Object {
 /// category refined by that context.
 pub trait Ob<C: Category>: Object {}
 
-impl<X, C> Ob<C> for X
-where
-    X: Object,
-    C: Category,
-    <X as Object>::Context: RefinesCategory<C>,
-{
-}
+impl<X: Object<Context: RefinesCategory<C>>, C: Category> Ob<C> for X {}
 
 // -----------------------------------------------------------------------------
 // Structural dependencies: reflected associated types
@@ -129,20 +123,70 @@ pub trait AssocName: Copy + Clone + Debug + Send + Sync + 'static {}
 /// `Name` is literally the associated type's reflected name and `Role` is the
 /// reflected trait bound required of that associated type.
 #[derive(Debug, Copy, Clone)]
-pub struct Requires<Name: AssocName, Role: Cat>(PhantomData<(Name, Role)>);
+pub struct Requires<Name: AssocName, 𝒞: Cat>(PhantomData<(Name, 𝒞)>);
 
 /// A concrete associated-type binding.
 ///
 /// Reflection of a concrete trait implementation replaces a canonical
 /// [`Requires`] entry by `Binds<Name, Role, Value>`.
 #[derive(Debug, Copy, Clone)]
-pub struct Binds<Name: AssocName, Role: Cat, Value>(PhantomData<(Name, Role, Value)>);
+pub struct Binds<Name: AssocName, 𝒞: Cat, Value>(PhantomData<(Name, 𝒞, Value)>);
 
 /// A concrete binding whose role is witnessed by an explicit structural context.
 #[derive(Debug, Copy, Clone)]
-pub struct BindsAs<Name: AssocName, Role: Cat, Value, Context: Category>(
-    PhantomData<(Name, Role, Value, Context)>,
+pub struct BindsAs<Name: AssocName, 𝒞: Cat, Value, Context: Category>(
+    PhantomData<(Name, 𝒞, Value, Context)>,
 );
+
+/// The signature of an arrow in the structural category `C`.
+///
+/// An arrow is typed all at once:
+///
+/// ```text
+/// D -> E
+/// ```
+///
+/// where both `D` and `E` are objects of `C`. Its domain and codomain are
+/// therefore not represented as independent associated dependencies; together
+/// they form the single signature which inhabits the [`Typing`] role.
+///
+/// `ArrowSignature<C, D, E>` is the concrete payload bound by
+/// [`BindsTyping`]. The [`Signature`] trait exposes `D` and `E` merely as
+/// projections of that one typing.
+///
+/// The `C` parameter records the category in which the signature is
+/// interpreted. Objecthood of `D` and `E` in `C` is established at the
+/// [`BindsTyping`] boundary rather than by `Signature` itself.
+#[derive(Debug, Copy, Clone)]
+pub struct ArrowSignature<C: Category, D, E>(PhantomData<fn() -> (C, D, E)>);
+
+/// Project the domain and codomain from an arrow signature.
+///
+/// `Signature` describes the shape of a typing: it has a domain and a
+/// codomain. It does not by itself assert that either projection is an object
+/// of any particular category; that proof belongs to the structural binding
+/// which admits the signature.
+pub trait Signature {
+    type Domain;
+    type Codomain;
+}
+
+impl<C: Category, D, E> Signature for ArrowSignature<C, D, E> {
+    type Domain = D;
+    type Codomain = E;
+}
+
+/// Bind the [`Typing`] of an arrow in `C`.
+///
+/// This is the admission boundary for an arrow signature. Unlike the
+/// projection-only [`Signature`] trait, a `BindsTyping<C, D, E>` certifies that
+/// both `D` and `E` are objects of `C`, so an arrow can never acquire a domain
+/// independently of its codomain (or vice versa).
+///
+/// Its associated value is the single [`ArrowSignature<C, D, E>`] from which
+/// domain and codomain may subsequently be projected.
+#[derive(Debug, Copy, Clone)]
+pub struct BindsTyping<C: Category + 'static, D: Ob<C>, E: Ob<C>>(PhantomData<fn() -> (C, D, E)>);
 
 /// Placeholder used as [`AssocEntry::Value`] by a canonical requirement.
 #[derive(Debug, Copy, Clone)]
@@ -154,25 +198,33 @@ pub trait AssocEntry: sealed::AssocEntry {
     type Value;
 }
 
-impl<N: AssocName, R: Cat> sealed::AssocEntry for Requires<N, R> {}
-impl<N: AssocName, R: Cat> AssocEntry for Requires<N, R> {
+impl<𝒞: Cat, N: AssocName> sealed::AssocEntry for Requires<N, 𝒞> {}
+impl<𝒞: Cat, N: AssocName> AssocEntry for Requires<N, 𝒞> {
     type Name = N;
-    type Role = R;
+    type Role = 𝒞;
     type Value = Unspecified;
 }
 
-impl<N: AssocName, R: Cat, V> sealed::AssocEntry for Binds<N, R, V> {}
-impl<N: AssocName, R: Cat, V> AssocEntry for Binds<N, R, V> {
+impl<𝒞: Cat, N: AssocName, V> sealed::AssocEntry for Binds<N, 𝒞, V> {}
+impl<𝒞: Cat, N: AssocName, V> AssocEntry for Binds<N, 𝒞, V> {
     type Name = N;
-    type Role = R;
+    type Role = 𝒞;
     type Value = V;
 }
 
-impl<N: AssocName, R: Cat, V, C: Category> sealed::AssocEntry for BindsAs<N, R, V, C> {}
-impl<N: AssocName, R: Cat, V, C: Category> AssocEntry for BindsAs<N, R, V, C> {
+impl<𝒞: Cat, N: AssocName, V, C: Category> sealed::AssocEntry for BindsAs<N, 𝒞, V, C> {}
+impl<𝒞: Cat, N: AssocName, V, C: Category> AssocEntry for BindsAs<N, 𝒞, V, C> {
     type Name = N;
-    type Role = R;
+    type Role = 𝒞;
     type Value = V;
+}
+
+impl<C: Category + 'static, D: Ob<C>, E: Ob<C>> sealed::AssocEntry for BindsTyping<C, D, E> {}
+
+impl<C: Category + 'static, D: Ob<C>, E: Ob<C>> AssocEntry for BindsTyping<C, D, E> {
+    type Name = Typing;
+    type Role = 𝐓𝐲𝐩𝐢𝐧𝐠<C>;
+    type Value = ArrowSignature<C, D, E>;
 }
 
 pub trait AssocList: sealed::AssocList {}
@@ -216,16 +268,7 @@ macro_rules! assoc_names {
 
 // These names intentionally mirror the associated type spellings of the
 // reflected traits.
-assoc_names!(
-    F,
-    Fixed,
-    Characteristic,
-    Tangent,
-    Domain,
-    Codomain,
-    From,
-    To
-);
+assoc_names!(F, Fixed, Characteristic, Tangent, Typing, From, To);
 
 /// Find a structural dependency by associated-type name.
 ///
@@ -238,30 +281,21 @@ pub trait FindAssocWith<Name: AssocName, Relation>: AssocList {
     type Found: AssocEntry<Name = Name>;
 }
 
-impl<Name, Head, Tail> FindAssocWith<Name, Same> for Cons<Head, Tail>
-where
-    Name: AssocName,
-    Head: AssocEntry<Name = Name>,
-    Tail: AssocList,
+impl<Name: AssocName, Head: AssocEntry<Name = Name>, Tail: AssocList> FindAssocWith<Name, Same>
+    for Cons<Head, Tail>
 {
     type Found = Head;
 }
 
-impl<Name, Head, Tail> FindAssocWith<Name, Different> for Cons<Head, Tail>
-where
-    Name: AssocName,
-    Head: AssocEntry,
-    Tail: AssocList + FindAssoc<Name>,
+impl<Name: AssocName, Head: AssocEntry, Tail: AssocList + FindAssoc<Name>>
+    FindAssocWith<Name, Different> for Cons<Head, Tail>
 {
     type Found = <Tail as FindAssoc<Name>>::Found;
 }
 
-impl<Name, Head, Tail> FindAssoc<Name> for Cons<Head, Tail>
+impl<Name: AssocName, Head: AssocEntry<Name: CompareAssoc<Name>>, Tail: AssocList> FindAssoc<Name>
+    for Cons<Head, Tail>
 where
-    Name: AssocName,
-    Head: AssocEntry,
-    Head::Name: CompareAssoc<Name>,
-    Tail: AssocList,
     Cons<Head, Tail>: FindAssocWith<Name, <Head::Name as CompareAssoc<Name>>::Relation>,
 {
     type Found = <Cons<Head, Tail> as FindAssocWith<
@@ -271,20 +305,16 @@ where
 }
 
 /// Project a reflected associated dependency by its actual trait name.
-pub trait Associated<Name: AssocName>: Category {
-    type Role: Cat;
-    type Type;
+pub trait Ⱶ<Name: AssocName>: Category {
+    type 𝒞: Cat;
+    type X;
 }
 
-impl<Name, S, P, E> Associated<Name> for 𝒯<S, P, E>
-where
-    Name: AssocName,
-    S: AssocList + FindAssoc<Name>,
-    P: PropertyList,
-    E: EquationList,
+impl<Name: AssocName, S: AssocList + FindAssoc<Name>, P: PropertyList, E: EquationList> Ⱶ<Name>
+    for 𝒯<S, P, E>
 {
-    type Role = <<S as FindAssoc<Name>>::Found as AssocEntry>::Role;
-    type Type = <<S as FindAssoc<Name>>::Found as AssocEntry>::Value;
+    type 𝒞 = <<S as FindAssoc<Name>>::Found as AssocEntry>::Role;
+    type X = <<S as FindAssoc<Name>>::Found as AssocEntry>::Value;
 }
 
 // -----------------------------------------------------------------------------
@@ -329,11 +359,8 @@ impl<Rhs: PropertyList> AppendProperties<Rhs> for Ø {
     type Output = Rhs;
 }
 
-impl<Head, Tail, Rhs> AppendProperties<Rhs> for Cons<Head, Tail>
-where
-    Head: PropertyEntry,
-    Tail: PropertyList + AppendProperties<Rhs>,
-    Rhs: PropertyList,
+impl<Rhs: PropertyList, Head: PropertyEntry, Tail: PropertyList + AppendProperties<Rhs>>
+    AppendProperties<Rhs> for Cons<Head, Tail>
 {
     type Output = Cons<Head, <Tail as AppendProperties<Rhs>>::Output>;
 }
@@ -343,19 +370,12 @@ pub trait ExpandProperty: PropertyEntry {
     type Expansion: PropertyList;
 }
 
-impl<𝒞> ExpandProperty for 𝒞
-where
-    𝒞: Cat,
-    <𝒞::C as Category>::Properties: ExpandProperties,
-{
+impl<𝒞: Cat<C: Category<Properties: ExpandProperties>>> ExpandProperty for 𝒞 {
     type Expansion = <<𝒞::C as Category>::Properties as ExpandProperties>::Expansion;
 }
 
-impl<𝒞, Context> ExpandProperty for BindsProperty<𝒞, Context>
-where
-    𝒞: Cat,
-    Context: Category,
-    <Context as Category>::Properties: ExpandProperties,
+impl<𝒞: Cat, Context: Category<Properties: ExpandProperties>> ExpandProperty
+    for BindsProperty<𝒞, Context>
 {
     type Expansion = <<Context as Category>::Properties as ExpandProperties>::Expansion;
 }
@@ -372,11 +392,10 @@ impl ExpandProperties for Ø {
     type Expansion = Ø;
 }
 
-impl<Head, Tail> ExpandProperties for Cons<Head, Tail>
-where
-    Head: PropertyEntry + ExpandProperty,
+impl<
+    Head: PropertyEntry + ExpandProperty<Expansion: AppendProperties<Tail::Expansion>>,
     Tail: PropertyList + ExpandProperties,
-    <Head as ExpandProperty>::Expansion: AppendProperties<<Tail as ExpandProperties>::Expansion>,
+> ExpandProperties for Cons<Head, Tail>
 {
     type Expansion = Cons<
         Head,
@@ -395,32 +414,24 @@ pub trait FindPropertyWith<𝒞: Cat, Relation>: PropertyList {
     type Found: PropertyEntry;
 }
 
-impl<𝒞, Head, Tail> FindPropertyWith<𝒞, Same> for Cons<Head, Tail>
-where
-    𝒞: Cat,
-    Head: PropertyEntry,
-    Head::Role: Compare<𝒞, Relation = Same>,
-    Tail: PropertyList,
+impl<𝒞: Cat, Head: PropertyEntry<Role: Compare<𝒞, Relation = Same>>, Tail: PropertyList>
+    FindPropertyWith<𝒞, Same> for Cons<Head, Tail>
 {
     type Found = Head;
 }
 
-impl<𝒞, Head, Tail> FindPropertyWith<𝒞, Different> for Cons<Head, Tail>
-where
+impl<
     𝒞: Cat,
-    Head: PropertyEntry,
-    Head::Role: Compare<𝒞, Relation = Different>,
+    Head: PropertyEntry<Role: Compare<𝒞, Relation = Different>>,
     Tail: PropertyList + FindProperty<𝒞>,
+> FindPropertyWith<𝒞, Different> for Cons<Head, Tail>
 {
     type Found = <Tail as FindProperty<𝒞>>::Found;
 }
 
-impl<𝒞, Head, Tail> FindProperty<𝒞> for Cons<Head, Tail>
+impl<𝒞: Cat, Head: PropertyEntry<Role: Compare<𝒞>>, Tail: PropertyList> FindProperty<𝒞>
+    for Cons<Head, Tail>
 where
-    𝒞: Cat,
-    Head: PropertyEntry,
-    Head::Role: Compare<𝒞>,
-    Tail: PropertyList,
     Cons<Head, Tail>: FindPropertyWith<𝒞, <Head::Role as Compare<𝒞>>::Relation>,
 {
     type Found = <Cons<Head, Tail> as FindPropertyWith<
@@ -438,22 +449,18 @@ pub trait ResolvedProperty<𝒞: Cat>: PropertyEntry {
     type Refinement: Category;
 }
 
-impl<Actual, Context, Required> ResolvedProperty<Required> for BindsProperty<Actual, Context>
-where
-    Actual: Cat + Compare<Required, Relation = Same>,
-    Context: Category + Refines<Required>,
-    Required: Cat,
+impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>, Context: Category + π<𝒞>> ResolvedProperty<𝒞>
+    for BindsProperty<𝒟, Context>
 {
-    type Refinement = <Context as Refines<Required>>::Refinement;
+    type Refinement = <Context as π<𝒞>>::C;
 }
 
-impl<𝒞, S, P, E> PropertyRefinement<𝒞> for 𝒯<S, P, E>
-where
+impl<
     𝒞: Cat,
     S: AssocList,
-    P: PropertyList + FindProperty<𝒞>,
+    P: PropertyList + FindProperty<𝒞, Found: ResolvedProperty<𝒞>>,
     E: EquationList,
-    <P as FindProperty<𝒞>>::Found: ResolvedProperty<𝒞>,
+> PropertyRefinement<𝒞> for 𝒯<S, P, E>
 {
     type Refinement = <<P as FindProperty<𝒞>>::Found as ResolvedProperty<𝒞>>::Refinement;
 }
@@ -516,24 +523,16 @@ pub trait ResolvePath<Path>: Category {
     type Output;
 }
 
-impl<Name, S, P, E> ResolvePath<At<Name>> for 𝒯<S, P, E>
-where
-    Name: AssocName,
-    S: AssocList + FindAssoc<Name>,
-    P: PropertyList,
-    E: EquationList,
+impl<Name: AssocName, S: AssocList + FindAssoc<Name>, P: PropertyList, E: EquationList>
+    ResolvePath<At<Name>> for 𝒯<S, P, E>
 {
-    type Output = <Self as Associated<Name>>::Type;
+    type Output = <Self as Ⱶ<Name>>::X;
 }
 
-impl<Path, Name, S, P, E> ResolvePath<Follow<Path, Name>> for 𝒯<S, P, E>
+impl<Path, Name: AssocName, S: AssocList, P: PropertyList, E: EquationList>
+    ResolvePath<Follow<Path, Name>> for 𝒯<S, P, E>
 where
-    Name: AssocName,
-    S: AssocList,
-    P: PropertyList,
-    E: EquationList,
-    Self: ResolvePath<Path>,
-    <Self as ResolvePath<Path>>::Output: Project<Name>,
+    Self: ResolvePath<Path, Output: Project<Name>>,
 {
     type Output = <<Self as ResolvePath<Path>>::Output as Project<Name>>::Output;
 }
@@ -544,10 +543,13 @@ impl<T> SameType<T> for T {}
 
 trait SatisfiesEquation<Eq>: Category {}
 
-impl<C, Left, Right> SatisfiesEquation<Equal<Left, Right>> for C
-where
-    C: Category + ResolvePath<Left> + ResolvePath<Right>,
-    <C as ResolvePath<Left>>::Output: SameType<<C as ResolvePath<Right>>::Output>,
+impl<
+    Left,
+    Right,
+    C: Category
+        + ResolvePath<Right>
+        + ResolvePath<Left, Output: SameType<<C as ResolvePath<Right>>::Output>>,
+> SatisfiesEquation<Equal<Left, Right>> for C
 {
 }
 
@@ -555,10 +557,12 @@ trait SatisfiesEquations<Equations: EquationList>: Category {}
 
 impl<C: Category> SatisfiesEquations<Ø> for C {}
 
-impl<C, Left, Right, Tail> SatisfiesEquations<Cons<Equal<Left, Right>, Tail>> for C
-where
-    C: Category + SatisfiesEquation<Equal<Left, Right>> + SatisfiesEquations<Tail>,
+impl<
+    Left,
+    Right,
     Tail: EquationList,
+    C: Category + SatisfiesEquation<Equal<Left, Right>> + SatisfiesEquations<Tail>,
+> SatisfiesEquations<Cons<Equal<Left, Right>, Tail>> for C
 {
 }
 
@@ -767,8 +771,31 @@ impl<C: Category + 'static> Debug for 𝐀𝐫𝐫<C> {
         f.write_str("𝐀𝐫𝐫")
     }
 }
+
+/// The theory of arrow typings in `C`.
+///
+/// A typing consists of a domain and codomain which are both objects of `C`.
+/// It represents the inseparable judgement `D -> E`, rather than two
+/// independently available associated dependencies.
+pub struct 𝐓𝐲𝐩𝐢𝐧𝐠<C: Category + 'static>(PhantomData<fn() -> C>);
+
+impl<C: Category + 'static> Copy for 𝐓𝐲𝐩𝐢𝐧𝐠<C> {}
+impl<C: Category + 'static> Clone for 𝐓𝐲𝐩𝐢𝐧𝐠<C> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<C: Category + 'static> Debug for 𝐓𝐲𝐩𝐢𝐧𝐠<C> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("𝐓𝐲𝐩𝐢𝐧𝐠")
+    }
+}
+impl<C: Category + 'static> Cat for 𝐓𝐲𝐩𝐢𝐧𝐠<C> {
+    type C = cat![(From: 𝐈𝐝<C>, To: 𝐈𝐝<C>), {}];
+}
+
 impl<C: Category + 'static> Cat for 𝐀𝐫𝐫<C> {
-    type C = cat![(Domain: 𝐈𝐝<C>, Codomain: 𝐈𝐝<C>), {}];
+    type C = cat![(Typing: 𝐓𝐲𝐩𝐢𝐧𝐠<C>), {}];
 }
 
 /// The theory of homotopies between arrows in `C`.
@@ -868,30 +895,24 @@ macro_rules! categories {
         );
 
         $(
-            impl<N, M> Compare<$family<M>> for $family<N>
+            impl<N: Nat + NatCompare<M>, M: Nat> Compare<$family<M>> for $family<N>
             where
-                N: Nat + NatCompare<M>,
-                M: Nat,
                 $family<N>: Cat,
                 $family<M>: Cat,
             {
                 type Relation = <N as NatCompare<M>>::Relation;
             }
 
-            impl<N, M> Compare<𝐂𝐚𝐭<M>> for $family<N>
+            impl<N: Nat, M: Nat> Compare<𝐂𝐚𝐭<M>> for $family<N>
             where
-                N: Nat,
-                M: Nat,
                 $family<N>: Cat,
                 𝐂𝐚𝐭<M>: Cat,
             {
                 type Relation = Different;
             }
 
-            impl<N, M> Compare<$family<M>> for 𝐂𝐚𝐭<N>
+            impl<N: Nat, M: Nat> Compare<$family<M>> for 𝐂𝐚𝐭<N>
             where
-                N: Nat,
-                M: Nat,
                 𝐂𝐚𝐭<N>: Cat,
                 $family<M>: Cat,
             {
@@ -899,10 +920,8 @@ macro_rules! categories {
             }
         )*
 
-        impl<N, M> Compare<𝐂𝐚𝐭<M>> for 𝐂𝐚𝐭<N>
+        impl<N: Nat + NatCompare<M>, M: Nat> Compare<𝐂𝐚𝐭<M>> for 𝐂𝐚𝐭<N>
         where
-            N: Nat + NatCompare<M>,
-            M: Nat,
             𝐂𝐚𝐭<N>: Cat,
             𝐂𝐚𝐭<M>: Cat,
         {
@@ -956,26 +975,18 @@ pub type 𝐃𝐢𝐟𝐟 = 𝐇𝐨𝐦<NatZero>;
 /// category name can resolve itself when its canonical signature is already concrete
 /// enough to refine that property; this handles ordinary inherited structure whose
 /// canonical graph has no unresolved associated bindings.
-pub trait RefineProperty<Required: Cat>: PropertyEntry {
+pub trait RefineProperty<𝒞: Cat>: PropertyEntry {
     type Refinement: Category;
 }
 
-impl<Actual, Context, Required> RefineProperty<Required> for BindsProperty<Actual, Context>
-where
-    Actual: Cat + Compare<Required, Relation = Same>,
-    Context: Category + Refines<Required>,
-    Required: Cat,
+impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>, Context: Category + π<𝒞>> RefineProperty<𝒞>
+    for BindsProperty<𝒟, Context>
 {
-    type Refinement = <Context as Refines<Required>>::Refinement;
+    type Refinement = <Context as π<𝒞>>::C;
 }
 
-impl<Actual, Required> RefineProperty<Required> for Actual
-where
-    Actual: Cat + Compare<Required, Relation = Same>,
-    Required: Cat,
-    Actual::C: Refines<Required>,
-{
-    type Refinement = <Actual::C as Refines<Required>>::Refinement;
+impl<𝒞: Cat, 𝒟: Cat<C: π<𝒞>> + Compare<𝒞, Relation = Same>> RefineProperty<𝒞> for 𝒟 {
+    type Refinement = <𝒟::C as π<𝒞>>::C;
 }
 
 /// Resolve every required property in `Target`, retaining the graph found for each.
@@ -987,13 +998,13 @@ impl<S: PropertyList> RefinesProperties<Ø> for S {
     type Refinement = Ø;
 }
 
-impl<S, 𝒞, Tail> RefinesProperties<Cons<𝒞, Tail>> for S
-where
-    S: PropertyList + ExpandProperties + RefinesProperties<Tail>,
+impl<
     𝒞: Cat,
     Tail: PropertyList,
-    <S as ExpandProperties>::Expansion: FindProperty<𝒞>,
-    <<S as ExpandProperties>::Expansion as FindProperty<𝒞>>::Found: RefineProperty<𝒞>,
+    S: PropertyList
+        + ExpandProperties<Expansion: FindProperty<𝒞, Found: RefineProperty<𝒞>>>
+        + RefinesProperties<Tail>,
+> RefinesProperties<Cons<𝒞, Tail>> for S
 {
     type Refinement = Cons<
         BindsProperty<
@@ -1009,26 +1020,29 @@ where
 /// A found associated dependency satisfies a canonical requirement when its
 /// reflected role is the same required trait/category and its concrete value can
 /// itself be reflected in that role.
-trait SatisfiesAssoc<Role: Cat>: AssocEntry {}
+trait SatisfiesAssoc<𝒞: Cat>: AssocEntry {}
 
-impl<Name, ActualRole, Value, RequiredRole> SatisfiesAssoc<RequiredRole>
-    for Binds<Name, ActualRole, Value>
-where
-    Name: AssocName,
-    ActualRole: Cat + Compare<RequiredRole, Relation = Same>,
-    RequiredRole: Cat,
-    Value: Reflect<RequiredRole>,
+impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>, Name: AssocName, Value: Reflect<𝒞>>
+    SatisfiesAssoc<𝒞> for Binds<Name, 𝒟, Value>
 {
 }
 
-impl<Name, Value, Context, Actual, Required> SatisfiesAssoc<𝐈𝐝<Required>>
-    for BindsAs<Name, 𝐈𝐝<Actual>, Value, Context>
-where
+impl<
     Name: AssocName,
-    Actual: Category + 'static,
     Required: Category + 'static,
-    Value: Object<Context = Context> + Ob<Actual> + Ob<Required>,
+    Actual: Category + RefinesCategory<Required> + 'static,
     Context: Category,
+    Value: Object<Context = Context> + Ob<Actual>,
+> SatisfiesAssoc<𝐈𝐝<Required>> for BindsAs<Name, 𝐈𝐝<Actual>, Value, Context>
+{
+}
+
+impl<
+    Required: Category + 'static,
+    Actual: Category + RefinesCategory<Required> + 'static,
+    D: Ob<Actual>,
+    E: Ob<Actual>,
+> SatisfiesAssoc<𝐓𝐲𝐩𝐢𝐧𝐠<Required>> for BindsTyping<Actual, D, E>
 {
 }
 
@@ -1043,13 +1057,12 @@ impl<S: AssocList> RefinesStructure<Ø> for S {
     type Refinement = Ø;
 }
 
-impl<S, Name, Role, Tail> RefinesStructure<Cons<Requires<Name, Role>, Tail>> for S
-where
-    S: AssocList + FindAssoc<Name> + RefinesStructure<Tail>,
+impl<
+    𝒞: Cat,
     Name: AssocName,
-    Role: Cat,
     Tail: AssocList,
-    <S as FindAssoc<Name>>::Found: SatisfiesAssoc<Role>,
+    S: AssocList + FindAssoc<Name, Found: SatisfiesAssoc<𝒞>> + RefinesStructure<Tail>,
+> RefinesStructure<Cons<Requires<Name, 𝒞>, Tail>> for S
 {
     type Refinement =
         Cons<<S as FindAssoc<Name>>::Found, <S as RefinesStructure<Tail>>::Refinement>;
@@ -1061,20 +1074,21 @@ where
 /// concrete source bindings, target properties become nested resolved property
 /// graphs, and target equations are retained after being proved against the source.
 pub trait RefinesCategory<Target: Category>: Category {
-    type Refinement: Category;
+    type C: Category;
 }
 
-impl<SS, SP, SE, TS, TP, TE> RefinesCategory<𝒯<TS, TP, TE>> for 𝒯<SS, SP, SE>
-where
-    SS: AssocList + RefinesStructure<TS>,
-    SP: PropertyList + RefinesProperties<TP>,
-    SE: EquationList,
+impl<
     TS: AssocList,
     TP: PropertyList,
     TE: EquationList,
+    SS: AssocList + RefinesStructure<TS>,
+    SP: PropertyList + RefinesProperties<TP>,
+    SE: EquationList,
+> RefinesCategory<𝒯<TS, TP, TE>> for 𝒯<SS, SP, SE>
+where
     𝒯<SS, SP, SE>: SatisfiesEquations<TE>,
 {
-    type Refinement = 𝒯<
+    type C = 𝒯<
         <SS as RefinesStructure<TS>>::Refinement,
         <SP as RefinesProperties<TP>>::Refinement,
         TE,
@@ -1082,21 +1096,18 @@ where
 }
 
 /// Query a concrete reflected graph for its `𝒞`-shaped resolved subgraph.
-pub trait Refines<𝒞: Cat>: Category {
-    type Refinement: Category;
+#[allow(non_camel_case_types)]
+pub trait π<𝒞: Cat>: Category {
+    type C: Category;
 }
 
-impl<𝒞, C> Refines<𝒞> for C
-where
-    𝒞: Cat,
-    C: Category + RefinesCategory<𝒞::C>,
-{
-    type Refinement = <C as RefinesCategory<𝒞::C>>::Refinement;
+impl<𝒞: Cat, C: Category + RefinesCategory<𝒞::C>> π<𝒞> for C {
+    type C = <C as RefinesCategory<𝒞::C>>::C;
 }
 
 /// The public shorthand for reflecting `X` as `𝒞` and returning the resolved graph.
 #[allow(type_alias_bounds)]
-pub type Refine<𝒞: Cat, X: Reflect<𝒞>> = <<X as Reflect<𝒞>>::C as Refines<𝒞>>::Refinement;
+pub type Refine<𝒞: Cat, X: Reflect<𝒞>> = <<X as Reflect<𝒞>>::C as π<𝒞>>::C;
 
 // -----------------------------------------------------------------------------
 // Reflection of concrete Rust trait implementations
@@ -1108,7 +1119,7 @@ pub type Refine<𝒞: Cat, X: Reflect<𝒞>> = <<X as Reflect<𝒞>>::C as Refin
 /// compile-time category database.  The resulting signature must itself refine the
 /// canonical signature of `𝒞`.
 pub trait Reflect<𝒞: Cat> {
-    type C: Category + Refines<𝒞>;
+    type C: Category + π<𝒞>;
 }
 
 impl<N: Nat> Reflect<𝐍𝐚𝐭> for N {
@@ -1163,7 +1174,7 @@ impl<𝒞: Cat, X> Equivalent<𝒞, X> for X {
 fn test_this_whole_thing_baby() {
     type V = Refine<𝐕𝐞𝐜𝐭, Coords<f64, 2>>;
     type T = <V as PropertyRefinement<𝐓𝐞𝐧𝐬>>::Refinement;
-    type Scalar = <T as Associated<F>>::Type;
+    type Scalar = <T as Ⱶ<F>>::X;
 
     fn assert_same_type<T>(_: T, _: T) {}
 

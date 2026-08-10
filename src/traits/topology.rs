@@ -25,30 +25,25 @@ use core::{
 };
 
 use super::{
-    Associated, Binds, BindsAs, BindsProperty, Cat, Category, Codomain, Cons, Domain, Ob, Object,
-    Refines, Reflect, Tangent, TangentBundle, Tensor, Ø, 𝐀𝐫𝐫, 𝐈𝐝, 𝐌𝐚𝐧, 𝐒𝐞𝐭, 𝐓𝐞𝐧𝐬, 𝐓𝐨𝐩, 𝒯,
+    Binds, BindsProperty, BindsTyping, Cat, Category, Cons, Ob, Reflect, Signature, Tangent,
+    TangentBundle, Tensor, Typing, Ø, π, Ⱶ, 𝐀𝐫𝐫, 𝐌𝐚𝐧, 𝐒𝐞𝐭, 𝐓𝐞𝐧𝐬, 𝐓𝐨𝐩, 𝒯,
 };
 
-/// The concrete Rust type found at the `Domain` edge of an arrow context.
+/// The concrete Rust domain of an arrow context.
 #[allow(type_alias_bounds)]
-pub type DomainOf<C: Category + Associated<Domain>> = <C as Associated<Domain>>::Type;
+pub type DomainOf<C: Ⱶ<Typing, X: Signature>> = <<C as Ⱶ<Typing>>::X as Signature>::Domain;
 
-/// The concrete Rust type found at the `Codomain` edge of an arrow context.
+/// The concrete Rust codomain of an arrow context.
 #[allow(type_alias_bounds)]
-pub type CodomainOf<C: Category + Associated<Codomain>> = <C as Associated<Codomain>>::Type;
+pub type CodomainOf<C: Ⱶ<Typing, X: Signature>> = <<C as Ⱶ<Typing>>::X as Signature>::Codomain;
 
-/// Construct the concrete context of an arrow `Domain -> Codomain` in `C`.
+/// Construct the concrete context of an arrow `D -> E` in `C`.
 ///
-/// This is the structural description into which an actual callable can later be
-/// admitted with [`Arrow::new`].
+/// Both endpoints are bound by one structural association, so a domain cannot
+/// exist without its codomain.
 #[allow(type_alias_bounds)]
-pub type ArrowCategory<C: Category + 'static, D: Ob<C>, E: Ob<C>> = 𝒯<
-    Cons<
-        BindsAs<Domain, 𝐈𝐝<C>, D, <D as Object>::Context>,
-        Cons<BindsAs<Codomain, 𝐈𝐝<C>, E, <E as Object>::Context>, Ø>,
-    >,
-    Ø,
->;
+pub type ArrowCategory<C: Category + 'static, D: Ob<C>, E: Ob<C>> =
+    𝒯<Cons<BindsTyping<C, D, E>, Ø>, Ø>;
 
 /// A concrete callable admitted as a morphism in structural context `C`.
 ///
@@ -61,8 +56,8 @@ pub type ArrowCategory<C: Category + 'static, D: Ob<C>, E: Ob<C>> = 𝒯<
 /// function signature against the context, but the caller certifies the
 /// mathematical claim that the function really is a morphism in `C`.
 pub struct Arrow<C: Category, F> {
-    function: F,
-    _context: PhantomData<fn() -> C>,
+    f: F,
+    ctx: PhantomData<fn() -> C>,
 }
 
 impl<C: Category, F> Deref for Arrow<C, F> {
@@ -70,43 +65,39 @@ impl<C: Category, F> Deref for Arrow<C, F> {
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.function
+        &self.f
     }
 }
 
 impl<C: Category, F> DerefMut for Arrow<C, F> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.function
+        &mut self.f
     }
 }
 
-impl<C, F> Arrow<C, F>
-where
-    C: Category + Associated<Domain> + Associated<Codomain>,
-    F: Fn(&DomainOf<C>) -> CodomainOf<C>,
-{
+impl<C: Ⱶ<Typing, X: Signature>, F: Fn(&DomainOf<C>) -> CodomainOf<C>> Arrow<C, F> {
     /// Admit `function` as the morphism described by `C`.
     #[inline]
-    pub fn new(function: F) -> Self {
+    pub fn new(f: F) -> Self {
         Self {
-            function,
-            _context: PhantomData,
+            f,
+            ctx: PhantomData,
         }
     }
 
     /// Forget the admission and recover the ordinary Rust callable.
     #[inline]
     pub fn into_inner(self) -> F {
-        self.function
+        self.f
     }
 }
 
 impl<C: Category, F: Clone> Clone for Arrow<C, F> {
     fn clone(&self) -> Self {
         Self {
-            function: self.function.clone(),
-            _context: PhantomData,
+            f: self.f.clone(),
+            ctx: PhantomData,
         }
     }
 }
@@ -151,10 +142,7 @@ impl<M: Manifold> Reflect<𝐌𝐚𝐧> for M {
 #[allow(dead_code)]
 fn theorem_about_continuous_maps<F, C>(_f: &Arrow<C, F>)
 where
-    C: Category
-        + Associated<Domain>
-        + Associated<Codomain>
-        + Refines<𝐀𝐫𝐫<<𝐓𝐨𝐩 as Cat>::C>>,
+    C: π<𝐀𝐫𝐫<<𝐓𝐨𝐩 as Cat>::C>> + Ⱶ<Typing, X: Signature>,
     F: Fn(&DomainOf<C>) -> CodomainOf<C>,
 {
 }

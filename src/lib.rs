@@ -371,7 +371,8 @@
     clippy::needless_range_loop,
     clippy::type_complexity,
     confusable_idents,
-    uncommon_codepoints
+    uncommon_codepoints,
+    mixed_script_confusables
 )]
 #![no_std]
 #[cfg(feature = "std")]
