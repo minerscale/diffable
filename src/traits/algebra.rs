@@ -7,7 +7,8 @@
 //! structural approach into geometry.
 
 use crate::{
-    impl_group_via_mul, traits::{Different, ExactCmp, FromReal, Interval, Metric, Real, Same, Tensor},
+    impl_group_via_mul,
+    traits::{Different, ExactCmp, FromReal, Interval, Metric, Real, Same, Tensor},
 };
 use core::ops::{Add, Mul, Neg, Sub};
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
