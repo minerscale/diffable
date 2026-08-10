@@ -94,12 +94,27 @@ pub trait Cat: Copy + Clone + Debug + Send + Sync + 'static {
     type C: Category;
 }
 
-/// A concrete Rust type carrying a structural interpretation as category `C`.
+/// Admit a concrete Rust type into the ontology with its richest structural context.
 ///
-/// Unlike [`Reflect`], `C` need not have a nominal [`Cat`] name. This is the
-/// bridge used by higher-order constructions such as `𝐎𝐛<C>` and `𝐌𝐚𝐩<C>`.
-pub trait Realizes<C: Category> {
-    type Context: Category + RefinesCategory<C>;
+/// This is the object-level trust boundary. An object is admitted once; every
+/// weaker category it inhabits is then derived structurally through [`Ob`].
+pub trait Object {
+    type Context: Category;
+}
+
+/// The proposition that `Self` is an object of structural category `C`.
+///
+/// Objecthood is derived from the single context admitted by [`Object`]. Thus a
+/// value admitted with a rich context is automatically an object of every weaker
+/// category refined by that context.
+pub trait Ob<C: Category>: Object {}
+
+impl<X, C> Ob<C> for X
+where
+    X: Object,
+    C: Category,
+    <X as Object>::Context: RefinesCategory<C>,
+{
 }
 
 // -----------------------------------------------------------------------------
@@ -276,15 +291,12 @@ where
 // Properties: unordered inherited structure
 // -----------------------------------------------------------------------------
 
-/// A canonical requirement that `Self` has property/category `𝒞`.
-#[derive(Debug, Copy, Clone)]
-pub struct Property<𝒞: Cat>(PhantomData<𝒞>);
-
 /// A resolved property edge.
 ///
-/// `Context` is the concrete/refined graph which satisfies `𝒞`.  Unlike a bare
-/// [`Property`], this retains the structural information discovered while resolving
-/// the property, including associated bindings inherited through it.
+/// `Context` is the concrete/refined graph which satisfies `𝒞`. Unlike a bare
+/// category name in a [`PropertyList`], this retains the structural information
+/// discovered while resolving the property, including associated bindings inherited
+/// through it.
 #[derive(Debug, Copy, Clone)]
 pub struct BindsProperty<𝒞: Cat, Context: Category>(PhantomData<(𝒞, Context)>);
 
@@ -292,8 +304,8 @@ pub trait PropertyEntry: sealed::PropertyEntry {
     type Role: Cat;
 }
 
-impl<𝒞: Cat> sealed::PropertyEntry for Property<𝒞> {}
-impl<𝒞: Cat> PropertyEntry for Property<𝒞> {
+impl<𝒞: Cat> sealed::PropertyEntry for 𝒞 {}
+impl<𝒞: Cat> PropertyEntry for 𝒞 {
     type Role = 𝒞;
 }
 
@@ -331,13 +343,12 @@ pub trait ExpandProperty: PropertyEntry {
     type Expansion: PropertyList;
 }
 
-impl<𝒞> ExpandProperty for Property<𝒞>
+impl<𝒞> ExpandProperty for 𝒞
 where
     𝒞: Cat,
     <𝒞::C as Category>::Properties: ExpandProperties,
 {
-    type Expansion =
-        <<𝒞::C as Category>::Properties as ExpandProperties>::Expansion;
+    type Expansion = <<𝒞::C as Category>::Properties as ExpandProperties>::Expansion;
 }
 
 impl<𝒞, Context> ExpandProperty for BindsProperty<𝒞, Context>
@@ -346,8 +357,7 @@ where
     Context: Category,
     <Context as Category>::Properties: ExpandProperties,
 {
-    type Expansion =
-        <<Context as Category>::Properties as ExpandProperties>::Expansion;
+    type Expansion = <<Context as Category>::Properties as ExpandProperties>::Expansion;
 }
 
 /// Flatten the transitive closure of a property graph.
@@ -366,8 +376,7 @@ impl<Head, Tail> ExpandProperties for Cons<Head, Tail>
 where
     Head: PropertyEntry + ExpandProperty,
     Tail: PropertyList + ExpandProperties,
-    <Head as ExpandProperty>::Expansion:
-        AppendProperties<<Tail as ExpandProperties>::Expansion>,
+    <Head as ExpandProperty>::Expansion: AppendProperties<<Tail as ExpandProperties>::Expansion>,
 {
     type Expansion = Cons<
         Head,
@@ -650,7 +659,7 @@ macro_rules! properties {
     };
 
     ($head:ty $(, $tail:ty)* $(,)?) => {
-        Cons<Property<$head>, properties!($($tail),*)>
+        Cons<$head, properties!($($tail),*)>
     };
 }
 
@@ -727,39 +736,39 @@ macro_rules! cat {
 // -----------------------------------------------------------------------------
 
 /// The theory of an object carrying structural category `C`.
-pub struct 𝐎𝐛<C: Category + 'static>(PhantomData<fn() -> C>);
+pub struct 𝐈𝐝<C: Category + 'static>(PhantomData<fn() -> C>);
 
-impl<C: Category + 'static> Copy for 𝐎𝐛<C> {}
-impl<C: Category + 'static> Clone for 𝐎𝐛<C> {
+impl<C: Category + 'static> Copy for 𝐈𝐝<C> {}
+impl<C: Category + 'static> Clone for 𝐈𝐝<C> {
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<C: Category + 'static> Debug for 𝐎𝐛<C> {
+impl<C: Category + 'static> Debug for 𝐈𝐝<C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str("𝐎𝐛")
+        f.write_str("𝐈𝐝")
     }
 }
-impl<C: Category + 'static> Cat for 𝐎𝐛<C> {
+impl<C: Category + 'static> Cat for 𝐈𝐝<C> {
     type C = C;
 }
 
 /// The theory of arrows in structural category `C`.
-pub struct 𝐌𝐚𝐩<C: Category + 'static>(PhantomData<fn() -> C>);
+pub struct 𝐀𝐫𝐫<C: Category + 'static>(PhantomData<fn() -> C>);
 
-impl<C: Category + 'static> Copy for 𝐌𝐚𝐩<C> {}
-impl<C: Category + 'static> Clone for 𝐌𝐚𝐩<C> {
+impl<C: Category + 'static> Copy for 𝐀𝐫𝐫<C> {}
+impl<C: Category + 'static> Clone for 𝐀𝐫𝐫<C> {
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<C: Category + 'static> Debug for 𝐌𝐚𝐩<C> {
+impl<C: Category + 'static> Debug for 𝐀𝐫𝐫<C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str("𝐌𝐚𝐩")
+        f.write_str("𝐀𝐫𝐫")
     }
 }
-impl<C: Category + 'static> Cat for 𝐌𝐚𝐩<C> {
-    type C = cat![(Domain: 𝐎𝐛<C>, Codomain: 𝐎𝐛<C>), {}];
+impl<C: Category + 'static> Cat for 𝐀𝐫𝐫<C> {
+    type C = cat![(Domain: 𝐈𝐝<C>, Codomain: 𝐈𝐝<C>), {}];
 }
 
 /// The theory of homotopies between arrows in `C`.
@@ -777,7 +786,7 @@ impl<C: Category + 'static> Debug for 𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲<C> {
     }
 }
 impl<C: Category + 'static> Cat for 𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲<C> {
-    type C = cat![(From: 𝐌𝐚𝐩<C>, To: 𝐌𝐚𝐩<C>), {}];
+    type C = cat![(From: 𝐀𝐫𝐫<C>, To: 𝐀𝐫𝐫<C>), {}];
 }
 
 pub type C<𝒞> = <𝒞 as Cat>::C;
@@ -944,7 +953,7 @@ pub type 𝐃𝐢𝐟𝐟 = 𝐇𝐨𝐦<NatZero>;
 /// Resolve one property requirement into the graph which actually supplies it.
 ///
 /// A concrete [`BindsProperty`] carries its graph explicitly.  A bare canonical
-/// [`Property`] can resolve itself when its canonical signature is already concrete
+/// category name can resolve itself when its canonical signature is already concrete
 /// enough to refine that property; this handles ordinary inherited structure whose
 /// canonical graph has no unresolved associated bindings.
 pub trait RefineProperty<Required: Cat>: PropertyEntry {
@@ -960,7 +969,7 @@ where
     type Refinement = <Context as Refines<Required>>::Refinement;
 }
 
-impl<Actual, Required> RefineProperty<Required> for Property<Actual>
+impl<Actual, Required> RefineProperty<Required> for Actual
 where
     Actual: Cat + Compare<Required, Relation = Same>,
     Required: Cat,
@@ -978,20 +987,20 @@ impl<S: PropertyList> RefinesProperties<Ø> for S {
     type Refinement = Ø;
 }
 
-impl<S, 𝒞, Tail> RefinesProperties<Cons<Property<𝒞>, Tail>> for S
+impl<S, 𝒞, Tail> RefinesProperties<Cons<𝒞, Tail>> for S
 where
     S: PropertyList + ExpandProperties + RefinesProperties<Tail>,
     𝒞: Cat,
     Tail: PropertyList,
     <S as ExpandProperties>::Expansion: FindProperty<𝒞>,
-    <<S as ExpandProperties>::Expansion as FindProperty<𝒞>>::Found:
-        RefineProperty<𝒞>,
+    <<S as ExpandProperties>::Expansion as FindProperty<𝒞>>::Found: RefineProperty<𝒞>,
 {
     type Refinement = Cons<
         BindsProperty<
             𝒞,
-            <<<S as ExpandProperties>::Expansion as FindProperty<𝒞>>::Found
-                as RefineProperty<𝒞>>::Refinement,
+            <<<S as ExpandProperties>::Expansion as FindProperty<𝒞>>::Found as RefineProperty<
+                𝒞,
+            >>::Refinement,
         >,
         <S as RefinesProperties<Tail>>::Refinement,
     >;
@@ -1012,14 +1021,14 @@ where
 {
 }
 
-impl<Name, Value, Context, Actual, Required> SatisfiesAssoc<𝐎𝐛<Required>>
-    for BindsAs<Name, 𝐎𝐛<Actual>, Value, Context>
+impl<Name, Value, Context, Actual, Required> SatisfiesAssoc<𝐈𝐝<Required>>
+    for BindsAs<Name, 𝐈𝐝<Actual>, Value, Context>
 where
     Name: AssocName,
     Actual: Category + 'static,
     Required: Category + 'static,
-    Value: Realizes<Actual, Context = Context>,
-    Context: Category + RefinesCategory<Actual> + RefinesCategory<Required>,
+    Value: Object<Context = Context> + Ob<Actual> + Ob<Required>,
+    Context: Category,
 {
 }
 
@@ -1117,7 +1126,7 @@ impl<T: Field> Reflect<𝐅𝐥𝐝> for T {
 impl<T: CField> Reflect<𝐂𝐅𝐥𝐝> for T {
     type C = 𝒯<
         Cons<Binds<Fixed, 𝐂𝐅𝐥𝐝, T::Fixed>, Cons<Binds<Characteristic, 𝐍𝐚𝐭, T::Characteristic>, Ø>>,
-        Cons<BindsProperty<𝐅𝐥𝐝, <T as Reflect<𝐅𝐥𝐝>>::C>, Cons<Property<𝐀𝐛>, Ø>>,
+        Cons<BindsProperty<𝐅𝐥𝐝, <T as Reflect<𝐅𝐥𝐝>>::C>, Cons<𝐀𝐛, Ø>>,
         Cons<Equal<Follow<At<Fixed>, Fixed>, At<Fixed>>, Ø>,
     >;
 }
@@ -1127,7 +1136,7 @@ impl<T: Tensor> Reflect<𝐓𝐞𝐧𝐬> for T {
 }
 
 impl<V: Vector> Reflect<𝐕𝐞𝐜𝐭> for V {
-    type C = 𝒯<Ø, Cons<BindsProperty<𝐓𝐞𝐧𝐬, <V as Reflect<𝐓𝐞𝐧𝐬>>::C>, Cons<Property<𝐆𝐫𝐩>, Ø>>>;
+    type C = 𝒯<Ø, Cons<BindsProperty<𝐓𝐞𝐧𝐬, <V as Reflect<𝐓𝐞𝐧𝐬>>::C>, Cons<𝐆𝐫𝐩, Ø>>>;
 }
 
 // -----------------------------------------------------------------------------
@@ -1159,9 +1168,4 @@ fn test_this_whole_thing_baby() {
     fn assert_same_type<T>(_: T, _: T) {}
 
     assert_same_type(PhantomData::<Scalar>, PhantomData::<f64>);
-
-    type Fld = Refine<𝐅𝐥𝐝, f64>;
-    type Fixed1 = <Fld as Associated<Fixed>>::Type;
-    type FixedGraph = Refine<𝐂𝐅𝐥𝐝, Fixed1>;
-    // then follow Fixed again and assert equality
 }
