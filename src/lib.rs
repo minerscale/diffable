@@ -195,11 +195,11 @@
 //!
 //! The last expression differentiates `v ↦ D(cube)ᵥ(v)`. This is deliberately
 //! ordinary Rust syntax: there is no tracing macro, tape, boxed closure, or
-//! type-erased expression graph. [`Jet`](traits::calculus::Jet) supplies Taylor
-//! coefficients, [`JetVector`](traits::calculus::JetVector) presents an existing tensor over
-//! those coefficients, and [`JetMap`](traits::calculus::JetMap) interprets the program at
-//! each required nesting depth. A type-level [`ConstantRoute`](traits::calculus::ConstantRoute)
-//! injects captured base-field values through that jet tower.
+//! type-erased expression graph. Internally, truncated Taylor presentations carry
+//! coefficients through the existing field and tensor interfaces, while
+//! [`JetMap`](traits::calculus::JetMap) interprets the program at each required nesting
+//! depth. A type-level [`ConstantRoute`](traits::calculus::ConstantRoute) injects captured
+//! base-field values through that jet tower.
 //!
 //! The full derivative of `f: U → V` is a
 //! [`TangentMap`](traits::calculus::TangentMap), represented as `V ⊗ U*` in
@@ -258,10 +258,9 @@
 //!   `V` is right-handed and `V* ⊗ V` when it is left-handed. Tensor variance
 //!   and handedness are carried by the types.
 //!   [`matrix::MatrixExponential`] supplies matrix `exp` and `log`.
-//! - [`traits::calculus::Jet`] and [`traits::calculus::JetVector`] implement forward automatic
-//!   differentiation without changing the logical tensor shape. [`traits::calculus::d`]
-//!   and [`traits::calculus::Along`] compose full and directional derivatives into typed
-//!   programs.
+//! - [`traits::calculus::d`] and [`traits::calculus::Along`] implement forward automatic
+//!   differentiation as typed programs. Internally, jettification preserves the existing
+//!   field and tensor interfaces rather than introducing a separate public algebra.
 //!
 //! ### Manifolds and Lie groups
 //!

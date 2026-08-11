@@ -12,9 +12,9 @@ use num_traits::{ConstZero, Zero};
 use crate::{
     impl_vector_ops,
     traits::{
-        Array, Atomic, BothSided, DivRing, Dual, Euclidean, Field, Form, Interval, Metric,
+        Array, Atomic, BothSided, Cat, DivRing, Dual, Euclidean, Field, Form, Interval, Metric,
         Nondegenerate, Point, Real, Right, Sesquilinear, Tensor,
-        calculus::{FormLift, Jet, JetMode, NondegenerateLift},
+        calculus::{FormLift, Jet, NondegenerateLift},
     },
 };
 
@@ -181,22 +181,22 @@ impl<R: Field, const N: usize, const M: usize> Nondegenerate for Coords<R, N, M>
 }
 
 impl<R: Field, const N: usize, const M: usize> FormLift for Coords<R, N, M> {
-    fn jet_flat_array<S: Field, Mode: JetMode, const K: usize>(
-        value: &<Self as Tensor>::Array<Jet<S, Mode, K>>,
-    ) -> <Dual<Self> as Tensor>::Array<Jet<S, Mode, K>>
+    fn jet_flat_array<𝒞: Cat, S: Field, const K: usize>(
+        value: &<Self as Tensor>::Array<Jet<𝒞, S, K>>,
+    ) -> <Dual<Self> as Tensor>::Array<Jet<𝒞, S, K>>
     where
-        Jet<S, Mode, K>: Field,
+        Jet<𝒞, S, K>: Field,
     {
         <Dual<Self> as Tensor>::Array::from_fn(|i| if i < M { -value[i] } else { value[i] }.conj())
     }
 }
 
 impl<R: Field, const N: usize, const M: usize> NondegenerateLift for Coords<R, N, M> {
-    fn jet_sharp_array<S: Field, Mode: JetMode, const K: usize>(
-        value: &<Dual<Self> as Tensor>::Array<Jet<S, Mode, K>>,
-    ) -> <Self as Tensor>::Array<Jet<S, Mode, K>>
+    fn jet_sharp_array<𝒞: Cat, S: Field, const K: usize>(
+        value: &<Dual<Self> as Tensor>::Array<Jet<𝒞, S, K>>,
+    ) -> <Self as Tensor>::Array<Jet<𝒞, S, K>>
     where
-        Jet<S, Mode, K>: Field,
+        Jet<𝒞, S, K>: Field,
     {
         <Self as Tensor>::Array::from_fn(|i| if i < M { -value[i] } else { value[i] }.conj())
     }

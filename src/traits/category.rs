@@ -25,9 +25,17 @@
 //! database consumed by trait resolution; there is no runtime tree.
 
 use crate::{
-    coords::Coords, traits::{CField, Field, Manifold, Nat, NatCompare, NatZero, Succ, Tensor, Topological, Vector},
+    coords::Coords,
+    traits::{
+        CField, Field, Manifold, Nat, NatCompare, NatZero, Real, Succ, Tensor, Topological, Vector,
+    },
 };
-use core::{convert::Infallible, fmt::Debug, marker::PhantomData, ops::{Deref, DerefMut}};
+use core::{
+    convert::Infallible,
+    fmt::Debug,
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+};
 
 // -----------------------------------------------------------------------------
 // Generic type-level lists
@@ -265,9 +273,19 @@ macro_rules! assoc_names {
     };
 }
 
-// These names intentionally mirror the associated type spellings of the
-// reflected traits.
-assoc_names!(F, Fixed, Characteristic, Tangent, Typing, From, To);
+// Most names mirror reflected Rust associated types; the payload names are
+// metadata carried by reflected functor images.
+assoc_names!(
+    F,
+    Fixed,
+    Characteristic,
+    Tangent,
+    Typing,
+    From,
+    To,
+    JetPayload,
+    TensorPayload,
+);
 
 /// Find a structural dependency by associated-type name.
 ///
@@ -752,6 +770,49 @@ impl<C: Category + 'static> Cat for 𝐈𝐝<C> {
     type C = C;
 }
 
+/// Refine `𝒞` with one associated object carrying functor-specific metadata.
+///
+/// The original structural signature is retained verbatim; `Name` is simply
+/// prepended as one additional associated dependency whose value is itself an
+/// object of `𝒞`.  This is useful for functor images whose concrete Rust representation remains
+/// available operationally while the ontology records the source object and the
+/// complete mathematical structure carried by the image.
+pub struct WithPayload<𝒞: Cat, Name: AssocName>(PhantomData<fn() -> (𝒞, Name)>);
+
+impl<𝒞: Cat, Name: AssocName> Copy for WithPayload<𝒞, Name> {}
+impl<𝒞: Cat, Name: AssocName> Clone for WithPayload<𝒞, Name> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<𝒞: Cat, Name: AssocName> Debug for WithPayload<𝒞, Name> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("WithPayload")
+    }
+}
+impl<𝒞: Cat, Name: AssocName> Cat for WithPayload<𝒞, Name> {
+    type C = 𝒯<
+        ː<Requires<Name, 𝒞>, <𝒞::C as Category>::Structure>,
+        <𝒞::C as Category>::Properties,
+        <𝒞::C as Category>::Equations,
+    >;
+}
+
+/// The reflected codomain of jettification on `𝒞`.
+///
+/// This is not the jet functor itself.  It is the input category with one extra
+/// associated dependency recording the source object type carried by the jet
+/// representation.
+#[allow(type_alias_bounds)]
+pub type Jetted<𝒞: Cat> = WithPayload<𝒞, JetPayload>;
+
+/// The reflected codomain of re-presenting an object of `𝒞` over new scalars.
+///
+/// As with [`Jetted`], the representation itself is not promoted to a category label; only the
+/// source object type is retained as additional metadata.
+#[allow(type_alias_bounds)]
+pub type TensorOf<𝒞: Cat> = WithPayload<𝒞, TensorPayload>;
+
 /// The theory of arrows in structural category `C`.
 pub struct 𝐀𝐫𝐫<C: Category + 'static>(PhantomData<fn() -> C>);
 
@@ -950,6 +1011,8 @@ categories! {
     𝐑𝐢𝐧𝐠     => cat!{𝐂𝐌𝐨𝐧, 𝐆𝐫𝐩};
     𝐍𝐚𝐭      => cat!{};
     𝐂𝐅𝐥𝐝     => cat!{𝐅𝐥𝐝, 𝐀𝐛};
+    𝐑𝐞𝐚𝐥𝐎𝐩𝐬 => cat!{};
+    𝐑𝐞𝐚𝐥     => cat!{𝐂𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥𝐎𝐩𝐬};
     𝐅𝐥𝐝      => cat![
         (Fixed: 𝐂𝐅𝐥𝐝, Characteristic: 𝐍𝐚𝐭),
         {𝐑𝐢𝐧𝐠, 𝐆𝐫𝐩},
@@ -996,6 +1059,10 @@ impl<T: CField> Reflect<𝐂𝐅𝐥𝐝> for T {
         ː<BindsProperty<𝐅𝐥𝐝, <T as Reflect<𝐅𝐥𝐝>>::C>, ː<𝐀𝐛, Ø>>,
         ː<Equal<Follow<At<Fixed>, Fixed>, At<Fixed>>, Ø>,
     >;
+}
+
+impl<R: Real> Reflect<𝐑𝐞𝐚𝐥> for R {
+    type C = 𝒯<Ø, ː<BindsProperty<𝐂𝐅𝐥𝐝, <R as Reflect<𝐂𝐅𝐥𝐝>>::C>, ː<𝐑𝐞𝐚𝐥𝐎𝐩𝐬, Ø>>>;
 }
 
 impl<T: Tensor> Reflect<𝐓𝐞𝐧𝐬> for T {

@@ -618,7 +618,7 @@ impl Sidedness for NoSided {
 /// The shape and coordinate order therefore remain fixed while the element type
 /// changes. This is essential for constructions such as automatic
 /// differentiation, where `V::Array<V::F>` may be replaced by
-/// `V::Array<Jet<V::F>>` without changing the logical tensor.
+/// `V::Array<Jet<𝐅𝐥𝐝, V::F>>` without changing the logical tensor.
 ///
 /// Implementations must preserve the same dimension and layout for every
 /// admissible `T`.

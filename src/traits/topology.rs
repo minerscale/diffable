@@ -18,11 +18,13 @@
 //! No trait objects, allocation, or `std` are used. The callable remains fully
 //! monomorphised; only its mathematical interpretation lives in the type system.
 
-use crate::{C, traits::{Arrow, ArrowCategory, CodomainOf, DomainOf}};
+use crate::{
+    C,
+    traits::{Arrow, ArrowCategory, CodomainOf, DomainOf},
+};
 
 use super::{
-    Cat, Ob, Signature,
-    TangentBundle, Tensor, Typing, π, Ⱶ, 𝐀𝐫𝐫, 𝐌𝐚𝐧, 𝐓𝐨𝐩,
+    Cat, Ob, Signature, TangentBundle, Tensor, Typing, π, Ⱶ, 𝐀𝐫𝐫, 𝐌𝐚𝐧, 𝐓𝐨𝐩
 };
 
 /// A chosen topology on a point type.
