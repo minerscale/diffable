@@ -30,11 +30,11 @@ use crate::{
     coords::Coords,
     impl_vector_ops,
     traits::{
-        ActionExists, ApplyTensorDecoration, Array, Atomic, BothSided, CField, Chart, Cons,
-        DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field, Form, Handedness, Interval, Left,
-        Metric, NonZero, Nondegenerate, NormalizeWith, OneSided, Point, Real, Right, Sesquilinear,
+        ActionExists, ApplyTensorDecoration, Array, Atomic, BothSided, CField, Chart, DivRing,
+        Dual, Euclidean, ExactCmp, ExpMap, Field, Form, Handedness, Interval, Left, Metric,
+        NonZero, Nondegenerate, NormalizeWith, OneSided, Point, Real, Right, Sesquilinear,
         Sidedness, Sinister, TangentBundle, Tensor, TensorDecoration, TensorNormalization,
-        TensorProductAction, Undecorated, Vector, Ø,
+        TensorProductAction, Undecorated, Vector, Ø, ː,
     },
 };
 
@@ -1337,7 +1337,7 @@ impl<F: Field> ConstantRoute<F> for Ø {
     }
 }
 
-impl<F, M, const N: usize, Tail> ConstantRoute<F> for Cons<JetLayer<M, N>, Tail>
+impl<F, M, const N: usize, Tail> ConstantRoute<F> for ː<JetLayer<M, N>, Tail>
 where
     F: Field,
     M: JetMode,
@@ -1376,12 +1376,12 @@ impl<P: Point, V: Tensor, Tower> TangentElement<P, V, Tower> {
     }
 }
 
-type Prolongation<P, V, T> = TangentElement<P, V, Cons<T, Ø>>;
+type Prolongation<P, V, T> = TangentElement<P, V, ː<T, Ø>>;
 
 /// A first [`TangentElement`] at a point of `P`, expressed in `V` coordinates.
 pub type Tangent<P, V> = TangentElement<P, V, Ø>;
 /// An iterated [`TangentElement`] with explicit [`TangentBundle`] witnesses.
-pub type TM<P, V, T, U> = TangentElement<P, V, Cons<T, Cons<U, Ø>>>;
+pub type TM<P, V, T, U> = TangentElement<P, V, ː<T, ː<U, Ø>>>;
 /// The tangent bundle of `T`, represented by the canonical jet prolongation.
 ///
 /// This is the concrete iterated-tangent representation constructed by
@@ -1686,7 +1686,7 @@ impl<
 }
 
 impl<
-    F: JetMap<BT, FT, M, 1, Jet<S, M, N>, Cons<JetLayer<M, N>, Route>>,
+    F: JetMap<BT, FT, M, 1, Jet<S, M, N>, ː<JetLayer<M, N>, Route>>,
     BT: Vector<F = FT::F, Hand = Right>,
     FT: Vector<Hand = Right, Action: TensorProductAction<BT::Action>>,
     M: JetMode,
@@ -1724,7 +1724,7 @@ where
                 M,
                 1,
                 OuterScalar<S, M, N>,
-                Cons<JetLayer<M, N>, Route>,
+                ː<JetLayer<M, N>, Route>,
             >>::jet_at(
                 &self.0, nested_input
             );
@@ -1757,7 +1757,7 @@ where
     JetVector<BT, M, N, S>: Tensor<F = Jet<S, M, N>>,
     JetVector<BT, M, 1, Jet<S, M, N>>: Tensor<F = Jet<Jet<S, M, N>, M>>,
     JetVector<FT, M, 1, Jet<S, M, N>>: Tensor<F = Jet<Jet<S, M, N>, M>>,
-    F: JetMap<BT, FT, M, 1, Jet<S, M, N>, Cons<JetLayer<M, N>, Route>>,
+    F: JetMap<BT, FT, M, 1, Jet<S, M, N>, ː<JetLayer<M, N>, Route>>,
 {
     fn jet_at(&self, input: JetVector<BT, M, N, S>) -> JetVector<FT, M, N, S> {
         type OuterScalar<S, M, const N: usize> = Jet<S, M, N>;
@@ -1770,7 +1770,7 @@ where
         });
 
         let nested_output: JetVector<FT, M, 1, OuterScalar<S, M, N>> =
-            <F as JetMap<BT, FT, M, 1, OuterScalar<S, M, N>, Cons<JetLayer<M, N>, Route>>>::jet_at(
+            <F as JetMap<BT, FT, M, 1, OuterScalar<S, M, N>, ː<JetLayer<M, N>, Route>>>::jet_at(
                 &self.f,
                 nested_input,
             );

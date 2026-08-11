@@ -25,10 +25,9 @@
 //! database consumed by trait resolution; there is no runtime tree.
 
 use crate::{
-    coords::Coords,
-    traits::{CField, Field, Nat, NatCompare, NatZero, Succ, Tensor, Vector},
+    coords::Coords, traits::{CField, Field, Manifold, Nat, NatCompare, NatZero, Succ, Tensor, Topological, Vector},
 };
-use core::{fmt::Debug, marker::PhantomData};
+use core::{convert::Infallible, fmt::Debug, marker::PhantomData, ops::{Deref, DerefMut}};
 
 // -----------------------------------------------------------------------------
 // Generic type-level lists
@@ -40,10 +39,10 @@ pub struct Ø;
 
 /// A type-level list node with `Head` followed by `Tail`.
 ///
-/// This deliberately remains unconstrained: calculus also uses `Cons`/`Ø` for
+/// This deliberately remains unconstrained: calculus also uses `ː`/`Ø` for
 /// type-level routes unrelated to the category ontology.
 #[derive(Debug, Copy, Clone)]
-pub struct Cons<Head, Tail>(PhantomData<(Head, Tail)>);
+pub struct ː<Head, Tail>(PhantomData<(Head, Tail)>);
 
 // -----------------------------------------------------------------------------
 // Category signatures
@@ -230,8 +229,8 @@ impl<C: Category + 'static, D: Ob<C>, E: Ob<C>> AssocEntry for BindsTyping<C, D,
 pub trait AssocList: sealed::AssocList {}
 impl sealed::AssocList for Ø {}
 impl AssocList for Ø {}
-impl<H: AssocEntry, T: AssocList> sealed::AssocList for Cons<H, T> {}
-impl<H: AssocEntry, T: AssocList> AssocList for Cons<H, T> {}
+impl<H: AssocEntry, T: AssocList> sealed::AssocList for ː<H, T> {}
+impl<H: AssocEntry, T: AssocList> AssocList for ː<H, T> {}
 
 /// Constructive equality of associated-type labels.
 pub trait CompareAssoc<Rhs: AssocName>: AssocName {
@@ -282,35 +281,36 @@ pub trait FindAssocWith<Name: AssocName, Relation>: AssocList {
 }
 
 impl<Name: AssocName, Head: AssocEntry<Name = Name>, Tail: AssocList> FindAssocWith<Name, Same>
-    for Cons<Head, Tail>
+    for ː<Head, Tail>
 {
     type Found = Head;
 }
 
 impl<Name: AssocName, Head: AssocEntry, Tail: AssocList + FindAssoc<Name>>
-    FindAssocWith<Name, Different> for Cons<Head, Tail>
+    FindAssocWith<Name, Different> for ː<Head, Tail>
 {
     type Found = <Tail as FindAssoc<Name>>::Found;
 }
 
 impl<Name: AssocName, Head: AssocEntry<Name: CompareAssoc<Name>>, Tail: AssocList> FindAssoc<Name>
-    for Cons<Head, Tail>
+    for ː<Head, Tail>
 where
-    Cons<Head, Tail>: FindAssocWith<Name, <Head::Name as CompareAssoc<Name>>::Relation>,
+    ː<Head, Tail>: FindAssocWith<Name, <Head::Name as CompareAssoc<Name>>::Relation>,
 {
-    type Found = <Cons<Head, Tail> as FindAssocWith<
+    type Found = <ː<Head, Tail> as FindAssocWith<
         Name,
         <Head::Name as CompareAssoc<Name>>::Relation,
     >>::Found;
 }
 
 /// Project a reflected associated dependency by its actual trait name.
-pub trait Ⱶ<Name: AssocName>: Category {
+#[allow(non_camel_case_types)]
+pub trait π<Name: AssocName>: Category {
     type 𝒞: Cat;
     type X;
 }
 
-impl<Name: AssocName, S: AssocList + FindAssoc<Name>, P: PropertyList, E: EquationList> Ⱶ<Name>
+impl<Name: AssocName, S: AssocList + FindAssoc<Name>, P: PropertyList, E: EquationList> π<Name>
     for 𝒯<S, P, E>
 {
     type 𝒞 = <<S as FindAssoc<Name>>::Found as AssocEntry>::Role;
@@ -347,8 +347,8 @@ impl<𝒞: Cat, C: Category> PropertyEntry for BindsProperty<𝒞, C> {
 pub trait PropertyList: sealed::PropertyList {}
 impl sealed::PropertyList for Ø {}
 impl PropertyList for Ø {}
-impl<H: PropertyEntry, T: PropertyList> sealed::PropertyList for Cons<H, T> {}
-impl<H: PropertyEntry, T: PropertyList> PropertyList for Cons<H, T> {}
+impl<H: PropertyEntry, T: PropertyList> sealed::PropertyList for ː<H, T> {}
+impl<H: PropertyEntry, T: PropertyList> PropertyList for ː<H, T> {}
 
 /// Append two type-level property lists.
 pub trait AppendProperties<Rhs: PropertyList>: PropertyList {
@@ -360,9 +360,9 @@ impl<Rhs: PropertyList> AppendProperties<Rhs> for Ø {
 }
 
 impl<Rhs: PropertyList, Head: PropertyEntry, Tail: PropertyList + AppendProperties<Rhs>>
-    AppendProperties<Rhs> for Cons<Head, Tail>
+    AppendProperties<Rhs> for ː<Head, Tail>
 {
-    type Output = Cons<Head, <Tail as AppendProperties<Rhs>>::Output>;
+    type Output = ː<Head, <Tail as AppendProperties<Rhs>>::Output>;
 }
 
 /// The transitive properties supplied by one property edge.
@@ -395,9 +395,9 @@ impl ExpandProperties for Ø {
 impl<
     Head: PropertyEntry + ExpandProperty<Expansion: AppendProperties<Tail::Expansion>>,
     Tail: PropertyList + ExpandProperties,
-> ExpandProperties for Cons<Head, Tail>
+> ExpandProperties for ː<Head, Tail>
 {
-    type Expansion = Cons<
+    type Expansion = ː<
         Head,
         <<Head as ExpandProperty>::Expansion as AppendProperties<
             <Tail as ExpandProperties>::Expansion,
@@ -415,7 +415,7 @@ pub trait FindPropertyWith<𝒞: Cat, Relation>: PropertyList {
 }
 
 impl<𝒞: Cat, Head: PropertyEntry<Role: Compare<𝒞, Relation = Same>>, Tail: PropertyList>
-    FindPropertyWith<𝒞, Same> for Cons<Head, Tail>
+    FindPropertyWith<𝒞, Same> for ː<Head, Tail>
 {
     type Found = Head;
 }
@@ -424,20 +424,18 @@ impl<
     𝒞: Cat,
     Head: PropertyEntry<Role: Compare<𝒞, Relation = Different>>,
     Tail: PropertyList + FindProperty<𝒞>,
-> FindPropertyWith<𝒞, Different> for Cons<Head, Tail>
+> FindPropertyWith<𝒞, Different> for ː<Head, Tail>
 {
     type Found = <Tail as FindProperty<𝒞>>::Found;
 }
 
 impl<𝒞: Cat, Head: PropertyEntry<Role: Compare<𝒞>>, Tail: PropertyList> FindProperty<𝒞>
-    for Cons<Head, Tail>
+    for ː<Head, Tail>
 where
-    Cons<Head, Tail>: FindPropertyWith<𝒞, <Head::Role as Compare<𝒞>>::Relation>,
+    ː<Head, Tail>: FindPropertyWith<𝒞, <Head::Role as Compare<𝒞>>::Relation>,
 {
-    type Found = <Cons<Head, Tail> as FindPropertyWith<
-        𝒞,
-        <Head::Role as Compare<𝒞>>::Relation,
-    >>::Found;
+    type Found =
+        <ː<Head, Tail> as FindPropertyWith<𝒞, <Head::Role as Compare<𝒞>>::Relation>>::Found;
 }
 
 /// Project the resolved graph which supplies property `𝒞`.
@@ -449,10 +447,10 @@ pub trait ResolvedProperty<𝒞: Cat>: PropertyEntry {
     type Refinement: Category;
 }
 
-impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>, Context: Category + π<𝒞>> ResolvedProperty<𝒞>
+impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>, Context: Category + Ⱶ<𝒞>> ResolvedProperty<𝒞>
     for BindsProperty<𝒟, Context>
 {
-    type Refinement = <Context as π<𝒞>>::C;
+    type Refinement = <Context as Ⱶ<𝒞>>::C;
 }
 
 impl<
@@ -491,50 +489,47 @@ pub trait EquationList: sealed::EquationList {}
 impl sealed::EquationList for Ø {}
 impl EquationList for Ø {}
 
-impl<L, R, T: EquationList> sealed::EquationList for Cons<Equal<L, R>, T> {}
-impl<L, R, T: EquationList> EquationList for Cons<Equal<L, R>, T> {}
+impl<L, R, T: EquationList> sealed::EquationList for ː<Equal<L, R>, T> {}
+impl<L, R, T: EquationList> EquationList for ː<Equal<L, R>, T> {}
 
-/// Native projection of one reflected associated type from a concrete Rust type.
-///
-/// This is deliberately tiny: it is the bridge from a graph edge back into rustc's
-/// own associated-type projection machinery.
-pub trait Project<Name: AssocName> {
-    type Output;
-}
-
-impl<T: Field> Project<Fixed> for T {
-    type Output = T::Fixed;
-}
-
-impl<T: Field> Project<Characteristic> for T {
-    type Output = T::Characteristic;
-}
-
-impl<T: Tensor> Project<F> for T {
-    type Output = T::F;
-}
+pub type Project<T, 𝒞, Name> = <<T as Reflect<𝒞>>::C as π<Name>>::X;
 
 /// Resolve a path against a concrete reflected category.
 ///
-/// The first hop is read from the category's labelled `Binds` record.  Further hops
-/// are delegated to [`Project`], so path equality ultimately becomes ordinary Rust
-/// associated-type equality.
+/// The first hop is read from the category's labelled [`Binds`] record,
+/// yielding both the bound Rust type and the theory under which it was admitted.
+/// Further hops reflect that type back through the recorded theory, then project
+/// the next labelled dependency from the resulting category.
+///
+/// Path equality therefore reduces ultimately to ordinary Rust type equality,
+/// while every intermediate hop retains the structural context needed to
+/// interpret the type it reached.
 pub trait ResolvePath<Path>: Category {
+    type 𝒞: Cat;
     type Output;
 }
 
 impl<Name: AssocName, S: AssocList + FindAssoc<Name>, P: PropertyList, E: EquationList>
     ResolvePath<At<Name>> for 𝒯<S, P, E>
 {
-    type Output = <Self as Ⱶ<Name>>::X;
+    type 𝒞 = <Self as π<Name>>::𝒞;
+    type Output = <Self as π<Name>>::X;
 }
 
 impl<Path, Name: AssocName, S: AssocList, P: PropertyList, E: EquationList>
     ResolvePath<Follow<Path, Name>> for 𝒯<S, P, E>
 where
-    Self: ResolvePath<Path, Output: Project<Name>>,
+    Self: ResolvePath<Path, Output: Reflect<<Self as ResolvePath<Path>>::𝒞>>,
+    <<Self as ResolvePath<Path>>::Output as Reflect<<Self as ResolvePath<Path>>::𝒞>>::C: π<Name>,
 {
-    type Output = <<Self as ResolvePath<Path>>::Output as Project<Name>>::Output;
+    type 𝒞 =
+        <<<Self as ResolvePath<Path>>::Output as Reflect<
+            <Self as ResolvePath<Path>>::𝒞,
+        >>::C as π<Name>>::𝒞;
+
+    type Output = <<<Self as ResolvePath<Path>>::Output as Reflect<
+        <Self as ResolvePath<Path>>::𝒞,
+    >>::C as π<Name>>::X;
 }
 
 /// Type-equality witness used to hand graph equations back to rustc.
@@ -562,7 +557,7 @@ impl<
     Right,
     Tail: EquationList,
     C: Category + SatisfiesEquation<Equal<Left, Right>> + SatisfiesEquations<Tail>,
-> SatisfiesEquations<Cons<Equal<Left, Right>, Tail>> for C
+> SatisfiesEquations<ː<Equal<Left, Right>, Tail>> for C
 {
 }
 
@@ -650,7 +645,7 @@ macro_rules! assoc_requirements {
     };
 
     ($name:ident : $role:ty $(, $rest_name:ident : $rest_role:ty)* $(,)?) => {
-        Cons<
+        ː<
             Requires<$name, $role>,
             assoc_requirements!($($rest_name : $rest_role),*)
         >
@@ -663,7 +658,7 @@ macro_rules! properties {
     };
 
     ($head:ty $(, $tail:ty)* $(,)?) => {
-        Cons<$head, properties!($($tail),*)>
+        ː<$head, properties!($($tail),*)>
     };
 }
 
@@ -681,7 +676,7 @@ macro_rules! equations {
     };
 
     ($head:ty $(, $tail:ty)* $(,)?) => {
-        Cons<$head, equations!($($tail),*)>
+        ː<$head, equations!($($tail),*)>
     };
 }
 
@@ -816,7 +811,12 @@ impl<C: Category + 'static> Cat for 𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲<C> {
     type C = cat![(From: 𝐀𝐫𝐫<C>, To: 𝐀𝐫𝐫<C>), {}];
 }
 
-pub type C<𝒞> = <𝒞 as Cat>::C;
+#[macro_export]
+macro_rules! C {
+    [$𝒞:ty] => {
+        <$𝒞 as Cat>::C
+    };
+}
 
 /// Declare ordinary reflected traits plus Nat-indexed higher families.
 macro_rules! categories {
@@ -966,6 +966,137 @@ categories! {
 pub type 𝐃𝐢𝐟𝐟 = 𝐇𝐨𝐦<NatZero>;
 
 // -----------------------------------------------------------------------------
+// Reflection of concrete Rust trait implementations
+// -----------------------------------------------------------------------------
+
+/// Reflect a concrete implementation of trait/category `𝒞` into the ontology.
+///
+/// This is the trust boundary between ordinary Rust trait implementation and the
+/// compile-time category database.  The resulting signature must itself refine the
+/// canonical signature of `𝒞`.
+pub trait Reflect<𝒞: Cat> {
+    type C: Category + Ⱶ<𝒞>;
+}
+
+impl<N: Nat> Reflect<𝐍𝐚𝐭> for N {
+    type C = C![𝐍𝐚𝐭];
+}
+
+impl<T: Field> Reflect<𝐅𝐥𝐝> for T {
+    type C = 𝒯<
+        ː<Binds<Fixed, 𝐂𝐅𝐥𝐝, T::Fixed>, ː<Binds<Characteristic, 𝐍𝐚𝐭, T::Characteristic>, Ø>>,
+        properties![𝐑𝐢𝐧𝐠, 𝐆𝐫𝐩],
+        ː<Equal<Follow<At<Fixed>, Fixed>, At<Fixed>>, Ø>,
+    >;
+}
+
+impl<T: CField> Reflect<𝐂𝐅𝐥𝐝> for T {
+    type C = 𝒯<
+        ː<Binds<Fixed, 𝐂𝐅𝐥𝐝, T::Fixed>, ː<Binds<Characteristic, 𝐍𝐚𝐭, T::Characteristic>, Ø>>,
+        ː<BindsProperty<𝐅𝐥𝐝, <T as Reflect<𝐅𝐥𝐝>>::C>, ː<𝐀𝐛, Ø>>,
+        ː<Equal<Follow<At<Fixed>, Fixed>, At<Fixed>>, Ø>,
+    >;
+}
+
+impl<T: Tensor> Reflect<𝐓𝐞𝐧𝐬> for T {
+    type C = 𝒯<ː<Binds<F, 𝐅𝐥𝐝, T::F>, Ø>, properties![𝐂𝐌𝐨𝐧]>;
+}
+
+impl<V: Vector> Reflect<𝐕𝐞𝐜𝐭> for V {
+    type C = 𝒯<Ø, ː<BindsProperty<𝐓𝐞𝐧𝐬, <V as Reflect<𝐓𝐞𝐧𝐬>>::C>, ː<𝐆𝐫𝐩, Ø>>>;
+}
+
+impl<T: Topological> Reflect<𝐓𝐨𝐩> for T {
+    type C = 𝒯<Ø, ː<BindsProperty<𝐒𝐞𝐭, C![𝐒𝐞𝐭]>, Ø>>;
+}
+
+impl<M: Manifold> Reflect<𝐌𝐚𝐧> for M {
+    type C = 𝒯<
+        ː<Binds<Tangent, 𝐓𝐞𝐧𝐬, M::Tangent>, Ø>,
+        ː<BindsProperty<𝐓𝐨𝐩, <M as Reflect<𝐓𝐨𝐩>>::C>, Ø>,
+    >;
+}
+
+// -----------------------------------------------------------------------------
+// Arrow category construction.
+// -----------------------------------------------------------------------------
+
+/// The concrete Rust domain of an arrow context.
+#[allow(type_alias_bounds)]
+pub type DomainOf<C: π<Typing, X: Signature>> = <<C as π<Typing>>::X as Signature>::Domain;
+
+/// The concrete Rust codomain of an arrow context.
+#[allow(type_alias_bounds)]
+pub type CodomainOf<C: π<Typing, X: Signature>> = <<C as π<Typing>>::X as Signature>::Codomain;
+
+/// Construct the concrete context of an arrow `D -> E` in `C`.
+///
+/// Both endpoints are bound by one structural association, so a domain cannot
+/// exist without its codomain.
+#[allow(type_alias_bounds)]
+pub type ArrowCategory<C: Category + 'static, D: Ob<C>, E: Ob<C>> =
+    𝒯<ː<BindsTyping<C, D, E>, Ø>, Ø>;
+
+/// A concrete callable admitted as a morphism in structural context `C`.
+///
+/// The `F` field is the complete runtime representation. The context marker is
+/// erased, but at compile time it records the exact mathematical interpretation
+/// under which the callable was certified. Theorems should retain this richest
+/// context and ask it to [`Refines`] whatever weaker arrow theory they require.
+///
+/// [`Arrow::new`] is deliberately a semantic trust boundary: Rust checks the
+/// function signature against the context, but the caller certifies the
+/// mathematical claim that the function really is a morphism in `C`.
+pub struct Arrow<C: Category, F = Infallible> {
+    f: F,
+    ctx: PhantomData<fn() -> C>,
+}
+
+impl<C: Category, F> Deref for Arrow<C, F> {
+    type Target = F;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.f
+    }
+}
+
+impl<C: Category, F> DerefMut for Arrow<C, F> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.f
+    }
+}
+
+impl<C: π<Typing, X: Signature>> Arrow<C, Infallible> {
+    /// Admit `function` as the morphism described by `C`.
+    #[inline]
+    pub fn new<F>(f: F) -> Arrow<C, F> {
+        Arrow::<C, F> {
+            f,
+            ctx: PhantomData,
+        }
+    }
+}
+
+impl<C: π<Typing, X: Signature>, F: Fn(&DomainOf<C>) -> CodomainOf<C>> Arrow<C, F> {
+    /// Forget the admission and recover the ordinary Rust callable.
+    #[inline]
+    pub fn into_inner(self) -> F {
+        self.f
+    }
+}
+
+impl<C: Category, F: Clone> Clone for Arrow<C, F> {
+    fn clone(&self) -> Self {
+        Self {
+            f: self.f.clone(),
+            ctx: PhantomData,
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Structural refinement
 // -----------------------------------------------------------------------------
 
@@ -979,14 +1110,12 @@ pub trait RefineProperty<𝒞: Cat>: PropertyEntry {
     type Refinement: Category;
 }
 
-impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>, Context: Category + π<𝒞>> RefineProperty<𝒞>
-    for BindsProperty<𝒟, Context>
-{
-    type Refinement = <Context as π<𝒞>>::C;
+impl<𝒞: Cat, 𝒟: Compare<𝒞, Relation = Same>, C: Ⱶ<𝒞>> RefineProperty<𝒞> for BindsProperty<𝒟, C> {
+    type Refinement = <C as Ⱶ<𝒞>>::C;
 }
 
-impl<𝒞: Cat, 𝒟: Cat<C: π<𝒞>> + Compare<𝒞, Relation = Same>> RefineProperty<𝒞> for 𝒟 {
-    type Refinement = <𝒟::C as π<𝒞>>::C;
+impl<𝒞: Cat, 𝒟: Cat<C: Ⱶ<𝒞>> + Compare<𝒞, Relation = Same>> RefineProperty<𝒞> for 𝒟 {
+    type Refinement = <𝒟::C as Ⱶ<𝒞>>::C;
 }
 
 /// Resolve every required property in `Target`, retaining the graph found for each.
@@ -1004,9 +1133,9 @@ impl<
     S: PropertyList
         + ExpandProperties<Expansion: FindProperty<𝒞, Found: RefineProperty<𝒞>>>
         + RefinesProperties<Tail>,
-> RefinesProperties<Cons<𝒞, Tail>> for S
+> RefinesProperties<ː<𝒞, Tail>> for S
 {
-    type Refinement = Cons<
+    type Refinement = ː<
         BindsProperty<
             𝒞,
             <<<S as ExpandProperties>::Expansion as FindProperty<𝒞>>::Found as RefineProperty<
@@ -1062,10 +1191,9 @@ impl<
     Name: AssocName,
     Tail: AssocList,
     S: AssocList + FindAssoc<Name, Found: SatisfiesAssoc<𝒞>> + RefinesStructure<Tail>,
-> RefinesStructure<Cons<Requires<Name, 𝒞>, Tail>> for S
+> RefinesStructure<ː<Requires<Name, 𝒞>, Tail>> for S
 {
-    type Refinement =
-        Cons<<S as FindAssoc<Name>>::Found, <S as RefinesStructure<Tail>>::Refinement>;
+    type Refinement = ː<<S as FindAssoc<Name>>::Found, <S as RefinesStructure<Tail>>::Refinement>;
 }
 
 /// Structural refinement between concrete category signatures.
@@ -1096,59 +1224,17 @@ where
 }
 
 /// Query a concrete reflected graph for its `𝒞`-shaped resolved subgraph.
-#[allow(non_camel_case_types)]
-pub trait π<𝒞: Cat>: Category {
+pub trait Ⱶ<𝒞: Cat>: Category {
     type C: Category;
 }
 
-impl<𝒞: Cat, C: Category + RefinesCategory<𝒞::C>> π<𝒞> for C {
+impl<𝒞: Cat, C: Category + RefinesCategory<𝒞::C>> Ⱶ<𝒞> for C {
     type C = <C as RefinesCategory<𝒞::C>>::C;
 }
 
 /// The public shorthand for reflecting `X` as `𝒞` and returning the resolved graph.
 #[allow(type_alias_bounds)]
-pub type Refine<𝒞: Cat, X: Reflect<𝒞>> = <<X as Reflect<𝒞>>::C as π<𝒞>>::C;
-
-// -----------------------------------------------------------------------------
-// Reflection of concrete Rust trait implementations
-// -----------------------------------------------------------------------------
-
-/// Reflect a concrete implementation of trait/category `𝒞` into the ontology.
-///
-/// This is the trust boundary between ordinary Rust trait implementation and the
-/// compile-time category database.  The resulting signature must itself refine the
-/// canonical signature of `𝒞`.
-pub trait Reflect<𝒞: Cat> {
-    type C: Category + π<𝒞>;
-}
-
-impl<N: Nat> Reflect<𝐍𝐚𝐭> for N {
-    type C = C<𝐍𝐚𝐭>;
-}
-
-impl<T: Field> Reflect<𝐅𝐥𝐝> for T {
-    type C = 𝒯<
-        Cons<Binds<Fixed, 𝐂𝐅𝐥𝐝, T::Fixed>, Cons<Binds<Characteristic, 𝐍𝐚𝐭, T::Characteristic>, Ø>>,
-        properties![𝐑𝐢𝐧𝐠, 𝐆𝐫𝐩],
-        Cons<Equal<Follow<At<Fixed>, Fixed>, At<Fixed>>, Ø>,
-    >;
-}
-
-impl<T: CField> Reflect<𝐂𝐅𝐥𝐝> for T {
-    type C = 𝒯<
-        Cons<Binds<Fixed, 𝐂𝐅𝐥𝐝, T::Fixed>, Cons<Binds<Characteristic, 𝐍𝐚𝐭, T::Characteristic>, Ø>>,
-        Cons<BindsProperty<𝐅𝐥𝐝, <T as Reflect<𝐅𝐥𝐝>>::C>, Cons<𝐀𝐛, Ø>>,
-        Cons<Equal<Follow<At<Fixed>, Fixed>, At<Fixed>>, Ø>,
-    >;
-}
-
-impl<T: Tensor> Reflect<𝐓𝐞𝐧𝐬> for T {
-    type C = 𝒯<Cons<Binds<F, 𝐅𝐥𝐝, T::F>, Ø>, properties![𝐂𝐌𝐨𝐧]>;
-}
-
-impl<V: Vector> Reflect<𝐕𝐞𝐜𝐭> for V {
-    type C = 𝒯<Ø, Cons<BindsProperty<𝐓𝐞𝐧𝐬, <V as Reflect<𝐓𝐞𝐧𝐬>>::C>, Cons<𝐆𝐫𝐩, Ø>>>;
-}
+pub type Refine<𝒞: Cat, X: Reflect<𝒞>> = <<X as Reflect<𝒞>>::C as Ⱶ<𝒞>>::C;
 
 // -----------------------------------------------------------------------------
 // Value-level equivalence remains separate from structural refinement
@@ -1174,7 +1260,7 @@ impl<𝒞: Cat, X> Equivalent<𝒞, X> for X {
 fn test_this_whole_thing_baby() {
     type V = Refine<𝐕𝐞𝐜𝐭, Coords<f64, 2>>;
     type T = <V as PropertyRefinement<𝐓𝐞𝐧𝐬>>::Refinement;
-    type Scalar = <T as Ⱶ<F>>::X;
+    type Scalar = <T as π<F>>::X;
 
     fn assert_same_type<T>(_: T, _: T) {}
 
