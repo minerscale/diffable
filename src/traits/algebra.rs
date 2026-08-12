@@ -9,7 +9,8 @@
 use crate::{
     impl_group_via_mul,
     traits::{
-        Different, ExactCmp, FromReal, Interval, Metric, Object, Real, Reflect, Same, Tensor, 𝐂𝐅𝐥𝐝,
+        Different, ExactCmp, FromReal, Interpretation, Interval, Metric, Object, Real, Same,
+        Tensor, 𝐂𝐅𝐥𝐝,
     },
 };
 use core::ops::{Add, Mul, Neg, Sub};
@@ -939,7 +940,7 @@ impl<F: CField + Metric> Metric for Symmetrized<F> {}
 impl<F: CField> CField for Symmetrized<F> {}
 
 impl<F: CField> Object for Symmetrized<F> {
-    type Context = <Self as Reflect<𝐂𝐅𝐥𝐝>>::C;
+    type Context = Interpretation<𝐂𝐅𝐥𝐝, Self>;
 }
 
 impl<R: Real, F: Field<Fixed = R>> Interval for F {

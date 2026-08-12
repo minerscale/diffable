@@ -33,10 +33,10 @@ use crate::{
     coords::Coords,
     impl_vector_ops,
     traits::{
-        Absent, ActionExists, ApplyTensorDecoration, Array, AssocName, Atomic, Binds, BothSided,
-        CField, Cat, Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field, Form,
-        Handedness, HasProperty, Interval, JetPayload, Jetted, Left, Metric, NonZero,
-        Nondegenerate, NormalizeWith, Object, OneSided, Point, Real, Reflect, Right,
+        Absent, ActionExists, ApplyTensorDecoration, Array, AssocName, Atomic, BindsReflected,
+        BothSided, CField, Cat, Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field,
+        Form, Handedness, HasProperty, Interpretation, Interval, JetPayload, Jetted, Left, Metric,
+        NonZero, Nondegenerate, NormalizeWith, Object, OneSided, Point, Real, Reflect, Right,
         Sesquilinear, Sidedness, Sinister, TangentBundle, Tensor, TensorDecoration,
         TensorNormalization, TensorOf, TensorPayload, TensorProductAction, Undecorated, Vector, Ø,
         ː, π, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐑𝐞𝐚𝐥𝐎𝐩𝐬, 𝐓𝐞𝐧𝐬, 𝒯,
@@ -992,8 +992,8 @@ impl<
 }
 
 #[allow(type_alias_bounds)]
-type ReflectedFunctorImage<𝒞: Cat, Name: AssocName, Payload, C: Category> = 𝒯<
-    ː<Binds<Name, 𝒞, Payload>, <C as Category>::Structure>,
+type ReflectedFunctorImage<𝒞: Cat, Name: AssocName, Payload: Reflect<𝒞>, C: Category> = 𝒯<
+    ː<BindsReflected<Name, 𝒞, Payload>, <C as Category>::Structure>,
     <C as Category>::Properties,
     <C as Category>::Equations,
 >;
@@ -1042,9 +1042,9 @@ where
     V: Tensor + Reflect<𝒞>,
     S: Field,
     Self: Reflect<𝒞>,
-    ReflectedFunctorImage<𝒞, TensorPayload, V, <Self as Reflect<𝒞>>::C>: Ⱶ<TensorOf<𝒞>>,
+    ReflectedFunctorImage<𝒞, TensorPayload, V, Interpretation<𝒞, Self>>: Ⱶ<TensorOf<𝒞>>,
 {
-    type C = ReflectedFunctorImage<𝒞, TensorPayload, V, <Self as Reflect<𝒞>>::C>;
+    type Body = ReflectedFunctorImage<𝒞, TensorPayload, V, Interpretation<𝒞, Self>>;
 }
 
 impl<V: Tensor, S: Field> TensorOver<V, S> {
@@ -1181,9 +1181,9 @@ impl<𝒞: Cat, F, const N: usize> Reflect<Jetted<𝒞>> for Jet<𝒞, F, N>
 where
     F: Field + Reflect<𝒞>,
     Self: Reflect<𝒞>,
-    ReflectedFunctorImage<𝒞, JetPayload, F, <Self as Reflect<𝒞>>::C>: Ⱶ<Jetted<𝒞>>,
+    ReflectedFunctorImage<𝒞, JetPayload, F, Interpretation<𝒞, Self>>: Ⱶ<Jetted<𝒞>>,
 {
-    type C = ReflectedFunctorImage<𝒞, JetPayload, F, <Self as Reflect<𝒞>>::C>;
+    type Body = ReflectedFunctorImage<𝒞, JetPayload, F, Interpretation<𝒞, Self>>;
 }
 
 #[allow(dead_code)]
@@ -1196,7 +1196,7 @@ fn reflected_functor_smoke<R: Real, V: Tensor<F = R>>(scalar: R, tensor: V) {
     fn sees_jetted_real<R: Real, X>(_: &X)
     where
         X: Reflect<Jetted<𝐑𝐞𝐚𝐥>>,
-        <X as Reflect<Jetted<𝐑𝐞𝐚𝐥>>>::C:
+        Interpretation<Jetted<𝐑𝐞𝐚𝐥>, X>:
             π<JetPayload, 𝒞 = 𝐑𝐞𝐚𝐥, X = R> + Ⱶ<𝐑𝐞𝐚𝐥>,
     {
     }
@@ -1210,7 +1210,7 @@ fn reflected_functor_smoke<R: Real, V: Tensor<F = R>>(scalar: R, tensor: V) {
     fn sees_tensor_image<V: Tensor, X>(_: &X)
     where
         X: Reflect<TensorOf<𝐓𝐞𝐧𝐬>>,
-        <X as Reflect<TensorOf<𝐓𝐞𝐧𝐬>>>::C:
+        Interpretation<TensorOf<𝐓𝐞𝐧𝐬>, X>:
             π<TensorPayload, 𝒞 = 𝐓𝐞𝐧𝐬, X = V> + Ⱶ<𝐓𝐞𝐧𝐬>,
     {
     }
@@ -1869,9 +1869,10 @@ where
             JetVector::<𝒞, BT, 1, OuterScalar<𝒞, S, N>>::from_fn(|coordinate| {
                 Jet::from_parts(
                     input[coordinate],
-                    [Jet::from_parts(Route::constant(
-                        self.direction[coordinate],
-                    ), [S::zero(); N])],
+                    [Jet::from_parts(
+                        Route::constant(self.direction[coordinate]),
+                        [S::zero(); N],
+                    )],
                 )
             });
 
