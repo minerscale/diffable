@@ -33,12 +33,13 @@ use crate::{
     coords::Coords,
     impl_vector_ops,
     traits::{
-        ActionExists, ApplyTensorDecoration, Array, AssocName, Atomic, Binds, BothSided, CField,
-        Cat, Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field, Form, Handedness,
-        Interval, JetPayload, Jetted, Left, Metric, NonZero, Nondegenerate, NormalizeWith, OneSided,
-        Point, Real, Reflect, Right, Sesquilinear, Sidedness, Sinister, TangentBundle, Tensor,
-        TensorDecoration, TensorNormalization, TensorOf, TensorPayload, TensorProductAction,
-        Undecorated, Vector, Ø, π, ː, 𝒯, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐓𝐞𝐧𝐬,
+        Absent, ActionExists, ApplyTensorDecoration, Array, AssocName, Atomic, Binds, BothSided,
+        CField, Cat, Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field, Form,
+        Handedness, HasProperty, Interval, JetPayload, Jetted, Left, Metric, NonZero,
+        Nondegenerate, NormalizeWith, Object, OneSided, Point, Real, Reflect, Right,
+        Sesquilinear, Sidedness, Sinister, TangentBundle, Tensor, TensorDecoration,
+        TensorNormalization, TensorOf, TensorPayload, TensorProductAction, Undecorated, Vector, Ø,
+        ː, π, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐑𝐞𝐚𝐥𝐎𝐩𝐬, 𝐓𝐞𝐧𝐬, 𝒯,
     },
 };
 
@@ -1078,13 +1079,11 @@ impl<V: Tensor, S: Field> TensorOver<V, S> {
 pub type JetVector<𝒞: Cat, V: Tensor, const N: usize = 1, S: Field = <V as Tensor>::F> =
     TensorOver<V, Jet<𝒞, S, N>>;
 
-impl<𝒞: Cat, V: Tensor, const N: usize> TensorOver<V, Jet<𝒞, V::F, N>> {
+impl<𝒞: Cat, V: Tensor<F: Object<Context: JetRegion<𝒞>>>, const N: usize>
+    TensorOver<V, Jet<𝒞, V::F, N>>
+{
     /// Embeds every coordinate of `v` through the jet functor.
-    pub fn constant(v: V) -> Self
-    where
-        V::F: Reflect<𝒞>,
-        Jet<𝒞, V::F, N>: Reflect<𝒞>,
-    {
+    pub fn constant(v: V) -> Self {
         Self(
             V::Array::<Jet<𝒞, V::F, N>>::from_fn(|i| Jet::constant(v[i])),
             PhantomData,
@@ -1113,38 +1112,14 @@ type JetCoords<F, const N: usize> = DirectSum<Coords<F, 1>, Coords<F, N>>;
 /// them when independent derivative slots are required.
 #[doc(hidden)]
 #[derive(Debug, Copy, Clone)]
-pub struct Jet<𝒞: Cat, F: Field, const N: usize = 1>(
-    JetCoords<F, N>,
-    PhantomData<𝒞>,
-);
+pub struct Jet<𝒞: Cat, F: Field, const N: usize = 1>(JetCoords<F, N>, PhantomData<𝒞>);
 
 impl<𝒞: Cat, F: Field, const N: usize> Jet<𝒞, F, N> {
-    /// Constructs a jet with an explicit Taylor payload in category `𝒞`.
-    ///
-    /// Construction is available precisely when both the source scalar and the
-    /// resulting jet are genuine objects of `𝒞`. This is the category-domain
-    /// restriction of jettification; no separate domain marker is required.
-    pub fn new(value: F, coefficients: [F; N]) -> Self
-    where
-        F: Reflect<𝒞>,
-        Self: Reflect<𝒞>,
-    {
+    fn from_parts(value: F, coefficients: [F; N]) -> Self {
         Self(
             DirectSum(DirectSumArray([value], coefficients, PhantomData)),
             PhantomData,
         )
-    }
-
-    /// Embeds `value` as a constant jet in category `𝒞`.
-    ///
-    /// Like [`Jet::new`], this constructor exists only when the source scalar
-    /// and the resulting jet both reflect as objects of `𝒞`.
-    pub fn constant(value: F) -> Self
-    where
-        F: Reflect<𝒞>,
-        Self: Reflect<𝒞>,
-    {
-        Self::new(value, [F::zero(); N])
     }
 
     /// Constructs all `N + 1` coefficients by index, beginning with the primal
@@ -1174,6 +1149,34 @@ impl<𝒞: Cat, F: Field, const N: usize> Jet<𝒞, F, N> {
     }
 }
 
+/// Proof that a scalar's richest categorical context selects jettification in `𝒞`.
+///
+/// This is not a domain registry: the two implementations below are derived from
+/// the canonical context itself.  Real-valued contexts select `𝐑𝐞𝐚𝐥`; field-like
+/// contexts for which `RealOps` is constructively absent select the `𝐅𝐥𝐝` fallback.
+/// The trait exists only to present that disjoint proof to rustc through one
+/// inherent constructor namespace.
+#[doc(hidden)]
+pub trait JetRegion<𝒞: Cat>: Category {}
+
+impl<C: HasProperty<𝐑𝐞𝐚𝐥𝐎𝐩𝐬, Relation = Absent>> JetRegion<𝐅𝐥𝐝> for C {}
+impl<C: Ⱶ<𝐑𝐞𝐚𝐥>> JetRegion<𝐑𝐞𝐚𝐥> for C {}
+
+impl<𝒞: Cat, F: Field + Object, const N: usize> Jet<𝒞, F, N>
+where
+    F::Context: JetRegion<𝒞>,
+{
+    /// Constructs a jet in the unique categorical region selected by `F`.
+    pub fn new(value: F, coefficients: [F; N]) -> Self {
+        Self::from_parts(value, coefficients)
+    }
+
+    /// Embeds a scalar as a constant jet in the unique selected region.
+    pub fn constant(value: F) -> Self {
+        Self::new(value, [F::zero(); N])
+    }
+}
+
 impl<𝒞: Cat, F, const N: usize> Reflect<Jetted<𝒞>> for Jet<𝒞, F, N>
 where
     F: Field + Reflect<𝒞>,
@@ -1200,8 +1203,8 @@ fn reflected_functor_smoke<R: Real, V: Tensor<F = R>>(scalar: R, tensor: V) {
 
     sees_jetted_real::<R, _>(&j);
 
-    let t = TensorOver::<V, Jet<𝐅𝐥𝐝, R, 1>>::new::<𝐓𝐞𝐧𝐬>(tensor, |x| {
-        Jet::<𝐅𝐥𝐝, R, 1>::constant(x)
+    let t = TensorOver::<V, Jet<𝐑𝐞𝐚𝐥, R, 1>>::new::<𝐓𝐞𝐧𝐬>(tensor, |x| {
+        Jet::<𝐑𝐞𝐚𝐥, R, 1>::constant(x)
     });
 
     fn sees_tensor_image<V: Tensor, X>(_: &X)
@@ -1415,13 +1418,12 @@ impl<𝒞: Cat, F, const N: usize, Tail> ConstantRoute<F> for ː<JetLayer<𝒞, 
 where
     F: Field,
     Tail: ConstantRoute<F>,
-    Tail::Output: Reflect<𝒞>,
-    Jet<𝒞, Tail::Output, N>: Field + Reflect<𝒞>,
+    Jet<𝒞, Tail::Output, N>: Field,
 {
     type Output = Jet<𝒞, Tail::Output, N>;
 
     fn constant(value: F) -> Self::Output {
-        Jet::constant(Tail::constant(value))
+        Jet::from_parts(Tail::constant(value), [Tail::Output::zero(); N])
     }
 }
 
@@ -1431,7 +1433,11 @@ where
 /// runtime representations. Use [`TangentElement::new`] rather than spelling
 /// the marker explicitly.
 #[derive(Debug, Clone)]
-pub struct TangentElement<P: Point, V: Tensor, Tower>(pub P, pub JetVector<𝐅𝐥𝐝, V>, PhantomData<Tower>);
+pub struct TangentElement<P: Point, V: Tensor, Tower>(
+    pub P,
+    pub JetVector<𝐅𝐥𝐝, V>,
+    PhantomData<Tower>,
+);
 
 impl<P: Point, V: Tensor, Tower> TangentElement<P, V, Tower> {
     /// Constructs a tangent element from its base point and local jet.
@@ -1462,8 +1468,8 @@ pub type TM<P, V, T, U> = TangentElement<P, V, ː<T, ː<U, Ø>>>;
 /// [`TangentLift`].
 pub type LiftedTM<P, V, T> = TM<P, V, T, Prolongation<P, V, T>>;
 
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>> Chart<P, V>
-    for TM<P, V, T, U>
+impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
+    Chart<P, V> for TM<P, V, T, U>
 {
     type Global = T::Global;
 
@@ -1479,8 +1485,8 @@ impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVect
         Self(p.clone(), JetVector::zero(), PhantomData)
     }
 }
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>> ExpMap<P, V>
-    for TM<P, V, T, U>
+impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
+    ExpMap<P, V> for TM<P, V, T, U>
 {
 }
 impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
@@ -1518,11 +1524,17 @@ impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVect
 impl<P: Point, V: Tensor, T: TangentLift<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
     TangentLift<P, V> for TM<P, V, T, U>
 {
-    fn tangent_to_local(base: Tangent<P, V>, local: Tangent<P, V>) -> Option<JetVector<𝐅𝐥𝐝, V>> {
+    fn tangent_to_local(
+        base: Tangent<P, V>,
+        local: Tangent<P, V>,
+    ) -> Option<JetVector<𝐅𝐥𝐝, V>> {
         T::tangent_to_local(base, local)
     }
 
-    fn tangent_to_global(base: Tangent<P, V>, coordinate: JetVector<𝐅𝐥𝐝, V>) -> (P, JetVector<𝐅𝐥𝐝, V>) {
+    fn tangent_to_global(
+        base: Tangent<P, V>,
+        coordinate: JetVector<𝐅𝐥𝐝, V>,
+    ) -> (P, JetVector<𝐅𝐥𝐝, V>) {
         T::tangent_to_global(base, coordinate)
     }
 }
@@ -1537,9 +1549,15 @@ impl<P: Point, V: Tensor, T: TangentLift<P, V>, U: TangentBundle<Self, JetVector
 /// translation-based implementation.
 pub trait TangentLift<P: Point, V: Tensor>: TangentBundle<P, V> {
     /// Expresses `local` in the lifted chart centred at `base`.
-    fn tangent_to_local(base: Tangent<P, V>, local: Tangent<P, V>) -> Option<JetVector<𝐅𝐥𝐝, V>>;
+    fn tangent_to_local(
+        base: Tangent<P, V>,
+        local: Tangent<P, V>,
+    ) -> Option<JetVector<𝐅𝐥𝐝, V>>;
     /// Reconstructs a global point and tangent jet from a lifted coordinate.
-    fn tangent_to_global(base: Tangent<P, V>, coordinate: JetVector<𝐅𝐥𝐝, V>) -> (P, JetVector<𝐅𝐥𝐝, V>);
+    fn tangent_to_global(
+        base: Tangent<P, V>,
+        coordinate: JetVector<𝐅𝐥𝐝, V>,
+    ) -> (P, JetVector<𝐅𝐥𝐝, V>);
 }
 
 impl<P: Point, V: Tensor, T: TangentLift<P, V>> Chart<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝, V>>
@@ -1578,15 +1596,22 @@ impl<P: Point, V: Tensor, T: TangentLift<P, V>> TangentBundle<LiftedTM<P, V, T>,
 }
 
 impl<V: Tensor> TangentLift<V, V> for V {
-    fn tangent_to_local(base: Tangent<V, V>, local: Tangent<V, V>) -> Option<JetVector<𝐅𝐥𝐝, V>> {
+    fn tangent_to_local(
+        base: Tangent<V, V>,
+        local: Tangent<V, V>,
+    ) -> Option<JetVector<𝐅𝐥𝐝, V>> {
         Some(JetVector::from_fn(|i| {
-            local.1[i] - base.1[i] + Jet::constant(local.0[i] - base.0[i])
+            local.1[i] - base.1[i] + Jet::from_parts(local.0[i] - base.0[i], [V::F::zero()])
         }))
     }
 
-    fn tangent_to_global(base: Tangent<V, V>, coordinate: JetVector<𝐅𝐥𝐝, V>) -> (V, JetVector<𝐅𝐥𝐝, V>) {
-        let combined =
-            JetVector::<𝐅𝐥𝐝, V>::from_fn(|i| Jet::constant(base.0[i]) + base.1[i] + coordinate[i]);
+    fn tangent_to_global(
+        base: Tangent<V, V>,
+        coordinate: JetVector<𝐅𝐥𝐝, V>,
+    ) -> (V, JetVector<𝐅𝐥𝐝, V>) {
+        let combined = JetVector::<𝐅𝐥𝐝, V>::from_fn(|i| {
+            Jet::from_parts(base.0[i], [V::F::zero()]) + base.1[i] + coordinate[i]
+        });
 
         let base = V::from_fn(|i| combined[i][0]);
 
@@ -1673,15 +1698,14 @@ pub trait EvaluableAt<𝒞: Cat, Point, Output> {
     fn evaluate_at(&self, point: Point) -> Output;
 }
 
-impl<𝒞: Cat, F, BT, FT> EvaluableAt<𝒞, BT, TangentMap<BT, FT, FT, FT>> for d<F>
-where
-    BT: Tensor<Hand = Right, Action: ActionExists>,
-    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
-    BT::F: Reflect<𝒞>,
-    Jet<𝒞, BT::F>: Reflect<𝒞>,
+impl<
+    𝒞: Cat,
     F: JetMap<𝒞, BT, FT, 1, BT::F>,
-    JetVector<𝒞, BT>: Tensor<F = Jet<𝒞, BT::F>>,
-    JetVector<𝒞, FT, 1, BT::F>: Tensor<F = Jet<𝒞, BT::F>>,
+    BT: Tensor<F: Object<Context: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
+    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+> EvaluableAt<𝒞, BT, TangentMap<BT, FT, FT, FT>> for d<F>
+where
+    Jet<𝒞, BT::F>: Field,
 {
     fn evaluate_at(&self, point: BT) -> TangentMap<BT, FT, FT, FT> {
         let columns: BT::Array<FT> = BT::Array::from_fn(|input_coordinate| {
@@ -1712,15 +1736,14 @@ where
     }
 }
 
-impl<𝒞: Cat, F, BT, FT> EvaluableAt<𝒞, BT, FT> for Along<F, BT>
-where
-    BT: Vector,
-    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
-    BT::F: Reflect<𝒞>,
-    Jet<𝒞, BT::F, 1>: Reflect<𝒞>,
+impl<
+    𝒞: Cat,
     F: JetMap<𝒞, BT, FT, 1, BT::F>,
-    JetVector<𝒞, BT, 1, BT::F>: Tensor<F = Jet<𝒞, BT::F, 1>>,
-    JetVector<𝒞, FT, 1, BT::F>: Tensor<F = Jet<𝒞, BT::F>>,
+    BT: Vector<F: Object<Context: JetRegion<𝒞>>>,
+    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+> EvaluableAt<𝒞, BT, FT> for Along<F, BT>
+where
+    Jet<𝒞, BT::F>: Field,
 {
     fn evaluate_at(&self, point: BT) -> FT {
         let input = JetVector::<𝒞, BT, 1, BT::F>::from_fn(|coordinate| {
@@ -1740,14 +1763,7 @@ where
 /// `Fn(JetVector<𝒞, BT, ..>)` implementation. Differential programs implement it
 /// recursively, adding jet layers while `Route` remembers how to inject
 /// captured base-field constants into the current scalar type.
-pub trait JetMap<
-    𝒞: Cat,
-    BT: Tensor,
-    FT: Tensor<F = BT::F>,
-    const N: usize,
-    S: Field,
-    Route = Ø,
-> {
+pub trait JetMap<𝒞: Cat, BT: Tensor, FT: Tensor<F = BT::F>, const N: usize, S: Field, Route = Ø> {
     /// Evaluates the map without discarding any jet coefficients.
     fn jet_at(&self, input: JetVector<𝒞, BT, N, S>) -> JetVector<𝒞, FT, N, S>;
 }
@@ -1783,26 +1799,33 @@ where
     // One additional derivative layer over the existing outer scalar.
     JetVector<𝒞, BT, 1, Jet<𝒞, S, N>>: Tensor<F = Jet<𝒞, Jet<𝒞, S, N>>>,
     JetVector<𝒞, FT, 1, Jet<𝒞, S, N>>: Tensor<F = Jet<𝒞, Jet<𝒞, S, N>>>,
-    Jet<𝒞, S, N>: Field + Reflect<𝒞>,
-    Jet<𝒞, Jet<𝒞, S, N>>: Reflect<𝒞>,
+    Jet<𝒞, S, N>: Field,
 {
     fn jet_at(&self, input: JetVector<𝒞, BT, N, S>) -> JetVector<𝒞, HomOf<BT, FT>, N, S> {
         #[allow(type_alias_bounds)]
         type OuterScalar<𝒞: Cat, S, const N: usize> = Jet<𝒞, S, N>;
 
         let columns: BT::Array<JetVector<𝒞, FT, N, S>> = BT::Array::from_fn(|input_coordinate| {
-            let nested_input = JetVector::<𝒞, BT, 1, OuterScalar<𝒞, S, N>>::from_fn(|coordinate| {
-                Jet::new(
-                    input[coordinate],
-                    [if input_coordinate == coordinate {
-                        OuterScalar::<𝒞, S, N>::one()
-                    } else {
-                        OuterScalar::<𝒞, S, N>::zero()
-                    }],
-                )
-            });
+            let nested_input =
+                JetVector::<𝒞, BT, 1, OuterScalar<𝒞, S, N>>::from_fn(|coordinate| {
+                    Jet::from_parts(
+                        input[coordinate],
+                        [if input_coordinate == coordinate {
+                            OuterScalar::<𝒞, S, N>::one()
+                        } else {
+                            OuterScalar::<𝒞, S, N>::zero()
+                        }],
+                    )
+                });
 
-            let nested_output: JetVector<𝒞, FT, 1, OuterScalar<𝒞, S, N>> = <F as JetMap<𝒞, BT, FT, 1, OuterScalar<𝒞, S, N>, ː<JetLayer<𝒞, N>, Route>, >>::jet_at(
+            let nested_output: JetVector<𝒞, FT, 1, OuterScalar<𝒞, S, N>> = <F as JetMap<
+                𝒞,
+                BT,
+                FT,
+                1,
+                OuterScalar<𝒞, S, N>,
+                ː<JetLayer<𝒞, N>, Route>,
+            >>::jet_at(
                 &self.0, nested_input
             );
 
@@ -1831,9 +1854,7 @@ where
     FT: Vector,
     S: Field,
     Route: ConstantRoute<BT::F, Output = S>,
-    S: Reflect<𝒞>,
-    Jet<𝒞, S, N>: Field + Reflect<𝒞>,
-    Jet<𝒞, Jet<𝒞, S, N>>: Reflect<𝒞>,
+    Jet<𝒞, S, N>: Field,
     JetVector<𝒞, FT, N, S>: Tensor<F = Jet<𝒞, S, N>>,
     JetVector<𝒞, BT, N, S>: Tensor<F = Jet<𝒞, S, N>>,
     JetVector<𝒞, BT, 1, Jet<𝒞, S, N>>: Tensor<F = Jet<𝒞, Jet<𝒞, S, N>>>,
@@ -1844,18 +1865,26 @@ where
         #[allow(type_alias_bounds)]
         type OuterScalar<𝒞: Cat, S, const N: usize> = Jet<𝒞, S, N>;
 
-        let nested_input = JetVector::<𝒞, BT, 1, OuterScalar<𝒞, S, N>>::from_fn(|coordinate| {
-            Jet::new(
-                input[coordinate],
-                [Jet::constant(Route::constant(self.direction[coordinate]))],
-            )
-        });
+        let nested_input =
+            JetVector::<𝒞, BT, 1, OuterScalar<𝒞, S, N>>::from_fn(|coordinate| {
+                Jet::from_parts(
+                    input[coordinate],
+                    [Jet::from_parts(Route::constant(
+                        self.direction[coordinate],
+                    ), [S::zero(); N])],
+                )
+            });
 
-        let nested_output: JetVector<𝒞, FT, 1, OuterScalar<𝒞, S, N>> =
-            <F as JetMap<𝒞, BT, FT, 1, OuterScalar<𝒞, S, N>, ː<JetLayer<𝒞, N>, Route>>>::jet_at(
-                &self.f,
-                nested_input,
-            );
+        let nested_output: JetVector<𝒞, FT, 1, OuterScalar<𝒞, S, N>> = <F as JetMap<
+            𝒞,
+            BT,
+            FT,
+            1,
+            OuterScalar<𝒞, S, N>,
+            ː<JetLayer<𝒞, N>, Route>,
+        >>::jet_at(
+            &self.f, nested_input
+        );
 
         JetVector::<𝒞, FT, N, S>::from_fn(|coordinate| nested_output[coordinate][1])
     }
@@ -2040,8 +2069,7 @@ where
     }
 }
 
-impl<𝒞: Cat, V: NondegenerateLift, const N: usize, S: Field> Nondegenerate
-    for JetVector<𝒞, V, N, S>
+impl<𝒞: Cat, V: NondegenerateLift, const N: usize, S: Field> Nondegenerate for JetVector<𝒞, V, N, S>
 where
     Jet<𝒞, S, N>: Field,
     Self: Form<F = Jet<𝒞, S, N>>,

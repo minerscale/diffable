@@ -150,9 +150,11 @@ fn differential_of_scalar_linear_function() {
     }
 
     let derivative = d(double).at(Coords::from(0.0));
+    let derivative_v_real = d(double_v).at(Coords::from(0.0));
     let derivative_v = d(double_v).at(Sinister(Coords::from(Complex::zero()).flat()));
 
     assert_eq!(derivative[0], 2.0);
+    assert_eq!(derivative_v_real[0], 2.0);
     assert_eq!(derivative_v[0], Complex::from_fixed(2.0));
 }
 
@@ -233,7 +235,7 @@ fn direction_and_point_can_vary_together() {
 
 #[test]
 fn second_derivative_of_square() {
-    fn square<V: Euclidean>(x: V) -> V {
+    fn square<V: Vector>(x: V) -> V {
         V::from_fn(|_| x[0] * x[0])
     }
 
@@ -244,7 +246,7 @@ fn second_derivative_of_square() {
 
 #[test]
 fn third_derivative_of_cube() {
-    fn cube<V: Euclidean>(x: V) -> V {
+    fn cube<V: Vector>(x: V) -> V {
         x.map(|x| x.powi(3))
     }
 

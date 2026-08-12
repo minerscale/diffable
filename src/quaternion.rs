@@ -12,7 +12,9 @@ use crate::{
     complex::Complex,
     coords::Coords,
     impl_group_via_add,
-    traits::{Field, FieldExp, LieGroup, Metric, NatZero, NonZero, Real},
+    traits::{
+        Field, FieldExp, LieGroup, Metric, NatZero, NonZero, Object, Real, Reflect, 𝐅𝐥𝐝
+    },
 };
 
 /// The quaternion skew field `H`, with coordinates `a + bi + cj + dk`.
@@ -199,4 +201,8 @@ impl<R: Real> Field for Quaternion<R> {
     fn from_fixed(x: R) -> Self {
         x.into()
     }
+}
+
+impl<R: Real> Object for Quaternion<R> {
+    type Context = <Self as Reflect<𝐅𝐥𝐝>>::C;
 }

@@ -10,7 +10,7 @@ use num_traits::Zero;
 
 use crate::{
     complex::Complex,
-    traits::{CField, Field, FieldExp, NatZero, NonZero},
+    traits::{CField, Field, FieldExp, NatZero, NonZero, Object, Reflect, 𝐑𝐞𝐚𝐥},
 };
 use num_traits::{Euclid, Inv, ToPrimitive, real::Real as _};
 
@@ -134,6 +134,15 @@ impl<R: RealNum> CField for R where NonZero<R>: Inv<Output = NonZero<R>> {}
 /// the tolerant comparison.
 pub trait Real: RealNum + CField<Fixed = Self> {}
 impl<R: RealNum + CField<Fixed = Self>> Real for R {}
+
+// A real scalar is admitted once at its richest reflected scalar context.
+// Weaker interpretations (for example as a field) are selected from this
+// closed graph rather than by reflecting the same Rust type under competing
+// category labels.
+impl<R: Real> Object for R {
+    type Context = <R as Reflect<𝐑𝐞𝐚𝐥>>::C;
+}
+
 impl<R: Real> Metric for R {}
 
 impl<R: Real<Characteristic = NatZero>> FieldExp for R {

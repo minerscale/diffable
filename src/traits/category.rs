@@ -423,6 +423,74 @@ impl<
     >;
 }
 
+/// Type-level result of a total property-membership query.
+#[derive(Debug, Copy, Clone)]
+pub struct Present;
+/// Type-level result proving that a property is absent from a closed property graph.
+#[derive(Debug, Copy, Clone)]
+pub struct Absent;
+
+/// Decide whether an already-expanded property list contains `𝒞`.
+///
+/// Unlike [`FindProperty`], this query is total: failure to find the property is
+/// represented by [`Absent`] rather than by failure of trait resolution.  This
+/// makes negative facts available to ordinary stable-Rust coherence.
+pub trait PropertyPresence<𝒞: Cat>: PropertyList {
+    type Relation;
+}
+
+pub trait PropertyPresenceWith<𝒞: Cat, Relation>: PropertyList {
+    type Output;
+}
+
+impl<𝒞: Cat> PropertyPresence<𝒞> for Ø {
+    type Relation = Absent;
+}
+
+impl<𝒞: Cat, Head: PropertyEntry<Role: Compare<𝒞, Relation = Same>>, Tail: PropertyList>
+    PropertyPresenceWith<𝒞, Same> for ː<Head, Tail>
+{
+    type Output = Present;
+}
+
+impl<
+    𝒞: Cat,
+    Head: PropertyEntry<Role: Compare<𝒞, Relation = Different>>,
+    Tail: PropertyList + PropertyPresence<𝒞>,
+> PropertyPresenceWith<𝒞, Different> for ː<Head, Tail>
+{
+    type Output = <Tail as PropertyPresence<𝒞>>::Relation;
+}
+
+impl<𝒞: Cat, Head: PropertyEntry<Role: Compare<𝒞>>, Tail: PropertyList> PropertyPresence<𝒞>
+    for ː<Head, Tail>
+where
+    ː<Head, Tail>: PropertyPresenceWith<𝒞, <Head::Role as Compare<𝒞>>::Relation>,
+{
+    type Relation = <ː<Head, Tail> as PropertyPresenceWith<
+        𝒞,
+        <Head::Role as Compare<𝒞>>::Relation,
+    >>::Output;
+}
+
+/// Decide whether the transitive property graph of a concrete category contains `𝒞`.
+///
+/// Because [`Category`] graphs are closed compile-time data, `Relation = Absent`
+/// is a constructive negative fact rather than merely a failed search.  The same
+/// associated projection can therefore be constrained to `Present` or `Absent`
+/// in competing impls, giving rustc visibly disjoint coherence regions.
+pub trait HasProperty<𝒞: Cat>: Category {
+    type Relation;
+}
+
+impl<𝒞: Cat, S: AssocList, P: PropertyList + ExpandProperties, E: EquationList> HasProperty<𝒞>
+    for 𝒯<S, P, E>
+where
+    <P as ExpandProperties>::Expansion: PropertyPresence<𝒞>,
+{
+    type Relation = <<P as ExpandProperties>::Expansion as PropertyPresence<𝒞>>::Relation;
+}
+
 /// Find a property edge by reflected category name.
 pub trait FindProperty<𝒞: Cat>: PropertyList {
     type Found: PropertyEntry;
