@@ -9,14 +9,14 @@
 use crate::{
     impl_group_via_mul,
     traits::{
-        Different, ExactCmp, FromReal, Interpretation, Interval, Metric, Object, Real, Same,
-        Tensor, 𝐂𝐅𝐥𝐝,
+        Different, ExactCmp, FromReal, Interval, Metric, Real, ReflectedContext, Same, Tensor, ι,
+        𝐂𝐅𝐥𝐝,
     },
 };
 use core::ops::{Add, Mul, Neg, Sub};
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 
-use super::{Point, Smooth};
+use super::{Point, Smooth, 𝐂𝐌𝐨𝐧};
 
 /// A commutative monoid, in additive notation.
 ///
@@ -41,7 +41,7 @@ use super::{Point, Smooth};
 ///
 /// Certified by implementing this trait; verified by `test_cmonoid!`,
 /// which includes a commutativity check absent from `Monoid`'s tests.
-pub trait CMonoid: Point + Zero {
+pub trait CMonoid<C: 𝐂𝐌𝐨𝐧::Ⱶ = 𝐂𝐌𝐨𝐧::C>: Point<C> + Zero {
     #[cfg(feature = "testing")]
     fn check_left_identity(&self) -> bool
     where
@@ -75,7 +75,7 @@ pub trait CMonoid: Point + Zero {
     }
 }
 
-impl<M: Point + Zero> CMonoid for M {}
+impl<C: 𝐂𝐌𝐨𝐧::Ⱶ, M: Point<C> + Zero> CMonoid<C> for M {}
 
 /// A monoid, in multiplicative notation, with no commutativity assumed.
 ///
@@ -939,8 +939,8 @@ impl<F: CField<Fixed: Real>> FromReal for Symmetrized<F> {
 impl<F: CField + Metric> Metric for Symmetrized<F> {}
 impl<F: CField> CField for Symmetrized<F> {}
 
-impl<F: CField> Object for Symmetrized<F> {
-    type Context = Interpretation<𝐂𝐅𝐥𝐝, Self>;
+impl<F: CField> ι for Symmetrized<F> {
+    type C = ReflectedContext<𝐂𝐅𝐥𝐝::𝒞, Self>;
 }
 
 impl<R: Real, F: Field<Fixed = R>> Interval for F {

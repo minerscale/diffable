@@ -18,13 +18,10 @@
 //! No trait objects, allocation, or `std` are used. The callable remains fully
 //! monomorphised; only its mathematical interpretation lives in the type system.
 
-use crate::{
-    C,
-    traits::{Arrow, ArrowCategory, CodomainOf, DomainOf},
-};
+use crate::traits::{Arrow, ArrowCategory, CodomainOf, DomainOf};
 
 use super::{
-    Cat, Ob, Signature, TangentBundle, Tensor, Typing, π, Ⱶ, 𝐀𝐫𝐫, 𝐌𝐚𝐧, 𝐓𝐨𝐩
+    Ob, Signature, TangentBundle, Tensor, arrow, π, Ⱶ, 𝐀𝐫𝐫, 𝐌𝐚𝐧, 𝐓𝐨𝐩
 };
 
 /// A chosen topology on a point type.
@@ -48,7 +45,7 @@ pub trait Manifold: Topological + Sized {
 #[allow(dead_code)]
 fn theorem_about_continuous_maps<F, C>(_f: &Arrow<C, F>)
 where
-    C: Ⱶ<𝐀𝐫𝐫<C![𝐓𝐨𝐩]>> + π<Typing, X: Signature>,
+    C: Ⱶ<𝐀𝐫𝐫<𝐓𝐨𝐩::C>> + π<arrow::Typing, X: Signature>,
     F: Fn(&DomainOf<C>) -> CodomainOf<C>,
 {
 }
@@ -59,10 +56,10 @@ where
 #[allow(dead_code)]
 fn smooth_maps_are_continuous_without_a_nominal_bridge<M, N>(_m: M, n: N)
 where
-    M: Manifold + Ob<C![𝐌𝐚𝐧]>,
-    N: Manifold + Ob<C![𝐌𝐚𝐧]>,
+    M: Manifold + Ob<𝐌𝐚𝐧::C>,
+    N: Manifold + Ob<𝐌𝐚𝐧::C>,
 {
-    let f = Arrow::<ArrowCategory<C![𝐌𝐚𝐧], M, N>>::new(|_x: &M| n.clone());
+    let f = Arrow::<ArrowCategory<𝐌𝐚𝐧::C, M, N>>::new(|_x: &M| n.clone());
 
     theorem_about_continuous_maps(&f);
 }

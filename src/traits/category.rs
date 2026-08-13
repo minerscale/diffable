@@ -17,7 +17,7 @@
 //! carrying its nominal label.
 //!
 //! Associated dependencies are different.  Their labels are observable interface
-//! structure: `Vector::F` must be recovered as `F`, not merely as the first
+//! structure: `<V as Tensor>::F` must be recovered as `tensor::F`, not merely as the first
 //! field-shaped thing in a list.  Consequently structural dependencies are matched
 //! by associated-type name while properties are matched as an unordered set.
 //!
@@ -94,9 +94,8 @@ impl<S: AssocList, P: PropertyList, E: EquationList> Category for 𝒯<S, P, E> 
 
 /// A concrete structural context rooted at one Rust object and nominal category.
 ///
-/// Canonical [`Cat::C`] values remain unrooted theories. `Rooted` is used when a
-/// concrete context has an explicit body rather than the canonical
-/// [`Interpretation`] body, recording which object that graph is actually about.
+/// Canonical [`Cat::C`] values remain unrooted theories. `Rooted` records which
+/// object an explicitly supplied concrete body is actually about.
 #[derive(Debug, Copy, Clone)]
 pub struct Rooted<𝒞: Cat, X, C: Category>(PhantomData<fn() -> (𝒞, X, C)>);
 
@@ -108,19 +107,18 @@ impl<𝒞: Cat, X, C: Category> Category for Rooted<𝒞, X, C> {
     type Equations = C::Equations;
 }
 
-/// The canonical concrete context of `X` interpreted in nominal category `𝒞`.
+/// Finite implementation carrier for a concrete object rooted in nominal theory `𝒞`.
 ///
-/// `Interpretation<𝒞, X>` is the *identity* of the context. [`Reflect::Body`] is
-/// merely its elaborated structural body. Keeping those notions separate gives
-/// recursive theories such as `Field::Fixed` a finite Rust type while ensuring
-/// that a direct interpretation and the same ordinary child reached through
-/// [`π`] are literally the same type.
+/// Public code should normally obtain contexts through [`ι`] and [`Model`]. This
+/// carrier exists so [`Reflect::Body`] can refer to recursive child models without
+/// recursively expanding their entire structural graphs into the Rust type itself.
+#[doc(hidden)]
 #[derive(Debug, Copy, Clone)]
-pub struct Interpretation<𝒞: Cat, X>(PhantomData<fn() -> (𝒞, X)>);
+pub struct ReflectedContext<𝒞: Cat, X>(PhantomData<fn() -> (𝒞, X)>);
 
-impl<𝒞: Cat, X: Reflect<𝒞>> sealed::Category for Interpretation<𝒞, X> {}
+impl<𝒞: Cat, X: Reflect<𝒞>> sealed::Category for ReflectedContext<𝒞, X> {}
 
-impl<𝒞: Cat, X: Reflect<𝒞>> Category for Interpretation<𝒞, X> {
+impl<𝒞: Cat, X: Reflect<𝒞>> Category for ReflectedContext<𝒞, X> {
     type Structure = <<X as Reflect<𝒞>>::Body as Category>::Structure;
     type Properties = <<X as Reflect<𝒞>>::Body as Category>::Properties;
     type Equations = <<X as Reflect<𝒞>>::Body as Category>::Equations;
@@ -135,26 +133,37 @@ pub trait Cat: Copy + Clone + Debug + Send + Sync + 'static {
     type C: Category;
 }
 
-/// Admit a concrete Rust type into the ontology with its richest structural context.
+/// Include a concrete Rust type into the ontology with its canonical structural context.
 ///
-/// This is the object-level trust boundary. An object is admitted once; every
-/// weaker category it inhabits is then derived structurally through [`Ob`].
-pub trait Object {
-    type Context: Category;
+/// This is the canonical inclusion map from an admitted Rust type into the
+/// categorical ontology. [`Reflect`] supplies the available interpretations; `ι`
+/// selects the distinguished context from which weaker models are derived through
+/// [`Ⱶ`].
+#[allow(non_camel_case_types)]
+pub trait ι {
+    type C: Category;
 }
+
+/// The canonical model of theory `𝒞` obtained from the included Rust type `X`.
+///
+/// `Model` is derived notation, not a fourth primitive operation: first [`ι`]
+/// includes `X` into its canonical categorical context, then [`Ⱶ`] selects the
+/// requested theory view.
+#[allow(type_alias_bounds)]
+pub type Model<𝒞: Cat, X: ι<C: Ⱶ<𝒞>>> = <<X as ι>::C as Ⱶ<𝒞>>::C;
 
 /// The proposition that `Self` is an object of structural category `C`.
 ///
-/// Objecthood is derived from the single context admitted by [`Object`]. Thus a
-/// value admitted with a rich context is automatically an object of every weaker
+/// Objecthood is derived from the single canonical context selected by [`ι`]. Thus a
+/// value included with a rich context is automatically an object of every weaker
 /// category refined by that context.
-pub trait Ob<C: Category>: Object {}
+pub trait Ob<C: Category>: ι {}
 
 impl<X, C> Ob<C> for X
 where
-    X: Object,
+    X: ι,
     C: Category + 'static,
-    X::Context: Ⱶ<𝐈𝐝<C>>,
+    X::C: Ⱶ<𝐈𝐝<C>>,
 {
 }
 
@@ -190,7 +199,7 @@ pub struct Binds<Name: AssocName, 𝒞: Cat, Value, Context: Category>(
 /// child context explicitly.
 #[allow(type_alias_bounds)]
 pub type BindsReflected<Name: AssocName, 𝒞: Cat, Value: Reflect<𝒞>> =
-    Binds<Name, 𝒞, Value, Interpretation<𝒞, Value>>;
+    Binds<Name, 𝒞, Value, ReflectedContext<𝒞, Value>>;
 
 /// A concrete binding whose child context is supplied explicitly.
 ///
@@ -211,7 +220,7 @@ pub struct BindsAs<Name: AssocName, 𝒞: Cat, Value, Context: Category>(
 ///
 /// where both `D` and `E` are objects of `C`. Its domain and codomain are
 /// therefore not represented as independent associated dependencies; together
-/// they form the single signature which inhabits the [`Typing`] role.
+/// they form the single signature which inhabits the [`arrow::Typing`] role.
 ///
 /// `ArrowSignature<C, D, E>` is the concrete payload bound by
 /// [`BindsTyping`]. The [`Signature`] trait exposes `D` and `E` merely as
@@ -239,7 +248,7 @@ impl<C: Category, D, E> Signature for ArrowSignature<C, D, E> {
     type Codomain = E;
 }
 
-/// Bind the [`Typing`] of an arrow in `C`.
+/// Bind the [`arrow::Typing`] of an arrow in `C`.
 ///
 /// This is the admission boundary for an arrow signature. Unlike the
 /// projection-only [`Signature`] trait, a `BindsTyping<C, D, E>` certifies that
@@ -255,6 +264,7 @@ pub struct BindsTyping<C: Category + 'static, D: Ob<C>, E: Ob<C>>(PhantomData<fn
 #[derive(Debug, Copy, Clone)]
 pub struct Unspecified;
 
+#[doc(hidden)]
 pub trait AssocEntry: sealed::AssocEntry {
     type Name: AssocName;
     type Role: Cat;
@@ -289,15 +299,15 @@ impl<𝒞: Cat, N: AssocName, V, C: Category> AssocEntry for BindsAs<N, 𝒞, V,
 impl<C: Category + 'static, D: Ob<C>, E: Ob<C>> sealed::AssocEntry for BindsTyping<C, D, E> {}
 
 impl<C: Category + 'static, D: Ob<C>, E: Ob<C>> AssocEntry for BindsTyping<C, D, E> {
-    type Name = Typing;
+    type Name = arrow::Typing;
     type Role = 𝐓𝐲𝐩𝐢𝐧𝐠<C>;
     type C = Rooted<
         𝐓𝐲𝐩𝐢𝐧𝐠<C>,
         ArrowSignature<C, D, E>,
         𝒯<
             ː<
-                BindsAs<From, 𝐈𝐝<C>, D, <D as Object>::Context>,
-                ː<BindsAs<To, 𝐈𝐝<C>, E, <E as Object>::Context>, Ø>,
+                BindsAs<signature::Domain, 𝐈𝐝<C>, D, <D as ι>::C>,
+                ː<BindsAs<signature::Codomain, 𝐈𝐝<C>, E, <E as ι>::C>, Ø>,
             >,
             Ø,
         >,
@@ -305,6 +315,7 @@ impl<C: Category + 'static, D: Ob<C>, E: Ob<C>> AssocEntry for BindsTyping<C, D,
     type Value = ArrowSignature<C, D, E>;
 }
 
+#[doc(hidden)]
 pub trait AssocList: sealed::AssocList {}
 impl sealed::AssocList for Ø {}
 impl AssocList for Ø {}
@@ -312,20 +323,36 @@ impl<H: AssocEntry, T: AssocList> sealed::AssocList for ː<H, T> {}
 impl<H: AssocEntry, T: AssocList> AssocList for ː<H, T> {}
 
 /// Constructive equality of associated-type labels.
+#[doc(hidden)]
 pub trait CompareAssoc<Rhs: AssocName>: AssocName {
     type Relation;
 }
 
-/// Declare the finite set of reflected associated-type names.
+/// Declare a namespace containing reflected associated-type labels.
 ///
-/// As with category atoms, inequality is constructive: off-diagonal `Different`
-/// impls are generated explicitly rather than inferred from failure.
-macro_rules! assoc_names {
+/// Labels are owned by the trait or construction which introduces their semantic
+/// role.  This mirrors Rust's own `<X as Trait>::Assoc` qualification and prevents
+/// unrelated associated types with the same spelling from becoming equal in the
+/// ontology merely because their local names coincide.
+macro_rules! assoc_namespace {
+    ($namespace:ident { $($name:ident),+ $(,)? }) => {
+        pub mod $namespace {
+            $(
+                #[derive(Debug, Copy, Clone)]
+                pub struct $name;
+            )+
+        }
+    };
+}
+
+/// Declare constructive equality for the finite universe of associated labels.
+///
+/// As with category atoms, inequality is explicit: every off-diagonal pair receives
+/// a `Different` implementation rather than relying on failed trait resolution.
+macro_rules! assoc_relations {
     () => {};
 
-    ($head:ident $(, $tail:ident)* $(,)?) => {
-        #[derive(Debug, Copy, Clone)]
-        pub struct $head;
+    ($head:path $(, $tail:path)* $(,)?) => {
         impl AssocName for $head {}
         impl CompareAssoc<$head> for $head {
             type Relation = Same;
@@ -340,32 +367,52 @@ macro_rules! assoc_names {
             }
         )*
 
-        assoc_names!($($tail),*);
+        assoc_relations!($($tail),*);
     };
 }
 
-// Most names mirror reflected Rust associated types; the payload names are
-// metadata carried by reflected functor images.
-assoc_names!(
-    This,
-    F,
+// `This` is the distinguished root projection rather than a reflected Rust
+// associated type, so it remains the one unqualified label.  Every ordinary
+// associated role is namespaced by its declaring trait/construction.
+#[derive(Debug, Copy, Clone)]
+pub struct This;
+
+assoc_namespace!(tensor { F });
+assoc_namespace!(field {
     Fixed,
-    Characteristic,
-    Tangent,
-    Typing,
-    From,
-    To,
-    JetPayload,
-    TensorPayload,
+    Characteristic
+});
+assoc_namespace!(manifold { Tangent });
+assoc_namespace!(arrow { Typing });
+assoc_namespace!(signature { Domain, Codomain });
+assoc_namespace!(homotopy { From, To });
+assoc_namespace!(jet { Payload });
+assoc_namespace!(tensor_of { Payload });
+
+assoc_relations!(
+    This,
+    tensor::F,
+    field::Fixed,
+    field::Characteristic,
+    manifold::Tangent,
+    arrow::Typing,
+    signature::Domain,
+    signature::Codomain,
+    homotopy::From,
+    homotopy::To,
+    jet::Payload,
+    tensor_of::Payload,
 );
 
 /// Find a structural dependency by associated-type name.
 ///
 /// The list is logically a record, not a tuple: lookup ignores declaration order.
+#[doc(hidden)]
 pub trait FindAssoc<Name: AssocName>: AssocList {
     type Found: AssocEntry<Name = Name>;
 }
 
+#[doc(hidden)]
 pub trait FindAssocWith<Name: AssocName, Relation>: AssocList {
     type Found: AssocEntry<Name = Name>;
 }
@@ -398,6 +445,7 @@ where
 /// The open canonical theory `C![𝒞]` deliberately has no root object.
 /// [`Rooted`] supplies that information for a concrete reflection without
 /// recursively inserting the whole category into its own structure list.
+#[doc(hidden)]
 pub trait RootContext: Category {
     type 𝒞: Cat;
     type X;
@@ -408,13 +456,14 @@ impl<𝒞: Cat, X, C: Category> RootContext for Rooted<𝒞, X, C> {
     type X = X;
 }
 
-impl<𝒞: Cat, X: Reflect<𝒞>> RootContext for Interpretation<𝒞, X> {
+impl<𝒞: Cat, X: Reflect<𝒞>> RootContext for ReflectedContext<𝒞, X> {
     type 𝒞 = 𝒞;
     type X = X;
 }
 
 /// Internal dispatch for the identity projection (`This`) versus an ordinary
 /// named child edge.
+#[doc(hidden)]
 pub trait ProjectAssoc<Name: AssocName, Relation>: Category {
     type 𝒞: Cat;
     type C: Category;
@@ -470,6 +519,7 @@ where
 #[derive(Debug, Copy, Clone)]
 pub struct BindsProperty<𝒞: Cat, Context: Category>(PhantomData<(𝒞, Context)>);
 
+#[doc(hidden)]
 pub trait PropertyEntry: sealed::PropertyEntry {
     type Role: Cat;
 }
@@ -484,6 +534,7 @@ impl<𝒞: Cat, C: Category> PropertyEntry for BindsProperty<𝒞, C> {
     type Role = 𝒞;
 }
 
+#[doc(hidden)]
 pub trait PropertyList: sealed::PropertyList {}
 impl sealed::PropertyList for Ø {}
 impl PropertyList for Ø {}
@@ -491,6 +542,7 @@ impl<H: PropertyEntry, T: PropertyList> sealed::PropertyList for ː<H, T> {}
 impl<H: PropertyEntry, T: PropertyList> PropertyList for ː<H, T> {}
 
 /// Append two type-level property lists.
+#[doc(hidden)]
 pub trait AppendProperties<Rhs: PropertyList>: PropertyList {
     type Output: PropertyList;
 }
@@ -506,6 +558,7 @@ impl<Rhs: PropertyList, Head: PropertyEntry, Tail: PropertyList + AppendProperti
 }
 
 /// The transitive properties supplied by one property edge.
+#[doc(hidden)]
 pub trait ExpandProperty: PropertyEntry {
     type Expansion: PropertyList;
 }
@@ -524,6 +577,7 @@ impl<𝒞: Cat, Context: Category<Properties: ExpandProperties>> ExpandProperty
 ///
 /// Every direct property remains present, followed by all properties reachable
 /// through its resolved context.
+#[doc(hidden)]
 pub trait ExpandProperties: PropertyList {
     type Expansion: PropertyList;
 }
@@ -557,10 +611,12 @@ pub struct Absent;
 /// Unlike [`FindProperty`], this query is total: failure to find the property is
 /// represented by [`Absent`] rather than by failure of trait resolution.  This
 /// makes negative facts available to ordinary stable-Rust coherence.
+#[doc(hidden)]
 pub trait PropertyPresence<𝒞: Cat>: PropertyList {
     type Relation;
 }
 
+#[doc(hidden)]
 pub trait PropertyPresenceWith<𝒞: Cat, Relation>: PropertyList {
     type Output;
 }
@@ -595,29 +651,57 @@ where
     >>::Output;
 }
 
-/// Decide whether the transitive property graph of a concrete category contains `𝒞`.
+/// Decide whether an expanded source property graph contains every property
+/// required by `Target`.
 ///
-/// Because [`Category`] graphs are closed compile-time data, `Relation = Absent`
-/// is a constructive negative fact rather than merely a failed search.  The same
-/// associated projection can therefore be constrained to `Present` or `Absent`
-/// in competing impls, giving rustc visibly disjoint coherence regions.
-pub trait HasProperty<𝒞: Cat>: Category {
+/// This is the constructive fragment of negative refinement.  For theories
+/// whose canonical signature contains only properties, failure of this query is
+/// enough to prove that the source cannot satisfy the theory.
+#[doc(hidden)]
+pub trait CoversProperties<Target: PropertyList>: PropertyList {
     type Relation;
 }
 
-impl<𝒞: Cat, C: Category<Properties: ExpandProperties>> HasProperty<𝒞> for C
-where
-    <C::Properties as ExpandProperties>::Expansion: PropertyPresence<𝒞>,
+#[doc(hidden)]
+pub trait CoversPropertiesWith<Target: PropertyList, Relation>: PropertyList {
+    type Output;
+}
+
+impl<S: PropertyList> CoversProperties<Ø> for S {
+    type Relation = Present;
+}
+
+impl<S: PropertyList, Tail: PropertyList> CoversPropertiesWith<Tail, Absent> for S {
+    type Output = Absent;
+}
+
+impl<Tail: PropertyList, S: PropertyList + CoversProperties<Tail>>
+    CoversPropertiesWith<Tail, Present> for S
 {
-    type Relation =
-        <<C::Properties as ExpandProperties>::Expansion as PropertyPresence<𝒞>>::Relation;
+    type Output = <S as CoversProperties<Tail>>::Relation;
+}
+
+impl<
+    Head: PropertyEntry,
+    Tail: PropertyList,
+    S: PropertyList + PropertyPresence<<Head as PropertyEntry>::Role>,
+> CoversProperties<ː<Head, Tail>> for S
+where
+    S: CoversPropertiesWith<Tail, <S as PropertyPresence<<Head as PropertyEntry>::Role>>::Relation>,
+{
+    type Relation = <S as CoversPropertiesWith<
+        Tail,
+        <S as PropertyPresence<<Head as PropertyEntry>::Role>>::Relation,
+    >>::Output;
 }
 
 /// Find a property edge by reflected category name.
+#[doc(hidden)]
 pub trait FindProperty<𝒞: Cat>: PropertyList {
     type Found: PropertyEntry;
 }
 
+#[doc(hidden)]
 pub trait FindPropertyWith<𝒞: Cat, Relation>: PropertyList {
     type Found: PropertyEntry;
 }
@@ -646,11 +730,13 @@ where
         <ː<Head, Tail> as FindPropertyWith<𝒞, <Head::Role as Compare<𝒞>>::Relation>>::Found;
 }
 
-/// Project the resolved graph which supplies property `𝒞`.
-pub trait PropertyRefinement<𝒞: Cat>: Category {
-    type Refinement: Category;
+/// Solver primitive selecting the exact context carried by property `𝒞`.
+#[doc(hidden)]
+pub trait SelectProperty<𝒞: Cat>: Category {
+    type C: Category;
 }
 
+#[doc(hidden)]
 pub trait ResolvedProperty<𝒞: Cat>: PropertyEntry {
     type Refinement: Category;
 }
@@ -664,11 +750,17 @@ impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>, Context: Ⱶ<𝒞>> 
     type Refinement = Context;
 }
 
-impl<𝒞: Cat, C: Category<Properties: ExpandProperties>> PropertyRefinement<𝒞> for C
+impl<𝒞: Cat, 𝒟: Cat<C: Ⱶ<𝒞>> + Compare<𝒞, Relation = Same>> ResolvedProperty<𝒞> for 𝒟 {
+    // A bare inherited theory carries no concrete child context of its own.
+    // Resolve its canonical theory only in this open-theory case.
+    type Refinement = <𝒟::C as Ⱶ<𝒞>>::C;
+}
+
+impl<𝒞: Cat, C: Category<Properties: ExpandProperties>> SelectProperty<𝒞> for C
 where
     <C::Properties as ExpandProperties>::Expansion: FindProperty<𝒞, Found: ResolvedProperty<𝒞>>,
 {
-    type Refinement = <<<C::Properties as ExpandProperties>::Expansion as FindProperty<
+    type C = <<<C::Properties as ExpandProperties>::Expansion as FindProperty<
         𝒞,
     >>::Found as ResolvedProperty<𝒞>>::Refinement;
 }
@@ -694,6 +786,7 @@ pub struct Follow<Path, Name: AssocName>(PhantomData<(Path, Name)>);
 pub struct Equal<Left, Right>(PhantomData<(Left, Right)>);
 
 /// An equation list is a list of [`Equal`] constraints.
+#[doc(hidden)]
 pub trait EquationList: sealed::EquationList {}
 
 impl sealed::EquationList for Ø {}
@@ -701,9 +794,6 @@ impl EquationList for Ø {}
 
 impl<L, R, T: EquationList> sealed::EquationList for ː<Equal<L, R>, T> {}
 impl<L, R, T: EquationList> EquationList for ː<Equal<L, R>, T> {}
-
-#[allow(type_alias_bounds)]
-pub type Project<T: Reflect<𝒞>, 𝒞: Cat, Name: AssocName> = <Interpretation<𝒞, T> as π<Name>>::X;
 
 /// Resolve a path against a concrete reflected category.
 ///
@@ -715,6 +805,7 @@ pub type Project<T: Reflect<𝒞>, 𝒞: Cat, Name: AssocName> = <Interpretation
 /// Path equality therefore reduces ultimately to ordinary Rust type equality,
 /// while every intermediate hop retains exactly the structural context selected
 /// from its parent.
+#[doc(hidden)]
 pub trait ResolvePath<Path>: Category {
     type 𝒞: Cat;
     type C: Category;
@@ -737,6 +828,7 @@ where
 }
 
 /// Type-equality witness used to hand graph equations back to rustc.
+#[doc(hidden)]
 pub trait SameType<Rhs> {}
 impl<T> SameType<T> for T {}
 
@@ -773,10 +865,12 @@ impl<
 pub struct Same;
 pub struct Different;
 
+#[doc(hidden)]
 pub trait Compare<𝒟: Cat>: Cat {
     type Relation;
 }
 
+#[doc(hidden)]
 pub trait Atom: Cat {}
 
 impl<𝒞: Atom> Compare<𝒞> for 𝒞 {
@@ -804,7 +898,7 @@ macro_rules! atoms {
 }
 
 macro_rules! compare_atoms_to_family {
-    ($family:ident; $($cat:ident),* $(,)?) => {
+    ($family:ident; $($cat:ty),* $(,)?) => {
         $(
             impl<N: Nat> Compare<$family<N>> for $cat
             where
@@ -824,10 +918,10 @@ macro_rules! compare_atoms_to_family {
 }
 
 macro_rules! compare_atoms_to_families {
-    ([$($cat:ident),* $(,)?];) => {};
+    ([$($cat:ty),* $(,)?];) => {};
 
     (
-        [$($cat:ident),* $(,)?];
+        [$($cat:ty),* $(,)?];
         $family:ident $(, $rest:ident)* $(,)?
     ) => {
         compare_atoms_to_family!($family; $($cat),*);
@@ -848,7 +942,7 @@ macro_rules! assoc_requirements {
         Ø
     };
 
-    ($name:ident : $role:ty $(, $rest_name:ident : $rest_role:ty)* $(,)?) => {
+    ($name:path : $role:ty $(, $rest_name:path : $rest_role:ty)* $(,)?) => {
         ː<
             Requires<$name, $role>,
             assoc_requirements!($($rest_name : $rest_role),*)
@@ -869,7 +963,7 @@ macro_rules! properties {
 /// Build one canonical trait/category signature.
 ///
 /// ```text
-/// cat![(F: 𝐅𝐥𝐝), {𝐓𝐞𝐧𝐬, 𝐆𝐫𝐩}]
+/// cat![(tensor::F: 𝐅𝐥𝐝), {𝐓𝐞𝐧𝐬, 𝐆𝐫𝐩}]
 /// ```
 ///
 /// The parenthesised portion is a labelled associated-type record.  The braced
@@ -887,7 +981,7 @@ macro_rules! equations {
 macro_rules! cat {
     // Full form with equations.
     (
-        ($($name:ident : $role:ty),* $(,)?),
+        ($($name:path : $role:ty),* $(,)?),
         {$($property:ty),* $(,)?},
         {$($equation:ty),* $(,)?}
     ) => {
@@ -900,7 +994,7 @@ macro_rules! cat {
 
     // Full form without equations.
     (
-        ($($name:ident : $role:ty),* $(,)?),
+        ($($name:path : $role:ty),* $(,)?),
         {$($property:ty),* $(,)?}
     ) => {
         𝒯<
@@ -912,7 +1006,7 @@ macro_rules! cat {
 
     // Structure only.
     (
-        $($name:ident : $role:ty),* $(,)?
+        $($name:path : $role:ty),* $(,)?
     ) => {
         cat![
             ($($name : $role),*),
@@ -1013,14 +1107,14 @@ impl<𝒞: Atom, Base: Cat, Name: AssocName> Compare<WithPayload<Base, Name>> fo
 /// associated dependency recording the source object type carried by the jet
 /// representation.
 #[allow(type_alias_bounds)]
-pub type Jetted<𝒞: Cat> = WithPayload<𝒞, JetPayload>;
+pub type Jetted<𝒞: Cat> = WithPayload<𝒞, jet::Payload>;
 
 /// The reflected codomain of re-presenting an object of `𝒞` over new scalars.
 ///
 /// As with [`Jetted`], the representation itself is not promoted to a category label; only the
 /// source object type is retained as additional metadata.
 #[allow(type_alias_bounds)]
-pub type TensorOf<𝒞: Cat> = WithPayload<𝒞, TensorPayload>;
+pub type TensorOf<𝒞: Cat> = WithPayload<𝒞, tensor_of::Payload>;
 
 /// The theory of arrows in structural category `C`.
 pub struct 𝐀𝐫𝐫<C: Category + 'static>(PhantomData<fn() -> C>);
@@ -1056,7 +1150,7 @@ impl<C: Category + 'static> Debug for 𝐓𝐲𝐩𝐢𝐧𝐠<C> {
     }
 }
 impl<C: Category + 'static> Cat for 𝐓𝐲𝐩𝐢𝐧𝐠<C> {
-    type C = cat![(From: 𝐈𝐝<C>, To: 𝐈𝐝<C>), {}];
+    type C = cat![(signature::Domain: 𝐈𝐝<C>, signature::Codomain: 𝐈𝐝<C>), {}];
 }
 
 impl<A: Category + 'static, C: Category + 'static> Compare<𝐈𝐝<C>> for 𝐓𝐲𝐩𝐢𝐧𝐠<A> {
@@ -1064,7 +1158,7 @@ impl<A: Category + 'static, C: Category + 'static> Compare<𝐈𝐝<C>> for 𝐓
 }
 
 impl<C: Category + 'static> Cat for 𝐀𝐫𝐫<C> {
-    type C = cat![(Typing: 𝐓𝐲𝐩𝐢𝐧𝐠<C>), {}];
+    type C = cat![(arrow::Typing: 𝐓𝐲𝐩𝐢𝐧𝐠<C>), {}];
 }
 
 impl<A: Category + 'static, C: Category + 'static> Compare<𝐈𝐝<C>> for 𝐀𝐫𝐫<A> {
@@ -1086,7 +1180,7 @@ impl<C: Category + 'static> Debug for 𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲<C> {
     }
 }
 impl<C: Category + 'static> Cat for 𝐇𝐨𝐦𝐨𝐭𝐨𝐩𝐲<C> {
-    type C = cat![(From: 𝐀𝐫𝐫<C>, To: 𝐀𝐫𝐫<C>), {}];
+    type C = cat![(homotopy::From: 𝐀𝐫𝐫<C>, homotopy::To: 𝐀𝐫𝐫<C>), {}];
 }
 
 impl<A: Category + 'static, C: Category + 'static> Compare<𝐈𝐝<C>>
@@ -1102,24 +1196,126 @@ macro_rules! C {
     };
 }
 
-/// Declare ordinary reflected traits plus Nat-indexed higher families.
+/// Elaborate one ordinary ontology declaration into its canonical structural context.
+///
+/// The declaration syntax names ordinary theories by their bold module name; the
+/// actual first-class `Cat` type lives at `𝐗::𝒞`.
+macro_rules! category_context {
+    (@root {}) => {
+        cat!{}
+    };
+
+    (@root {$($property:ident),+ $(,)?}) => {
+        cat!{$($property::𝒞),+}
+    };
+
+    (@root [($($name:path : $role:ident),* $(,)?), {$($property:ident),* $(,)?}, {$($equation:ty),* $(,)?} $(,)?]) => {
+        cat![
+            ($($name: $role::𝒞),*),
+            {$($property::𝒞),*},
+            {$($equation),*}
+        ]
+    };
+
+    (@root [($($name:path : $role:ident),* $(,)?), {$($property:ident),* $(,)?} $(,)?]) => {
+        cat![
+            ($($name: $role::𝒞),*),
+            {$($property::𝒞),*}
+        ]
+    };
+
+    (@module {}) => {
+        cat!{}
+    };
+
+    (@module {$($property:ident),+ $(,)?}) => {
+        cat!{$(super::$property::𝒞),+}
+    };
+
+    (@module [($($name:path : $role:ident),* $(,)?), {$($property:ident),* $(,)?}, {$($equation:ty),* $(,)?} $(,)?]) => {
+        cat![
+            ($($name: super::$role::𝒞),*),
+            {$(super::$property::𝒞),*},
+            {$($equation),*}
+        ]
+    };
+
+    (@module [($($name:path : $role:ident),* $(,)?), {$($property:ident),* $(,)?} $(,)?]) => {
+        cat![
+            ($($name: super::$role::𝒞),*),
+            {$(super::$property::𝒞),*}
+        ]
+    };
+}
+
+macro_rules! category_module_impl {
+    ($cat:ident => $context:tt; $($property:ident),* $(,)?) => {
+        #[allow(non_snake_case)]
+        pub mod $cat {
+            use super::*;
+
+            #[derive(Copy, Clone, Debug)]
+            pub struct 𝒞;
+
+            impl super::Cat for 𝒞 {
+                type C = category_context!(@module $context);
+            }
+
+            pub type C = <𝒞 as super::Cat>::C;
+
+            #[allow(non_camel_case_types)]
+            pub trait Ⱶ: super::Ⱶ<𝒞> $(+ super::$property::Ⱶ)* {}
+
+            impl<Context> Ⱶ for Context
+            where
+                Context: super::Ⱶ<𝒞> $(+ super::$property::Ⱶ)*,
+            {
+            }
+        }
+    };
+}
+
+macro_rules! category_module {
+    ($cat:ident => {}) => {
+        category_module_impl!($cat => {};);
+    };
+
+    ($cat:ident => {$($property:ident),+ $(,)?}) => {
+        category_module_impl!($cat => {$($property),+}; $($property),+);
+    };
+
+    ($cat:ident => [($($structure:tt)*), {$($property:ident),* $(,)?}, {$($equation:tt)*} $(,)?]) => {
+        category_module_impl!(
+            $cat => [($($structure)*), {$($property),*}, {$($equation)*}];
+            $($property),*
+        );
+    };
+
+    ($cat:ident => [($($structure:tt)*), {$($property:ident),* $(,)?} $(,)?]) => {
+        category_module_impl!(
+            $cat => [($($structure)*), {$($property),*}];
+            $($property),*
+        );
+    };
+}
+
+/// Declare ordinary reflected theories plus Nat-indexed higher families.
+///
+/// Every ordinary bold name is a namespace containing the nominal theory `𝒞`,
+/// its canonical context `C`, and the compiled judgement `Ⱶ`. Parameterised
+/// families remain type constructors because Rust modules cannot be generic.
 macro_rules! categories {
     (
         $(
-            $cat:ident => $context:ty;
+            $cat:ident => cat!$context:tt;
         )*
 
         $(
-            @$family:ident<$n:ident> => $base:ty;
+            @$family:ident<$n:ident> => cat!$base:tt;
         )*
     ) => {
         $(
-            #[derive(Copy, Clone, Debug)]
-            pub struct $cat;
-
-            impl Cat for $cat {
-                type C = $context;
-            }
+            category_module!($cat => $context);
         )*
 
         $(
@@ -1127,7 +1323,7 @@ macro_rules! categories {
             pub struct $family<$n: Nat>(PhantomData<$n>);
 
             impl Cat for $family<NatZero> {
-                type C = $base;
+                type C = category_context!(@root $base);
             }
 
             impl<$n: Nat> Cat for $family<Succ<$n>>
@@ -1151,13 +1347,13 @@ macro_rules! categories {
             type C = cat![
                 (),
                 {
-                    $($cat,)*
+                    $($cat::𝒞,)*
                     $($family<N>,)*
                 }
             ];
         }
 
-        atoms![$($cat),*];
+        atoms![$($cat::𝒞),*];
 
         impl<𝒞: Atom, N: Nat> Compare<𝐂𝐚𝐭<N>> for 𝒞
         where
@@ -1174,12 +1370,10 @@ macro_rules! categories {
         }
 
         compare_atoms_to_families!(
-            [$($cat),*];
+            [$($cat::𝒞),*];
             $($family),*
         );
 
-        // Higher-category families and `𝐂𝐚𝐭` are also ordinary named labels.
-        // They can never be identical to an embedded concrete category `𝐈𝐝<C>`.
         $(
             impl<N: Nat, C: Category + 'static> Compare<𝐈𝐝<C>> for $family<N>
             where
@@ -1196,8 +1390,6 @@ macro_rules! categories {
             type Relation = Different;
         }
 
-        // Higher-category families are also ordinary (non-payload) labels, so
-        // they compare different from every `WithPayload<_, _>` target.
         $(
             impl<N: Nat, Base: Cat, Name: AssocName> Compare<WithPayload<Base, Name>>
                 for $family<N>
@@ -1256,12 +1448,12 @@ macro_rules! categories {
 // Ontology
 // -----------------------------------------------------------------------------
 
-// The bold types are first-class names for the corresponding mathematical
-// traits/categories.  Their `C` values are signatures, not nominally rooted trees.
+// The bold modules are first-class namespaces for the corresponding mathematical
+// theories. Each exposes its nominal `𝒞`, canonical context `C`, and judgement `Ⱶ`.
 //
 // Associated dependencies are declared exactly where the reflected Rust trait
-// introduces them.  `Tensor` owns `F`; `Vector` reaches that scalar field through
-// its `Tensor` property.  `Field` owns `Fixed` and `Characteristic`.
+// introduces them.  `Tensor` owns `tensor::F`; `Vector` reaches that scalar field through
+// its `Tensor` property.  `Field` owns `field::Fixed` and `field::Characteristic`.
 categories! {
     𝐒𝐞𝐭      => cat!{};
     𝐓𝐨𝐩      => cat!{𝐒𝐞𝐭};
@@ -1272,16 +1464,21 @@ categories! {
     𝐑𝐢𝐧𝐠     => cat!{𝐂𝐌𝐨𝐧, 𝐆𝐫𝐩};
     𝐍𝐚𝐭      => cat!{};
     𝐂𝐅𝐥𝐝     => cat!{𝐅𝐥𝐝, 𝐀𝐛};
-    𝐑𝐞𝐚𝐥𝐎𝐩𝐬 => cat!{};
-    𝐑𝐞𝐚𝐥     => cat!{𝐂𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥𝐎𝐩𝐬};
+
+    // Order is independent structure on a set. `OrdFld` couples that order to
+    // commutative field arithmetic; `Dedekind` adds order completeness.
+    𝐎𝐫𝐝      => cat!{𝐒𝐞𝐭};
+    𝐎𝐫𝐝𝐅𝐥𝐝   => cat!{𝐂𝐅𝐥𝐝, 𝐎𝐫𝐝};
+    𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝 => cat!{𝐎𝐫𝐝};
+    𝐑𝐞𝐚𝐥     => cat!{𝐎𝐫𝐝𝐅𝐥𝐝, 𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝};
     𝐅𝐥𝐝      => cat![
-        (Fixed: 𝐂𝐅𝐥𝐝, Characteristic: 𝐍𝐚𝐭),
+        (field::Fixed: 𝐂𝐅𝐥𝐝, field::Characteristic: 𝐍𝐚𝐭),
         {𝐑𝐢𝐧𝐠, 𝐆𝐫𝐩},
-        {Equal<Follow<At<Fixed>, Fixed>, At<Fixed>>}
+        {Equal<Follow<At<field::Fixed>, field::Fixed>, At<field::Fixed>>}
     ];
-    𝐓𝐞𝐧𝐬     => cat![(F: 𝐅𝐥𝐝), {𝐂𝐌𝐨𝐧}];
+    𝐓𝐞𝐧𝐬     => cat![(tensor::F: 𝐅𝐥𝐝), {𝐂𝐌𝐨𝐧}];
     𝐕𝐞𝐜𝐭     => cat!{𝐓𝐞𝐧𝐬, 𝐆𝐫𝐩};
-    𝐌𝐚𝐧      => cat![(Tangent: 𝐓𝐞𝐧𝐬), {𝐓𝐨𝐩}];
+    𝐌𝐚𝐧      => cat![(manifold::Tangent: 𝐓𝐞𝐧𝐬), {𝐓𝐨𝐩}];
 
     @𝐇𝐨𝐦<N> => cat!{𝐌𝐚𝐧};
 }
@@ -1296,12 +1493,12 @@ pub type 𝐃𝐢𝐟𝐟 = 𝐇𝐨𝐦<NatZero>;
 /// Elaborate the structural body of `X` interpreted as `𝒞`.
 ///
 /// This records the structural claim made by an ordinary Rust trait implementation.
-/// Admission through [`Ⱶ`] checks that claim against the requested theory. The
-/// canonical *context type* is always
-/// [`Interpretation<𝒞, X>`]; `Body` is only the graph exposed by that context.
-/// Keeping the identity fixed here prevents equivalent ordinary contexts from
-/// acquiring distinct Rust types merely because they were reached by different
-/// proof paths.
+/// Admission through [`Ⱶ`] checks that claim against the requested theory. `Body`
+/// is only the elaborated graph behind a finite rooted model; the public entry
+/// point from an ordinary Rust type is [`ι`], and [`Model`] composes that inclusion
+/// with theory refinement. Keeping the rooted carrier finite prevents equivalent
+/// ordinary contexts from acquiring distinct Rust types merely because they were
+/// reached by different proof paths.
 pub trait Reflect<𝒞: Cat> {
     /// The elaborated structural graph behind this interpretation.
     ///
@@ -1310,52 +1507,76 @@ pub trait Reflect<𝒞: Cat> {
     type Body: Ⱶ<𝒞>;
 }
 
-impl<N: Nat> Reflect<𝐍𝐚𝐭> for N {
-    type Body = C![𝐍𝐚𝐭];
+impl<N: Nat> Reflect<𝐍𝐚𝐭::𝒞> for N {
+    type Body = 𝐍𝐚𝐭::C;
 }
 
-impl<T: Field> Reflect<𝐅𝐥𝐝> for T {
+impl<T: Field> Reflect<𝐅𝐥𝐝::𝒞> for T {
     type Body = 𝒯<
         ː<
-            BindsReflected<Fixed, 𝐂𝐅𝐥𝐝, T::Fixed>,
-            ː<BindsReflected<Characteristic, 𝐍𝐚𝐭, T::Characteristic>, Ø>,
+            BindsReflected<field::Fixed, 𝐂𝐅𝐥𝐝::𝒞, T::Fixed>,
+            ː<BindsReflected<field::Characteristic, 𝐍𝐚𝐭::𝒞, T::Characteristic>, Ø>,
         >,
-        properties![𝐑𝐢𝐧𝐠, 𝐆𝐫𝐩],
-        ː<Equal<Follow<At<Fixed>, Fixed>, At<Fixed>>, Ø>,
+        properties![𝐑𝐢𝐧𝐠::𝒞, 𝐆𝐫𝐩::𝒞],
+        ː<Equal<Follow<At<field::Fixed>, field::Fixed>, At<field::Fixed>>, Ø>,
     >;
 }
 
-impl<T: CField> Reflect<𝐂𝐅𝐥𝐝> for T {
+impl<T: CField> Reflect<𝐂𝐅𝐥𝐝::𝒞> for T {
     type Body = 𝒯<
         ː<
-            BindsReflected<Fixed, 𝐂𝐅𝐥𝐝, T::Fixed>,
-            ː<BindsReflected<Characteristic, 𝐍𝐚𝐭, T::Characteristic>, Ø>,
+            BindsReflected<field::Fixed, 𝐂𝐅𝐥𝐝::𝒞, T::Fixed>,
+            ː<BindsReflected<field::Characteristic, 𝐍𝐚𝐭::𝒞, T::Characteristic>, Ø>,
         >,
-        ː<BindsProperty<𝐅𝐥𝐝, Interpretation<𝐅𝐥𝐝, T>>, ː<𝐀𝐛, Ø>>,
-        ː<Equal<Follow<At<Fixed>, Fixed>, At<Fixed>>, Ø>,
+        ː<BindsProperty<𝐅𝐥𝐝::𝒞, ReflectedContext<𝐅𝐥𝐝::𝒞, T>>, ː<𝐀𝐛::𝒞, Ø>>,
+        ː<Equal<Follow<At<field::Fixed>, field::Fixed>, At<field::Fixed>>, Ø>,
     >;
 }
 
-impl<R: Real> Reflect<𝐑𝐞𝐚𝐥> for R {
-    type Body = 𝒯<Ø, ː<BindsProperty<𝐂𝐅𝐥𝐝, Interpretation<𝐂𝐅𝐥𝐝, R>>, ː<𝐑𝐞𝐚𝐥𝐎𝐩𝐬, Ø>>>;
+impl<R: Real> Reflect<𝐎𝐫𝐝::𝒞> for R {
+    type Body = 𝒯<Ø, ː<BindsProperty<𝐒𝐞𝐭::𝒞, 𝐒𝐞𝐭::C>, Ø>>;
 }
 
-impl<T: Tensor> Reflect<𝐓𝐞𝐧𝐬> for T {
-    type Body = 𝒯<ː<BindsReflected<F, 𝐅𝐥𝐝, T::F>, Ø>, properties![𝐂𝐌𝐨𝐧]>;
-}
-
-impl<V: Vector> Reflect<𝐕𝐞𝐜𝐭> for V {
-    type Body = 𝒯<Ø, ː<BindsProperty<𝐓𝐞𝐧𝐬, Interpretation<𝐓𝐞𝐧𝐬, V>>, ː<𝐆𝐫𝐩, Ø>>>;
-}
-
-impl<T: Topological> Reflect<𝐓𝐨𝐩> for T {
-    type Body = 𝒯<Ø, ː<BindsProperty<𝐒𝐞𝐭, C![𝐒𝐞𝐭]>, Ø>>;
-}
-
-impl<M: Manifold> Reflect<𝐌𝐚𝐧> for M {
+impl<R: Real> Reflect<𝐎𝐫𝐝𝐅𝐥𝐝::𝒞> for R {
     type Body = 𝒯<
-        ː<BindsReflected<Tangent, 𝐓𝐞𝐧𝐬, M::Tangent>, Ø>,
-        ː<BindsProperty<𝐓𝐨𝐩, Interpretation<𝐓𝐨𝐩, M>>, Ø>,
+        Ø,
+        ː<
+            BindsProperty<𝐂𝐅𝐥𝐝::𝒞, ReflectedContext<𝐂𝐅𝐥𝐝::𝒞, R>>,
+            ː<BindsProperty<𝐎𝐫𝐝::𝒞, ReflectedContext<𝐎𝐫𝐝::𝒞, R>>, Ø>,
+        >,
+    >;
+}
+
+impl<R: Real> Reflect<𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝::𝒞> for R {
+    type Body = 𝒯<Ø, ː<BindsProperty<𝐎𝐫𝐝::𝒞, ReflectedContext<𝐎𝐫𝐝::𝒞, R>>, Ø>>;
+}
+
+impl<R: Real> Reflect<𝐑𝐞𝐚𝐥::𝒞> for R {
+    type Body = 𝒯<
+        Ø,
+        ː<
+            BindsProperty<𝐎𝐫𝐝𝐅𝐥𝐝::𝒞, ReflectedContext<𝐎𝐫𝐝𝐅𝐥𝐝::𝒞, R>>,
+            ː<BindsProperty<𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝::𝒞, ReflectedContext<𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝::𝒞, R>>, Ø>,
+        >,
+    >;
+}
+
+impl<T: Tensor> Reflect<𝐓𝐞𝐧𝐬::𝒞> for T {
+    type Body = 𝒯<ː<BindsReflected<tensor::F, 𝐅𝐥𝐝::𝒞, T::F>, Ø>, properties![𝐂𝐌𝐨𝐧::𝒞]>;
+}
+
+impl<V: Vector> Reflect<𝐕𝐞𝐜𝐭::𝒞> for V {
+    type Body = 𝒯<Ø, ː<BindsProperty<𝐓𝐞𝐧𝐬::𝒞, ReflectedContext<𝐓𝐞𝐧𝐬::𝒞, V>>, ː<𝐆𝐫𝐩::𝒞, Ø>>>;
+}
+
+impl<T: Topological> Reflect<𝐓𝐨𝐩::𝒞> for T {
+    type Body = 𝒯<Ø, ː<BindsProperty<𝐒𝐞𝐭::𝒞, 𝐒𝐞𝐭::C>, Ø>>;
+}
+
+impl<M: Manifold> Reflect<𝐌𝐚𝐧::𝒞> for M {
+    type Body = 𝒯<
+        ː<BindsReflected<manifold::Tangent, 𝐓𝐞𝐧𝐬::𝒞, M::Tangent>, Ø>,
+        ː<BindsProperty<𝐓𝐨𝐩::𝒞, ReflectedContext<𝐓𝐨𝐩::𝒞, M>>, Ø>,
     >;
 }
 
@@ -1365,11 +1586,13 @@ impl<M: Manifold> Reflect<𝐌𝐚𝐧> for M {
 
 /// The concrete Rust domain of an arrow context.
 #[allow(type_alias_bounds)]
-pub type DomainOf<C: π<Typing, X: Signature>> = <<C as π<Typing>>::X as Signature>::Domain;
+pub type DomainOf<C: π<arrow::Typing, X: Signature>> =
+    <<C as π<arrow::Typing>>::X as Signature>::Domain;
 
 /// The concrete Rust codomain of an arrow context.
 #[allow(type_alias_bounds)]
-pub type CodomainOf<C: π<Typing, X: Signature>> = <<C as π<Typing>>::X as Signature>::Codomain;
+pub type CodomainOf<C: π<arrow::Typing, X: Signature>> =
+    <<C as π<arrow::Typing>>::X as Signature>::Codomain;
 
 /// Construct the concrete context of an arrow `D -> E` in `C`.
 ///
@@ -1410,7 +1633,7 @@ impl<C: Category, F> DerefMut for Arrow<C, F> {
     }
 }
 
-impl<C: π<Typing, X: Signature>> Arrow<C, Infallible> {
+impl<C: π<arrow::Typing, X: Signature>> Arrow<C, Infallible> {
     /// Admit `function` as the morphism described by `C`.
     #[inline]
     pub fn new<F>(f: F) -> Arrow<C, F> {
@@ -1421,7 +1644,7 @@ impl<C: π<Typing, X: Signature>> Arrow<C, Infallible> {
     }
 }
 
-impl<C: π<Typing, X: Signature>, F: Fn(&DomainOf<C>) -> CodomainOf<C>> Arrow<C, F> {
+impl<C: π<arrow::Typing, X: Signature>, F: Fn(&DomainOf<C>) -> CodomainOf<C>> Arrow<C, F> {
     /// Forget the admission and recover the ordinary Rust callable.
     #[inline]
     pub fn into_inner(self) -> F {
@@ -1448,6 +1671,7 @@ impl<C: Category, F: Clone> Clone for Arrow<C, F> {
 /// category name can resolve itself when its canonical signature is already concrete
 /// enough to refine that property; this handles ordinary inherited structure whose
 /// canonical graph has no unresolved associated bindings.
+#[doc(hidden)]
 pub trait RefineProperty<𝒞: Cat>: PropertyEntry {
     type Refinement: Category;
 }
@@ -1464,6 +1688,7 @@ impl<𝒞: Cat, 𝒟: Cat<C: Ⱶ<𝒞>> + Compare<𝒞, Relation = Same>> Refine
 }
 
 /// Resolve every required property in `Target`, retaining the graph found for each.
+#[doc(hidden)]
 pub trait RefinesProperties<Target: PropertyList>: PropertyList {
     type Refinement: PropertyList;
 }
@@ -1503,7 +1728,7 @@ trait SatisfiesAssoc<𝒞: Cat>: AssocEntry {}
 /// A context which legitimately describes `X` in nominal role `𝒞`.
 trait ChildContext<𝒞: Cat, X>: Category {}
 
-impl<𝒞: Cat, X: Reflect<𝒞>> ChildContext<𝒞, X> for Interpretation<𝒞, X> {}
+impl<𝒞: Cat, X: Reflect<𝒞>> ChildContext<𝒞, X> for ReflectedContext<𝒞, X> {}
 
 impl<𝒞: Cat, X, C: Category> ChildContext<𝒞, X> for Rooted<𝒞, X, C> where
     Rooted<𝒞, X, C>: Ⱶ<𝒞>
@@ -1518,8 +1743,11 @@ trait RoleSatisfies<Required: Cat, Relation>: Cat {}
 
 impl<Required: Cat, Actual: Cat> RoleSatisfies<Required, Same> for Actual {}
 
-impl<Required: Cat, Actual: Cat<C: HasProperty<Required, Relation = Present>>>
+impl<Required: Cat, Actual: Cat<C: Category<Properties: ExpandProperties>>>
     RoleSatisfies<Required, Different> for Actual
+where
+    <<Actual::C as Category>::Properties as ExpandProperties>::Expansion:
+        PropertyPresence<Required, Relation = Present>,
 {
 }
 
@@ -1541,7 +1769,7 @@ impl<
     Required: Category + 'static,
     Actual: Ⱶ<𝐈𝐝<Required>> + 'static,
     Context: Category,
-    Value: Object<Context = Context> + Ob<Actual>,
+    Value: ι<C = Context> + Ob<Actual>,
 > SatisfiesAssoc<𝐈𝐝<Required>> for BindsAs<Name, 𝐈𝐝<Actual>, Value, Context>
 {
 }
@@ -1554,6 +1782,7 @@ impl<Required: Category + 'static, Actual: Ⱶ<𝐈𝐝<Required>> + 'static, D:
 /// Resolve every required associated dependency, retaining the actual source binding.
 ///
 /// Matching is by associated-type name, never by declaration position.
+#[doc(hidden)]
 pub trait RefinesStructure<Target: AssocList>: AssocList {
     type Refinement: AssocList;
 }
@@ -1611,85 +1840,78 @@ impl<𝒞: Cat, X, C: Category + StructuralRefinement<Target>, Target: Category>
     type C = <C as StructuralRefinement<Target>>::C;
 }
 
-/// A canonical interpretation is structurally transparent to the solver: the
-/// low-level graph comparison delegates to its elaborated body without changing
-/// the interpretation's Rust type.
-impl<𝒞: Cat, X: Reflect<𝒞>, Target: Category> StructuralRefinement<Target> for Interpretation<𝒞, X>
+/// A finite rooted model is structurally transparent to the solver: the
+/// low-level graph comparison delegates to its elaborated body without recursively
+/// expanding the rooted carrier itself.
+impl<𝒞: Cat, X: Reflect<𝒞>, Target: Category> StructuralRefinement<Target>
+    for ReflectedContext<𝒞, X>
 where
     <X as Reflect<𝒞>>::Body: StructuralRefinement<Target>,
 {
     type C = <<X as Reflect<𝒞>>::Body as StructuralRefinement<Target>>::C;
 }
 
-/// Query a concrete context for its `𝒞`-shaped resolved subgraph.
+/// Judge whether a concrete context satisfies theory `𝒞`.
 ///
-/// A context rooted in `𝒞` refines its own structural body directly. A context
-/// rooted in a strictly richer category reaches `𝒞` through the resolved
-/// property graph, preserving the rich ambient context while returning the
-/// weaker view only as this proof's associated `C`.
-pub trait Ⱶ<𝒞: Cat>: Category {
+/// The default `Present` judgement is the ordinary refinement relation and
+/// returns the exact context which supplies `𝒞`. `Absent` is a constructive
+/// negative judgement. It is currently available for property-only theories,
+/// where a missing required property proves that refinement is impossible.
+///
+/// The associated `C` is meaningful for the default positive judgement. In the
+/// negative mode it is the unchanged source context and should not be projected
+/// as a refinement witness.
+pub trait Ⱶ<𝒞: Cat, Relation = Present>: Category {
     type C: Category;
 }
 
-/// Unrooted structural graphs are already views, so ordinary structural
-/// refinement remains the right interpretation for them.
-impl<𝒞: Cat, S: AssocList, P: PropertyList, E: EquationList> Ⱶ<𝒞> for 𝒯<S, P, E>
-where
-    𝒯<S, P, E>: StructuralRefinement<𝒞::C>,
-{
-    type C = <𝒯<S, P, E> as StructuralRefinement<𝒞::C>>::C;
-}
-
-/// Dispatch a rooted judgement according to where the requested category is
-/// found in the closed context.
-///
-/// If `Required` is present in the inherited property graph, use that resolved
-/// property subcontext. Otherwise the root body itself must structurally refine
-/// `Required`. This distinction is stronger than comparing nominal root labels:
-/// `WithPayload<𝐑𝐞𝐚𝐥, _>` is nominally different from `𝐑𝐞𝐚𝐥`, but directly
-/// contains the complete Real theory in its own body.
-pub trait RootRefinement<𝒞: Cat, Presence>: Category {
+/// Select the positive refinement route. If `𝒞` is already carried as an
+/// inherited property, preserve that exact stored context; otherwise prove the
+/// current graph directly against the canonical theory.
+#[doc(hidden)]
+pub trait RefinementRoute<𝒞: Cat, Presence>: Category {
     type C: Category;
 }
 
-impl<Required: Cat, Actual: Cat, X, Body: Category> RootRefinement<Required, Present>
-    for Rooted<Actual, X, Body>
+impl<Required: Cat, C: Category + SelectProperty<Required>> RefinementRoute<Required, Present>
+    for C
+{
+    type C = <C as SelectProperty<Required>>::C;
+}
+
+impl<Required: Cat, C: Category + StructuralRefinement<Required::C>>
+    RefinementRoute<Required, Absent> for C
+{
+    type C = <C as StructuralRefinement<Required::C>>::C;
+}
+
+impl<Required: Cat, C, P> Ⱶ<Required> for C
 where
-    Rooted<Actual, X, Body>: PropertyRefinement<Required>,
+    C: Category<Properties = P>,
+    P: ExpandProperties,
+    P::Expansion: PropertyPresence<Required>,
+    C: RefinementRoute<Required, <P::Expansion as PropertyPresence<Required>>::Relation>,
 {
-    type C = <Rooted<Actual, X, Body> as PropertyRefinement<Required>>::Refinement;
+    type C =
+        <C as RefinementRoute<Required, <P::Expansion as PropertyPresence<Required>>::Relation>>::C;
 }
 
-impl<Required: Cat, Actual: Cat, X, Body: Category + StructuralRefinement<Required::C>>
-    RootRefinement<Required, Absent> for Rooted<Actual, X, Body>
-{
-    type C = <Body as StructuralRefinement<Required::C>>::C;
-}
-
-impl<Required: Cat, Actual: Cat, X, Body: Category> Ⱶ<Required> for Rooted<Actual, X, Body>
+/// Constructive negative refinement for theories whose canonical signature has
+/// no associated requirements or equations.
+///
+/// This is deliberately a constructive proof, not negation-as-trait-failure:
+/// at least one property required by `Required` is known to be absent from the
+/// source's closed transitive property graph.
+impl<Required: Cat, C, P> Ⱶ<Required, Absent> for C
 where
-    Rooted<Actual, X, Body>: HasProperty<Required>
-        + RootRefinement<Required, <Rooted<Actual, X, Body> as HasProperty<Required>>::Relation>,
+    C: Category<Properties = P>,
+    P: ExpandProperties,
+    <Required as Cat>::C: Category<Structure = Ø, Equations = Ø>,
+    P::Expansion:
+        CoversProperties<<<Required as Cat>::C as Category>::Properties, Relation = Absent>,
 {
-    type C = <Rooted<Actual, X, Body> as RootRefinement<
-        Required,
-        <Rooted<Actual, X, Body> as HasProperty<Required>>::Relation,
-    >>::C;
+    type C = C;
 }
-
-/// Canonical interpretations delegate admission to a rooted view of their
-/// elaborated body. The rooted view exists only while solving the judgement; the
-/// canonical context type remains `Interpretation<Actual, X>`.
-impl<Required: Cat, Actual: Cat, X: Reflect<Actual>> Ⱶ<Required> for Interpretation<Actual, X>
-where
-    Rooted<Actual, X, <X as Reflect<Actual>>::Body>: Ⱶ<Required>,
-{
-    type C = <Rooted<Actual, X, <X as Reflect<Actual>>::Body> as Ⱶ<Required>>::C;
-}
-
-/// The public shorthand for reflecting `X` as `𝒞` and returning the resolved graph.
-#[allow(type_alias_bounds)]
-pub type Refine<𝒞: Cat, X: Reflect<𝒞>> = <Interpretation<𝒞, X> as Ⱶ<𝒞>>::C;
 
 // -----------------------------------------------------------------------------
 // Value-level equivalence remains separate from structural refinement
@@ -1713,75 +1935,106 @@ impl<𝒞: Cat, X> Equivalent<𝒞, X> for X {
 
 #[allow(unused)]
 fn test_this_whole_thing_baby() {
-    type ReflectedV = Interpretation<𝐕𝐞𝐜𝐭, Coords<f64, 2>>;
+    type ReflectedV = <Coords<f64, 2> as ι>::C;
     type RootRole = <ReflectedV as π>::𝒞;
     type RootC = <ReflectedV as π>::C;
 
-    type V = Refine<𝐕𝐞𝐜𝐭, Coords<f64, 2>>;
-    type T = <V as PropertyRefinement<𝐓𝐞𝐧𝐬>>::Refinement;
-    type Scalar = <T as π<F>>::X;
-    type ScalarC = <T as π<F>>::C;
+    type V = <Coords<f64, 2> as ι>::C;
+    type T = <V as Ⱶ<𝐓𝐞𝐧𝐬::𝒞>>::C;
+    type Scalar = <T as π<tensor::F>>::X;
+    type ScalarC = <T as π<tensor::F>>::C;
 
     fn assert_same_type<T>(_: T, _: T) {}
+    fn assert_different_names<A, B>()
+    where
+        A: AssocName + CompareAssoc<B, Relation = Different>,
+        B: AssocName,
+    {
+    }
 
-    assert_same_type(PhantomData::<RootRole>, PhantomData::<𝐕𝐞𝐜𝐭>);
+    // Associated labels are identified by their declaring owner, not merely by
+    // spelling. These two `Payload` roles therefore remain constructively distinct.
+    assert_different_names::<jet::Payload, tensor_of::Payload>();
+
+    assert_same_type(PhantomData::<RootRole>, PhantomData::<𝐕𝐞𝐜𝐭::𝒞>);
     assert_same_type(PhantomData::<RootC>, PhantomData::<ReflectedV>);
     assert_same_type(PhantomData::<Scalar>, PhantomData::<f64>);
 
-    fn scalar_context_is_field<C: Ⱶ<𝐅𝐥𝐝>>() {}
+    fn scalar_context_is_field<C: Ⱶ<𝐅𝐥𝐝::𝒞>>() {}
     scalar_context_is_field::<ScalarC>();
 
-    // Ordinary projection and direct interpretation have literal Rust type
-    // equality: context polymorphism records knowledge, never proof history.
-    type DirectFieldC = Interpretation<𝐅𝐥𝐝, f64>;
+    // `Model` is literally the composition of the two public operations:
+    // include the Rust type through `ι`, then select a theory through `Ⱶ`.
+    type DirectFieldC = Model<𝐅𝐥𝐝::𝒞, f64>;
     assert_same_type(PhantomData::<ScalarC>, PhantomData::<DirectFieldC>);
 
     // `Ⱶ<𝐈𝐝<C>>` is the public concrete-category refinement judgement.
-    fn refines_concrete_field_theory<C: Ⱶ<𝐈𝐝<C![𝐅𝐥𝐝]>>>() {}
+    fn refines_concrete_field_theory<C: Ⱶ<𝐈𝐝<𝐅𝐥𝐝::C>>>() {}
     refines_concrete_field_theory::<DirectFieldC>();
 
     // Self-referential associated structure remains a finite context handle.
     // For a real scalar, Fixed = Self, so following Fixed twice must return
     // literally the same finite child context rather than recursively expanding it.
-    type FieldC = Interpretation<𝐅𝐥𝐝, f64>;
-    type FixedC = <FieldC as π<Fixed>>::C;
-    type FixedFixedC = <FixedC as π<Fixed>>::C;
+    type FieldC = Model<𝐅𝐥𝐝::𝒞, f64>;
+    type FixedC = <FieldC as π<field::Fixed>>::C;
+    type FixedFixedC = <FixedC as π<field::Fixed>>::C;
     assert_same_type(PhantomData::<FixedC>, PhantomData::<FixedFixedC>);
 
-    // A parent may expose a child only as a Field while retaining a strictly
-    // richer Real subcontext for it. Projection must select that exact graph.
-    type RealC = Interpretation<𝐑𝐞𝐚𝐥, f64>;
+    // The canonical inclusion of f64 retains its richest Real context.
+    type RealC = <f64 as ι>::C;
 
-    // Property projection obeys the same normalization law as `π`: a direct
-    // inherited property returns the exact context stored by its parent.
-    type CFieldViaReal = <RealC as PropertyRefinement<𝐂𝐅𝐥𝐝>>::Refinement;
+    // The new Real decomposition is itself navigable through the turnstile.
+    type OrderedFieldViaReal = <RealC as Ⱶ<𝐎𝐫𝐝𝐅𝐥𝐝::𝒞>>::C;
+    type DedekindViaReal = <RealC as Ⱶ<𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝::𝒞>>::C;
+    assert_same_type(
+        PhantomData::<OrderedFieldViaReal>,
+        PhantomData::<Model<𝐎𝐫𝐝𝐅𝐥𝐝::𝒞, f64>>,
+    );
+    assert_same_type(
+        PhantomData::<DedekindViaReal>,
+        PhantomData::<Model<𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝::𝒞, f64>>,
+    );
+
+    // Theory projection obeys the same normalization law as `π`: an inherited
+    // theory returns the exact context stored by its parent.
+    type CFieldViaReal = <RealC as Ⱶ<𝐂𝐅𝐥𝐝::𝒞>>::C;
     assert_same_type(
         PhantomData::<CFieldViaReal>,
-        PhantomData::<Interpretation<𝐂𝐅𝐥𝐝, f64>>,
+        PhantomData::<Model<𝐂𝐅𝐥𝐝::𝒞, f64>>,
     );
+
+    // Bare inherited theories use the same frontend even when there is no
+    // concrete `BindsProperty` context to preserve.
+    fn cfield_is_abelian<C: Ⱶ<𝐀𝐛::𝒞>>() {}
+    cfield_is_abelian::<CFieldViaReal>();
 
     // The law is transitive too. Expanding Real -> CField -> Field must still
-    // land on the canonical Field interpretation, not a resolved proof graph.
-    type FieldViaReal = <RealC as PropertyRefinement<𝐅𝐥𝐝>>::Refinement;
+    // land on the canonical Field model, not a resolved proof graph.
+    type FieldViaReal = <RealC as Ⱶ<𝐅𝐥𝐝::𝒞>>::C;
     assert_same_type(
         PhantomData::<FieldViaReal>,
-        PhantomData::<Interpretation<𝐅𝐥𝐝, f64>>,
+        PhantomData::<Model<𝐅𝐥𝐝::𝒞, f64>>,
     );
 
-    type Parent = 𝒯<ː<Binds<F, 𝐑𝐞𝐚𝐥, f64, RealC>, Ø>, Ø>;
-    type ChildRole = <Parent as π<F>>::𝒞;
-    type ChildC = <Parent as π<F>>::C;
+    type Parent = 𝒯<ː<Binds<tensor::F, 𝐑𝐞𝐚𝐥::𝒞, f64, RealC>, Ø>, Ø>;
+    type ChildRole = <Parent as π<tensor::F>>::𝒞;
+    type ChildC = <Parent as π<tensor::F>>::C;
     type ChildRootRole = <ChildC as π>::𝒞;
 
-    assert_same_type(PhantomData::<ChildRole>, PhantomData::<𝐑𝐞𝐚𝐥>);
+    assert_same_type(PhantomData::<ChildRole>, PhantomData::<𝐑𝐞𝐚𝐥::𝒞>);
     assert_same_type(PhantomData::<ChildC>, PhantomData::<RealC>);
-    assert_same_type(PhantomData::<ChildRootRole>, PhantomData::<𝐑𝐞𝐚𝐥>);
+    assert_same_type(PhantomData::<ChildRootRole>, PhantomData::<𝐑𝐞𝐚𝐥::𝒞>);
 
-    type RequiresFieldChild = 𝒯<ː<Requires<F, 𝐅𝐥𝐝>, Ø>, Ø>;
+    type RequiresFieldChild = 𝒯<ː<Requires<tensor::F, 𝐅𝐥𝐝::𝒞>, Ø>, Ø>;
     fn richer_edge_satisfies_weaker_requirement<C: Ⱶ<𝐈𝐝<RequiresFieldChild>>>() {}
     richer_edge_satisfies_weaker_requirement::<Parent>();
 
-    fn child_keeps_real_information<C: Ⱶ<𝐅𝐥𝐝> + HasProperty<𝐑𝐞𝐚𝐥𝐎𝐩𝐬, Relation = Present>>() {
-    }
+    fn child_keeps_real_information<C: Ⱶ<𝐅𝐥𝐝::𝒞> + Ⱶ<𝐑𝐞𝐚𝐥::𝒞>>() {}
     child_keeps_real_information::<ChildC>();
+
+    // Negative refinement is a real semantic judgement, not a proxy marker.
+    // `Model<CField, f64>` deliberately forgets the order/completeness evidence
+    // carried by the canonical Real inclusion of f64.
+    fn is_constructively_not_real<C: Ⱶ<𝐑𝐞𝐚𝐥::𝒞, Absent>>() {}
+    is_constructively_not_real::<Model<𝐂𝐅𝐥𝐝::𝒞, f64>>();
 }

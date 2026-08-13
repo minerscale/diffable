@@ -13,7 +13,7 @@ use crate::{
     coords::Coords,
     impl_group_via_add,
     traits::{
-        Field, FieldExp, Interpretation, LieGroup, Metric, NatZero, NonZero, Object, Real, 𝐅𝐥𝐝,
+        Field, FieldExp, LieGroup, Metric, NatZero, NonZero, Real, ReflectedContext, ι, 𝐅𝐥𝐝
     },
 };
 
@@ -203,6 +203,6 @@ impl<R: Real> Field for Quaternion<R> {
     }
 }
 
-impl<R: Real> Object for Quaternion<R> {
-    type Context = Interpretation<𝐅𝐥𝐝, Self>;
+impl<R: Real> ι for Quaternion<R> {
+    type C = ReflectedContext<𝐅𝐥𝐝::𝒞, Self>;
 }

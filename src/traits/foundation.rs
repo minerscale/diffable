@@ -10,9 +10,11 @@ use num_traits::Zero;
 
 use crate::{
     complex::Complex,
-    traits::{CField, Field, FieldExp, Interpretation, NatZero, NonZero, Object, 𝐑𝐞𝐚𝐥},
+    traits::{CField, Field, FieldExp, NatZero, NonZero, ReflectedContext, ι, 𝐑𝐞𝐚𝐥},
 };
 use num_traits::{Euclid, Inv, ToPrimitive, real::Real as _};
+
+use super::𝐒𝐞𝐭;
 
 /// An element of the carrier set of a manifold, group, or metric space.
 ///
@@ -39,9 +41,9 @@ use num_traits::{Euclid, Inv, ToPrimitive, real::Real as _};
 /// [`Chart`]: crate::traits::Chart
 /// [`Group`]: crate::traits::Group
 /// [`Real`]: crate::traits::Real
-pub trait Point: Clone + core::fmt::Debug {}
+pub trait Point<C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::C>: Clone + core::fmt::Debug {}
 
-impl<T: Clone + core::fmt::Debug> Point for T {}
+impl<C: 𝐒𝐞𝐭::Ⱶ, T: Clone + core::fmt::Debug> Point<C> for T {}
 
 /// A scalar field for use as the coordinate type of a Euclidean space.
 ///
@@ -136,11 +138,11 @@ pub trait Real: RealNum + CField<Fixed = Self> {}
 impl<R: RealNum + CField<Fixed = Self>> Real for R {}
 
 // A real scalar is admitted once at its richest reflected scalar context.
-// Weaker interpretations (for example as a field) are selected from this
+// Weaker models (for example as a field) are selected from this
 // closed graph rather than by reflecting the same Rust type under competing
 // category labels.
-impl<R: Real> Object for R {
-    type Context = Interpretation<𝐑𝐞𝐚𝐥, R>;
+impl<R: Real> ι for R {
+    type C = ReflectedContext<𝐑𝐞𝐚𝐥::𝒞, R>;
 }
 
 impl<R: Real> Metric for R {}

@@ -35,11 +35,11 @@ use crate::{
     traits::{
         Absent, ActionExists, ApplyTensorDecoration, Array, AssocName, Atomic, BindsReflected,
         BothSided, CField, Cat, Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field,
-        Form, Handedness, HasProperty, Interpretation, Interval, JetPayload, Jetted, Left, Metric,
-        NonZero, Nondegenerate, NormalizeWith, Object, OneSided, Point, Real, Reflect, Right,
-        Sesquilinear, Sidedness, Sinister, TangentBundle, Tensor, TensorDecoration,
-        TensorNormalization, TensorOf, TensorPayload, TensorProductAction, Undecorated, Vector, Ø,
-        ː, π, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐑𝐞𝐚𝐥𝐎𝐩𝐬, 𝐓𝐞𝐧𝐬, 𝒯,
+        Form, Handedness, Interval, Jetted, Left, Metric, NonZero, Nondegenerate, NormalizeWith,
+        OneSided, Point, Real, Reflect, ReflectedContext, Right, Sesquilinear, Sidedness, Sinister,
+        TangentBundle, Tensor, TensorDecoration, TensorNormalization, TensorOf,
+        TensorProductAction, Undecorated, Vector, jet, tensor_of, Ø, ː, ι, π, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐓𝐞𝐧𝐬,
+        𝒯,
     },
 };
 
@@ -1042,9 +1042,9 @@ where
     V: Tensor + Reflect<𝒞>,
     S: Field,
     Self: Reflect<𝒞>,
-    ReflectedFunctorImage<𝒞, TensorPayload, V, Interpretation<𝒞, Self>>: Ⱶ<TensorOf<𝒞>>,
+    ReflectedFunctorImage<𝒞, tensor_of::Payload, V, ReflectedContext<𝒞, Self>>: Ⱶ<TensorOf<𝒞>>,
 {
-    type Body = ReflectedFunctorImage<𝒞, TensorPayload, V, Interpretation<𝒞, Self>>;
+    type Body = ReflectedFunctorImage<𝒞, tensor_of::Payload, V, ReflectedContext<𝒞, Self>>;
 }
 
 impl<V: Tensor, S: Field> TensorOver<V, S> {
@@ -1079,9 +1079,7 @@ impl<V: Tensor, S: Field> TensorOver<V, S> {
 pub type JetVector<𝒞: Cat, V: Tensor, const N: usize = 1, S: Field = <V as Tensor>::F> =
     TensorOver<V, Jet<𝒞, S, N>>;
 
-impl<𝒞: Cat, V: Tensor<F: Object<Context: JetRegion<𝒞>>>, const N: usize>
-    TensorOver<V, Jet<𝒞, V::F, N>>
-{
+impl<𝒞: Cat, V: Tensor<F: ι<C: JetRegion<𝒞>>>, const N: usize> TensorOver<V, Jet<𝒞, V::F, N>> {
     /// Embeds every coordinate of `v` through the jet functor.
     pub fn constant(v: V) -> Self {
         Self(
@@ -1152,19 +1150,22 @@ impl<𝒞: Cat, F: Field, const N: usize> Jet<𝒞, F, N> {
 /// Proof that a scalar's richest categorical context selects jettification in `𝒞`.
 ///
 /// This is not a domain registry: the two implementations below are derived from
-/// the canonical context itself.  Real-valued contexts select `𝐑𝐞𝐚𝐥`; field-like
-/// contexts for which `RealOps` is constructively absent select the `𝐅𝐥𝐝` fallback.
-/// The trait exists only to present that disjoint proof to rustc through one
-/// inherent constructor namespace.
+/// the canonical context itself. Real-valued contexts select `𝐑𝐞𝐚𝐥`; field
+/// contexts which constructively do not satisfy the Real theory select the
+/// `𝐅𝐥𝐝` fallback. The trait exists only to present that disjoint proof to rustc
+/// through one inherent constructor namespace.
 #[doc(hidden)]
 pub trait JetRegion<𝒞: Cat>: Category {}
 
-impl<C: HasProperty<𝐑𝐞𝐚𝐥𝐎𝐩𝐬, Relation = Absent>> JetRegion<𝐅𝐥𝐝> for C {}
-impl<C: Ⱶ<𝐑𝐞𝐚𝐥>> JetRegion<𝐑𝐞𝐚𝐥> for C {}
+impl<C> JetRegion<𝐅𝐥𝐝::𝒞> for C where
+    C: Ⱶ<𝐅𝐥𝐝::𝒞> + Ⱶ<𝐑𝐞𝐚𝐥::𝒞, Absent>
+{
+}
+impl<C: Ⱶ<𝐑𝐞𝐚𝐥::𝒞>> JetRegion<𝐑𝐞𝐚𝐥::𝒞> for C {}
 
-impl<𝒞: Cat, F: Field + Object, const N: usize> Jet<𝒞, F, N>
+impl<𝒞: Cat, F: Field + ι, const N: usize> Jet<𝒞, F, N>
 where
-    F::Context: JetRegion<𝒞>,
+    F::C: JetRegion<𝒞>,
 {
     /// Constructs a jet in the unique categorical region selected by `F`.
     pub fn new(value: F, coefficients: [F; N]) -> Self {
@@ -1181,44 +1182,45 @@ impl<𝒞: Cat, F, const N: usize> Reflect<Jetted<𝒞>> for Jet<𝒞, F, N>
 where
     F: Field + Reflect<𝒞>,
     Self: Reflect<𝒞>,
-    ReflectedFunctorImage<𝒞, JetPayload, F, Interpretation<𝒞, Self>>: Ⱶ<Jetted<𝒞>>,
+    ReflectedFunctorImage<𝒞, jet::Payload, F, ReflectedContext<𝒞, Self>>: Ⱶ<Jetted<𝒞>>,
 {
-    type Body = ReflectedFunctorImage<𝒞, JetPayload, F, Interpretation<𝒞, Self>>;
+    type Body = ReflectedFunctorImage<𝒞, jet::Payload, F, ReflectedContext<𝒞, Self>>;
 }
 
 #[allow(dead_code)]
 fn reflected_functor_smoke<R: Real, V: Tensor<F = R>>(scalar: R, tensor: V) {
-    let j = Jet::<𝐑𝐞𝐚𝐥, R, 1>::constant(scalar);
+    let j = Jet::<𝐑𝐞𝐚𝐥::𝒞, R, 1>::constant(scalar);
 
     // The functor returns its concrete image, so native behaviour is retained.
     let _ = num_traits::real::Real::sin(j);
 
     fn sees_jetted_real<R: Real, X>(_: &X)
     where
-        X: Reflect<Jetted<𝐑𝐞𝐚𝐥>>,
-        Interpretation<Jetted<𝐑𝐞𝐚𝐥>, X>:
-            π<JetPayload, 𝒞 = 𝐑𝐞𝐚𝐥, X = R> + Ⱶ<𝐑𝐞𝐚𝐥>,
+        X: Reflect<Jetted<𝐑𝐞𝐚𝐥::𝒞>>,
+        ReflectedContext<Jetted<𝐑𝐞𝐚𝐥::𝒞>, X>:
+            π<jet::Payload, 𝒞 = 𝐑𝐞𝐚𝐥::𝒞, X = R> + Ⱶ<𝐑𝐞𝐚𝐥::𝒞>,
     {
     }
 
     sees_jetted_real::<R, _>(&j);
 
-    let t = TensorOver::<V, Jet<𝐑𝐞𝐚𝐥, R, 1>>::new::<𝐓𝐞𝐧𝐬>(tensor, |x| {
-        Jet::<𝐑𝐞𝐚𝐥, R, 1>::constant(x)
-    });
+    let t = TensorOver::<V, Jet<𝐑𝐞𝐚𝐥::𝒞, R, 1>>::new::<𝐓𝐞𝐧𝐬::𝒞>(
+        tensor,
+        |x| Jet::<𝐑𝐞𝐚𝐥::𝒞, R, 1>::constant(x),
+    );
 
     fn sees_tensor_image<V: Tensor, X>(_: &X)
     where
-        X: Reflect<TensorOf<𝐓𝐞𝐧𝐬>>,
-        Interpretation<TensorOf<𝐓𝐞𝐧𝐬>, X>:
-            π<TensorPayload, 𝒞 = 𝐓𝐞𝐧𝐬, X = V> + Ⱶ<𝐓𝐞𝐧𝐬>,
+        X: Reflect<TensorOf<𝐓𝐞𝐧𝐬::𝒞>>,
+        ReflectedContext<TensorOf<𝐓𝐞𝐧𝐬::𝒞>, X>: π<tensor_of::Payload, 𝒞 = 𝐓𝐞𝐧𝐬::𝒞, X = V>
+            + Ⱶ<𝐓𝐞𝐧𝐬::𝒞>,
     {
     }
 
     sees_tensor_image::<V, _>(&t);
 }
 
-impl<R: Real, const N: usize> Jet<𝐑𝐞𝐚𝐥, R, N> {
+impl<R: Real, const N: usize> Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
     fn sinh_cosh(self) -> (Self, Self) {
         let sinh_primal = self[0].sinh();
         let cosh_primal = self[0].cosh();
@@ -1260,7 +1262,7 @@ impl<R: Real, const N: usize> Jet<𝐑𝐞𝐚𝐥, R, N> {
     }
 }
 
-impl<F: CField, const N: usize> CField for Jet<𝐅𝐥𝐝, F, N> {}
+impl<F: CField, const N: usize> CField for Jet<𝐅𝐥𝐝::𝒞, F, N> {}
 
 impl<𝒞: Cat, F: Field, const N: usize> PartialEq for Jet<𝒞, F, N> {
     fn eq(&self, other: &Self) -> bool {
@@ -1282,8 +1284,8 @@ impl<𝒞: Cat, F: Field, const N: usize> IndexMut<usize> for Jet<𝒞, F, N> {
     }
 }
 
-impl<F: Field, const N: usize> Field for Jet<𝐅𝐥𝐝, F, N> {
-    type Fixed = Jet<𝐅𝐥𝐝, F::Fixed, N>;
+impl<F: Field, const N: usize> Field for Jet<𝐅𝐥𝐝::𝒞, F, N> {
+    type Fixed = Jet<𝐅𝐥𝐝::𝒞, F::Fixed, N>;
 
     fn conj(&self) -> Self {
         Self::from_fn(|i| self[i].conj())
@@ -1435,13 +1437,13 @@ where
 #[derive(Debug, Clone)]
 pub struct TangentElement<P: Point, V: Tensor, Tower>(
     pub P,
-    pub JetVector<𝐅𝐥𝐝, V>,
+    pub JetVector<𝐅𝐥𝐝::𝒞, V>,
     PhantomData<Tower>,
 );
 
 impl<P: Point, V: Tensor, Tower> TangentElement<P, V, Tower> {
     /// Constructs a tangent element from its base point and local jet.
-    pub fn new(p: P, v: JetVector<𝐅𝐥𝐝, V>) -> Self {
+    pub fn new(p: P, v: JetVector<𝐅𝐥𝐝::𝒞, V>) -> Self {
         Self(p, v, PhantomData)
     }
 
@@ -1451,7 +1453,7 @@ impl<P: Point, V: Tensor, Tower> TangentElement<P, V, Tower> {
     }
 
     /// Borrows the jet-valued tangent coordinate.
-    pub fn jet(&self) -> &JetVector<𝐅𝐥𝐝, V> {
+    pub fn jet(&self) -> &JetVector<𝐅𝐥𝐝::𝒞, V> {
         &self.1
     }
 }
@@ -1468,7 +1470,7 @@ pub type TM<P, V, T, U> = TangentElement<P, V, ː<T, ː<U, Ø>>>;
 /// [`TangentLift`].
 pub type LiftedTM<P, V, T> = TM<P, V, T, Prolongation<P, V, T>>;
 
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
+impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
     Chart<P, V> for TM<P, V, T, U>
 {
     type Global = T::Global;
@@ -1485,25 +1487,25 @@ impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVect
         Self(p.clone(), JetVector::zero(), PhantomData)
     }
 }
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
+impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
     ExpMap<P, V> for TM<P, V, T, U>
 {
 }
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
+impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
     TangentBundle<P, V> for TM<P, V, T, U>
 {
 }
 
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
-    Chart<Self, JetVector<𝐅𝐥𝐝, V>> for TM<P, V, T, U>
+impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
+    Chart<Self, JetVector<𝐅𝐥𝐝::𝒞, V>> for TM<P, V, T, U>
 {
     type Global = U::Global;
 
-    fn to_local(&self, point: &Self) -> Option<JetVector<𝐅𝐥𝐝, V>> {
+    fn to_local(&self, point: &Self) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>> {
         U::chart_at(self).to_local(point)
     }
 
-    fn to_global(&self, coord: JetVector<𝐅𝐥𝐝, V>) -> Self::Global {
+    fn to_global(&self, coord: JetVector<𝐅𝐥𝐝::𝒞, V>) -> Self::Global {
         U::chart_at(self).to_global(coord)
     }
 
@@ -1511,30 +1513,30 @@ impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVect
         p.clone()
     }
 }
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
-    ExpMap<Self, JetVector<𝐅𝐥𝐝, V>> for TM<P, V, T, U>
+impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
+    ExpMap<Self, JetVector<𝐅𝐥𝐝::𝒞, V>> for TM<P, V, T, U>
 {
 }
 
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
-    TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>> for TM<P, V, T, U>
+impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
+    TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>> for TM<P, V, T, U>
 {
 }
 
-impl<P: Point, V: Tensor, T: TangentLift<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝, V>>>
+impl<P: Point, V: Tensor, T: TangentLift<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
     TangentLift<P, V> for TM<P, V, T, U>
 {
     fn tangent_to_local(
         base: Tangent<P, V>,
         local: Tangent<P, V>,
-    ) -> Option<JetVector<𝐅𝐥𝐝, V>> {
+    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>> {
         T::tangent_to_local(base, local)
     }
 
     fn tangent_to_global(
         base: Tangent<P, V>,
-        coordinate: JetVector<𝐅𝐥𝐝, V>,
-    ) -> (P, JetVector<𝐅𝐥𝐝, V>) {
+        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V>,
+    ) -> (P, JetVector<𝐅𝐥𝐝::𝒞, V>) {
         T::tangent_to_global(base, coordinate)
     }
 }
@@ -1552,27 +1554,27 @@ pub trait TangentLift<P: Point, V: Tensor>: TangentBundle<P, V> {
     fn tangent_to_local(
         base: Tangent<P, V>,
         local: Tangent<P, V>,
-    ) -> Option<JetVector<𝐅𝐥𝐝, V>>;
+    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>>;
     /// Reconstructs a global point and tangent jet from a lifted coordinate.
     fn tangent_to_global(
         base: Tangent<P, V>,
-        coordinate: JetVector<𝐅𝐥𝐝, V>,
-    ) -> (P, JetVector<𝐅𝐥𝐝, V>);
+        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V>,
+    ) -> (P, JetVector<𝐅𝐥𝐝::𝒞, V>);
 }
 
-impl<P: Point, V: Tensor, T: TangentLift<P, V>> Chart<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝, V>>
+impl<P: Point, V: Tensor, T: TangentLift<P, V>> Chart<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝::𝒞, V>>
     for Prolongation<P, V, T>
 {
     type Global = LiftedTM<P, V, T>;
 
-    fn to_local(&self, point: &LiftedTM<P, V, T>) -> Option<JetVector<𝐅𝐥𝐝, V>> {
+    fn to_local(&self, point: &LiftedTM<P, V, T>) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>> {
         T::tangent_to_local(
             TangentElement::new(self.0.clone(), self.1.clone()),
             TangentElement::new(point.0.clone(), point.1.clone()),
         )
     }
 
-    fn to_global(&self, coordinate: JetVector<𝐅𝐥𝐝, V>) -> Self::Global {
+    fn to_global(&self, coordinate: JetVector<𝐅𝐥𝐝::𝒞, V>) -> Self::Global {
         let (base, jet) = T::tangent_to_global(
             TangentElement::new(self.0.clone(), self.1.clone()),
             coordinate,
@@ -1586,12 +1588,12 @@ impl<P: Point, V: Tensor, T: TangentLift<P, V>> Chart<LiftedTM<P, V, T>, JetVect
     }
 }
 
-impl<P: Point, V: Tensor, T: TangentLift<P, V>> ExpMap<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝, V>>
+impl<P: Point, V: Tensor, T: TangentLift<P, V>> ExpMap<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝::𝒞, V>>
     for Prolongation<P, V, T>
 {
 }
-impl<P: Point, V: Tensor, T: TangentLift<P, V>> TangentBundle<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝, V>>
-    for Prolongation<P, V, T>
+impl<P: Point, V: Tensor, T: TangentLift<P, V>>
+    TangentBundle<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝::𝒞, V>> for Prolongation<P, V, T>
 {
 }
 
@@ -1599,7 +1601,7 @@ impl<V: Tensor> TangentLift<V, V> for V {
     fn tangent_to_local(
         base: Tangent<V, V>,
         local: Tangent<V, V>,
-    ) -> Option<JetVector<𝐅𝐥𝐝, V>> {
+    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>> {
         Some(JetVector::from_fn(|i| {
             local.1[i] - base.1[i] + Jet::from_parts(local.0[i] - base.0[i], [V::F::zero()])
         }))
@@ -1607,9 +1609,9 @@ impl<V: Tensor> TangentLift<V, V> for V {
 
     fn tangent_to_global(
         base: Tangent<V, V>,
-        coordinate: JetVector<𝐅𝐥𝐝, V>,
-    ) -> (V, JetVector<𝐅𝐥𝐝, V>) {
-        let combined = JetVector::<𝐅𝐥𝐝, V>::from_fn(|i| {
+        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V>,
+    ) -> (V, JetVector<𝐅𝐥𝐝::𝒞, V>) {
+        let combined = JetVector::<𝐅𝐥𝐝::𝒞, V>::from_fn(|i| {
             Jet::from_parts(base.0[i], [V::F::zero()]) + base.1[i] + coordinate[i]
         });
 
@@ -1701,7 +1703,7 @@ pub trait EvaluableAt<𝒞: Cat, Point, Output> {
 impl<
     𝒞: Cat,
     F: JetMap<𝒞, BT, FT, 1, BT::F>,
-    BT: Tensor<F: Object<Context: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
+    BT: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
     FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
 > EvaluableAt<𝒞, BT, TangentMap<BT, FT, FT, FT>> for d<F>
 where
@@ -1739,7 +1741,7 @@ where
 impl<
     𝒞: Cat,
     F: JetMap<𝒞, BT, FT, 1, BT::F>,
-    BT: Vector<F: Object<Context: JetRegion<𝒞>>>,
+    BT: Vector<F: ι<C: JetRegion<𝒞>>>,
     FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
 > EvaluableAt<𝒞, BT, FT> for Along<F, BT>
 where
@@ -2102,18 +2104,18 @@ impl<𝒞: Cat, V: Tensor + Metric, const N: usize, S: Field> Metric for JetVect
 {
 }
 
-impl<V: Euclidean, const N: usize, S: Real> Euclidean for JetVector<𝐑𝐞𝐚𝐥, V, N, S> where
-    Self: Vector<F = Jet<𝐑𝐞𝐚𝐥, S, N>, Action = BothSided>
+impl<V: Euclidean, const N: usize, S: Real> Euclidean for JetVector<𝐑𝐞𝐚𝐥::𝒞, V, N, S> where
+    Self: Vector<F = Jet<𝐑𝐞𝐚𝐥::𝒞, S, N>, Action = BothSided>
 {
 }
 
-impl<R: Real, const N: usize> PartialOrd for Jet<𝐑𝐞𝐚𝐥, R, N> {
+impl<R: Real, const N: usize> PartialOrd for Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         self[0].partial_cmp(&other[0])
     }
 }
 
-impl<R: Real, const N: usize> ToPrimitive for Jet<𝐑𝐞𝐚𝐥, R, N> {
+impl<R: Real, const N: usize> ToPrimitive for Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
     fn to_i64(&self) -> Option<i64> {
         self[0].to_i64()
     }
@@ -2171,13 +2173,13 @@ impl<R: Real, const N: usize> ToPrimitive for Jet<𝐑𝐞𝐚𝐥, R, N> {
     }
 }
 
-impl<R: Real, const N: usize> NumCast for Jet<𝐑𝐞𝐚𝐥, R, N> {
+impl<R: Real, const N: usize> NumCast for Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
     fn from<T: ToPrimitive>(n: T) -> Option<Self> {
         R::from(n).map(|x| Self::constant(x))
     }
 }
 
-impl<R: Real, const N: usize> Div<Self> for Jet<𝐑𝐞𝐚𝐥, R, N> {
+impl<R: Real, const N: usize> Div<Self> for Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -2185,7 +2187,7 @@ impl<R: Real, const N: usize> Div<Self> for Jet<𝐑𝐞𝐚𝐥, R, N> {
     }
 }
 
-impl<R: Real, const N: usize> Rem<Self> for Jet<𝐑𝐞𝐚𝐥, R, N> {
+impl<R: Real, const N: usize> Rem<Self> for Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
     type Output = Self;
 
     fn rem(self, rhs: Self) -> Self::Output {
@@ -2202,7 +2204,7 @@ impl<R: Real, const N: usize> Rem<Self> for Jet<𝐑𝐞𝐚𝐥, R, N> {
     }
 }
 
-impl<R: Real, const N: usize> Euclid for Jet<𝐑𝐞𝐚𝐥, R, N> {
+impl<R: Real, const N: usize> Euclid for Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
     fn div_euclid(&self, rhs: &Self) -> Self {
         let quotient = <R as Euclid>::div_euclid(&self[0], &rhs[0]);
 
@@ -2224,7 +2226,7 @@ impl<R: Real, const N: usize> Euclid for Jet<𝐑𝐞𝐚𝐥, R, N> {
     }
 }
 
-impl<R: Real, const N: usize> Num for Jet<𝐑𝐞𝐚𝐥, R, N> {
+impl<R: Real, const N: usize> Num for Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
     type FromStrRadixErr = R::FromStrRadixErr;
 
     fn from_str_radix(str: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
@@ -2232,7 +2234,7 @@ impl<R: Real, const N: usize> Num for Jet<𝐑𝐞𝐚𝐥, R, N> {
     }
 }
 
-impl<R: Real, const N: usize> num_traits::real::Real for Jet<𝐑𝐞𝐚𝐥, R, N> {
+impl<R: Real, const N: usize> num_traits::real::Real for Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
     fn min_value() -> Self {
         Self::constant(R::min_value())
     }
@@ -2308,9 +2310,9 @@ impl<R: Real, const N: usize> num_traits::real::Real for Jet<𝐑𝐞𝐚𝐥, R
 
     fn powi(self, n: i32) -> Self {
         fn unsigned_pow<R: Real, const N: usize>(
-            mut base: Jet<𝐑𝐞𝐚𝐥, R, N>,
+            mut base: Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>,
             mut exponent: u32,
-        ) -> Jet<𝐑𝐞𝐚𝐥, R, N> {
+        ) -> Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
             let mut result = Jet::one();
 
             while exponent != 0 {
