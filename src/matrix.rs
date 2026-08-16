@@ -15,7 +15,7 @@ use crate::{
     coords::array_zip_map,
     traits::{
         CField, DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Hand, Handedness, Interval,
-        Metric, NatZero, NonZero, Tensor,
+        Metric, NatZero, NonZero, Tensor, 𝐅𝐥𝐝,
     },
 };
 
@@ -234,7 +234,9 @@ impl<F: Field, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
             }
 
             let pivot = get(&mat, i, i);
-            let pivot_inv = <V::F as DivRing>::Mul::inv(NonZero::new(pivot).unwrap().into())
+            let pivot_inv = <V::F as DivRing<𝐅𝐥𝐝::C<V::F>>>::Mul::inv(
+                NonZero::new(pivot).unwrap().into(),
+            )
                 .into()
                 .0;
 
@@ -384,7 +386,9 @@ impl<F: Field + Metric, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
 
             let pivot = get(&mat, i, i);
 
-            let pivot_inv = <V::F as DivRing>::Mul::inv(NonZero::new(pivot).unwrap().into())
+            let pivot_inv = <V::F as DivRing<𝐅𝐥𝐝::C<V::F>>>::Mul::inv(
+                NonZero::new(pivot).unwrap().into(),
+            )
                 .into()
                 .0;
 
@@ -470,7 +474,9 @@ impl<F: CField + Metric, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
             //
             // Eliminate.
             //
-            let pivot_inv = <F as DivRing>::Mul::inv(NonZero::new(lu[(k, k)]).unwrap().into())
+            let pivot_inv = <F as DivRing<𝐅𝐥𝐝::C<F>>>::Mul::inv(
+                NonZero::new(lu[(k, k)]).unwrap().into(),
+            )
                 .into()
                 .0;
 

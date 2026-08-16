@@ -36,8 +36,8 @@ use crate::{
         Absent, ActionExists, ApplyTensorDecoration, Array, AssocName, Atomic, BindsReflected,
         BothSided, CField, Cat, Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field,
         Form, Handedness, Interval, Jetted, Left, Metric, NonZero, Nondegenerate, NormalizeWith,
-        OneSided, Point, Real, Reflect, ReflectedContext, Right, Sesquilinear, Sidedness, Sinister,
-        TangentBundle, Tensor, TensorDecoration, TensorNormalization, TensorOf,
+        OneSided, Point, Real, Reflect, ReflectedContext, Right, Sesquilinear,
+        Sidedness, Sinister, TangentBundle, Tensor, TensorDecoration, TensorNormalization, TensorOf,
         TensorProductAction, Undecorated, Vector, jet, tensor_of, Ø, ː, ι, π, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐓𝐞𝐧𝐬,
         𝒯,
     },
@@ -1365,10 +1365,11 @@ impl<𝒞: Cat, F: Field, const N: usize> Inv for NonZero<Jet<𝒞, F, N>> {
         let input = self.0;
 
         // Spell this using your DivRing::Mul machinery.
-        let constant_inverse: F = <F as DivRing>::Mul::from(NonZero::new_unchecked(input[0]))
-            .inv()
-            .into()
-            .0;
+        let constant_inverse: F =
+            <F as DivRing<𝐅𝐥𝐝::C<F>>>::Mul::from(NonZero::new_unchecked(input[0]))
+                .inv()
+                .into()
+                .0;
 
         let mut output = Jet::<𝒞, F, N>::zero();
         output[0] = constant_inverse;

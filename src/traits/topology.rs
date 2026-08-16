@@ -45,7 +45,7 @@ pub trait Manifold: Topological + Sized {
 #[allow(dead_code)]
 fn theorem_about_continuous_maps<F, C>(_f: &Arrow<C, F>)
 where
-    C: Ⱶ<𝐀𝐫𝐫<𝐓𝐨𝐩::C>> + π<arrow::Typing, X: Signature>,
+    C: Ⱶ<𝐀𝐫𝐫<𝐓𝐨𝐩::Theory>> + π<arrow::Typing, X: Signature>,
     F: Fn(&DomainOf<C>) -> CodomainOf<C>,
 {
 }
@@ -56,10 +56,10 @@ where
 #[allow(dead_code)]
 fn smooth_maps_are_continuous_without_a_nominal_bridge<M, N>(_m: M, n: N)
 where
-    M: Manifold + Ob<𝐌𝐚𝐧::C>,
-    N: Manifold + Ob<𝐌𝐚𝐧::C>,
+    M: Manifold + Ob<𝐌𝐚𝐧::Theory>,
+    N: Manifold + Ob<𝐌𝐚𝐧::Theory>,
 {
-    let f = Arrow::<ArrowCategory<𝐌𝐚𝐧::C, M, N>>::new(|_x: &M| n.clone());
+    let f = Arrow::<ArrowCategory<𝐌𝐚𝐧::Theory, M, N>>::new(|_x: &M| n.clone());
 
     theorem_about_continuous_maps(&f);
 }

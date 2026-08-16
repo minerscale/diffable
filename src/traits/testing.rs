@@ -339,7 +339,7 @@ macro_rules! test_cgroup {
 
                 #[test]
                 fn sub_agrees_with_neg(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_sub_agrees_with_neg(&a, &b))
+                    prop_assert!(<$point as CGroup>::check_sub_agrees_with_neg(&a, &b))
                 }
             }
         }
@@ -586,7 +586,7 @@ macro_rules! test_cfield {
             proptest! {
                 #[test]
                 fn commutativity(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_commutativity(a, b));
+                    prop_assert!(<$point as CField>::check_commutativity(a, b));
                 }
             }
         }
@@ -605,63 +605,63 @@ macro_rules! test_field {
             proptest! {
                 #[test]
                 fn conj_additive(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_conj_additive(a, b));
+                    prop_assert!(<$point as Field>::check_conj_additive(a, b));
                 }
 
                 #[test]
                 fn conj_multiplicative(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_conj_multiplicative(a, b));
+                    prop_assert!(<$point as Field>::check_conj_multiplicative(a, b));
                 }
 
                 #[test]
                 fn conj_involution(a in $arb_point) {
-                    prop_assert!(<$point>::check_conj_involution(a));
+                    prop_assert!(<$point as Field>::check_conj_involution(a));
                 }
 
                 #[test]
                 fn from_fixed_additive(x in $arb_fixed, y in $arb_fixed) {
-                    prop_assert!(<$point>::check_from_fixed_additive(x, y));
+                    prop_assert!(<$point as Field>::check_from_fixed_additive(x, y));
                 }
 
                 #[test]
                 fn from_fixed_multiplicative(x in $arb_fixed, y in $arb_fixed) {
-                    prop_assert!(<$point>::check_from_fixed_multiplicative(x, y));
+                    prop_assert!(<$point as Field>::check_from_fixed_multiplicative(x, y));
                 }
 
                 #[test]
                 fn descent(x in $arb_point) {
-                    prop_assert!(<$point>::check_descent(x));
+                    prop_assert!(<$point as Field>::check_descent(x));
                 }
 
                 #[test]
                 fn norm_squared_self_adjoint(x in $arb_point) {
-                    prop_assert!(<$point>::check_norm_squared_self_adjoint(x));
+                    prop_assert!(<$point as Field>::check_norm_squared_self_adjoint(x));
                 }
 
                 #[test]
                 fn from_fixed_is_fixed(x in $arb_fixed) {
-                    prop_assert!(<$point>::check_from_fixed_is_fixed(x));
+                    prop_assert!(<$point as Field>::check_from_fixed_is_fixed(x));
                 }
 
                 #[test]
                 fn fixed_field_is_central(x in $arb_fixed, y in $arb_point) {
-                    prop_assert!(<$point>::check_fixed_field_is_central(x, y));
+                    prop_assert!(<$point as Field>::check_fixed_field_is_central(x, y));
                 }
             }
 
             #[test]
             fn characteristic() {
-                assert!(<$point>::check_characteristic_up_to(256))
+                assert!(<$point as Field>::check_characteristic_up_to(256))
             }
 
             #[test]
             fn conj_unit() {
-                assert!(<$point>::check_conj_unit());
+                assert!(<$point as Field>::check_conj_unit());
             }
 
             #[test]
             fn from_fixed_unit() {
-                assert!(<$point>::check_from_fixed_unit());
+                assert!(<$point as Field>::check_from_fixed_unit());
             }
         }
     };
@@ -698,22 +698,22 @@ macro_rules! test_rig {
             proptest! {
                 #[test]
                 fn left_distributivity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point>::check_left_distributivity(a, b, c));
+                    prop_assert!(<$point as Rig>::check_left_distributivity(a, b, c));
                 }
 
                 #[test]
                 fn right_distributivity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point>::check_right_distributivity(a, b, c));
+                    prop_assert!(<$point as Rig>::check_right_distributivity(a, b, c));
                 }
 
                 #[test]
                 fn left_annihilation(g in $arb_point) {
-                    prop_assert!(g.check_left_annihilation());
+                    prop_assert!(<$point as Rig>::check_left_annihilation(&g));
                 }
 
                 #[test]
                 fn right_annihilation(g in $arb_point) {
-                    prop_assert!(g.check_right_annihilation());
+                    prop_assert!(<$point as Rig>::check_right_annihilation(&g));
                 }
             }
         }

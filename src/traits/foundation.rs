@@ -41,7 +41,7 @@ use super::𝐒𝐞𝐭;
 /// [`Chart`]: crate::traits::Chart
 /// [`Group`]: crate::traits::Group
 /// [`Real`]: crate::traits::Real
-pub trait Point<C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::C>: Clone + core::fmt::Debug {}
+pub trait Point<C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::Theory>: Clone + core::fmt::Debug {}
 
 impl<C: 𝐒𝐞𝐭::Ⱶ, T: Clone + core::fmt::Debug> Point<C> for T {}
 
