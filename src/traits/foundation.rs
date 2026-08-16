@@ -10,7 +10,9 @@ use num_traits::Zero;
 
 use crate::{
     complex::Complex,
-    traits::{CField, Field, FieldExp, NatZero, NonZero, ReflectedContext, ι, 𝐑𝐞𝐚𝐥},
+    traits::{
+        CField, Field, FieldExp, NatZero, NonZero, ι, 𝐈𝐧𝐭, 𝐌𝐞𝐭, 𝐑𝐞𝐚𝐥
+    },
 };
 use num_traits::{Euclid, Inv, ToPrimitive, real::Real as _};
 
@@ -41,7 +43,7 @@ use super::𝐒𝐞𝐭;
 /// [`Chart`]: crate::traits::Chart
 /// [`Group`]: crate::traits::Group
 /// [`Real`]: crate::traits::Real
-pub trait Point<C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::Theory>: Clone + core::fmt::Debug {}
+pub trait Point<C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::C<Self>>: Clone + core::fmt::Debug {}
 
 impl<C: 𝐒𝐞𝐭::Ⱶ, T: Clone + core::fmt::Debug> Point<C> for T {}
 
@@ -134,15 +136,19 @@ impl<R: RealNum> CField for R where NonZero<R>: Inv<Output = NonZero<R>> {}
 /// transitive order an iterative algorithm needs to decide convergence — hence
 /// [`ExactCmp`], which recovers the genuine order from the sign bit instead of
 /// the tolerant comparison.
-pub trait Real: RealNum + CField<Fixed = Self> {}
-impl<R: RealNum + CField<Fixed = Self>> Real for R {}
+///
+/// `C` labels the real judgement itself; the inherited commutative-field
+/// operations remain attached to their canonical context. This keeps ordinary
+/// scalar operations unambiguous while the ontology records the refinement.
+pub trait Real<C: 𝐑𝐞𝐚𝐥::Ⱶ = 𝐑𝐞𝐚𝐥::C<Self>>: RealNum + CField<Fixed = Self> {}
+impl<R> Real for R where R: RealNum + CField<Fixed = R> {}
 
 // A real scalar is admitted once at its richest reflected scalar context.
 // Weaker models (for example as a field) are selected from this
 // closed graph rather than by reflecting the same Rust type under competing
 // category labels.
 impl<R: Real> ι for R {
-    type C = ReflectedContext<𝐑𝐞𝐚𝐥::𝒞, R>;
+    type C = 𝐑𝐞𝐚𝐥::C<R>;
 }
 
 impl<R: Real> Metric for R {}
@@ -208,7 +214,7 @@ impl<R: Real> ExactCmp for R {}
 ///
 /// [`Chart`]: crate::traits::Chart
 /// [`Euclidean`]: crate::traits::Euclidean
-pub trait Metric: Interval {
+pub trait Metric<C: 𝐌𝐞𝐭::Ⱶ = 𝐌𝐞𝐭::C<Self>>: Interval {
     fn distance(&self, other: &Self) -> Self::R {
         self.interval_squared(other).sqrt()
     }
@@ -228,7 +234,7 @@ pub trait Metric: Interval {
 ///
 /// Fields whose fixed field is real receive the canonical implementation via
 /// [`Field::from_fixed`](crate::traits::Field::from_fixed).
-pub trait FromReal: Interval {
+pub trait FromReal<C: 𝐈𝐧𝐭::Ⱶ = 𝐈𝐧𝐭::C<Self>>: Interval {
     /// Embeds a value from the real interval field.
     fn from_real(r: Self::R) -> Self;
 }
@@ -245,7 +251,7 @@ impl<F: Field<Fixed: Real>> FromReal for F {
 /// zero null, positive spacelike (or your sign convention). No metric-space
 /// axioms are claimed — this is not a distance, it is the value of the
 /// line element between two points along the connecting geodesic.
-pub trait Interval: Point {
+pub trait Interval<C: 𝐈𝐧𝐭::Ⱶ = 𝐈𝐧𝐭::C<Self>>: Point<C> {
     /// The ordered field the interval is valued in — the real field where
     /// magnitudes, distances, and convergence live. Distinct from a scalar
     /// field's involution `Fixed`: analysis happens here regardless of the

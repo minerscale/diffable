@@ -13,7 +13,7 @@ use num_traits::Zero;
 
 use crate::traits::{Bilinear, Euclidean, Field, Interval, Real, Tensor};
 
-use super::Point;
+use super::{Point, 𝐒𝐞𝐭};
 
 mod sealed {
     pub trait Sealed<T> {}
@@ -69,7 +69,7 @@ impl<T> OptionallyOption<T> for Option<T> {
 /// returning `None` at genuine singularities of the manifold. If
 /// the charted manifold is geodesically complete, then to_global returns
 /// `P` rather than `Option<P>`.
-pub trait Chart<P: Point, V: Tensor>: Point {
+pub trait Chart<P: Point, V: Tensor, C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::C<Self>>: Point<C> {
     /// The result of mapping local coordinates back onto the manifold.
     ///
     /// This is either `P` or `Option<P>`. Choosing `P` certifies that
@@ -117,7 +117,7 @@ pub trait Chart<P: Point, V: Tensor>: Point {
 /// that distances from the origin equal arc lengths along those geodesics.
 ///
 /// Additionally, you certify that `Self::chart_at(&self.base_point()) == self`
-pub trait ExpMap<P: Point, V: Tensor>: Chart<P, V> {
+pub trait ExpMap<P: Point, V: Tensor, C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::C<Self>>: Chart<P, V, C> {
     fn base_point(&self) -> P {
         self.to_global(V::zero()).into_option().unwrap()
     }
@@ -249,7 +249,7 @@ impl<V: Bilinear<F: Real>, E: ExpMap<Self, V> + Interval<R = V::F>> PseudoRieman
 /// bare [`Chart`] or [`ExpMap`].
 ///
 /// Use the `test_tangent_bundle!` macro to verify this invariant.
-pub trait TangentBundle<P: Point, V: Tensor>: ExpMap<P, V> {
+pub trait TangentBundle<P: Point, V: Tensor, C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::C<Self>>: ExpMap<P, V, C> {
     // p is the point on the manifold which is the base point.
     #[cfg(feature = "testing")]
     fn check_universal_centring(p: P) -> bool
@@ -283,7 +283,7 @@ pub trait TangentBundle<P: Point, V: Tensor>: ExpMap<P, V> {
 /// [`ExpMap<Self, V>`]: crate::traits::ExpMap
 /// [`TangentBundle<Self, V>`]: crate::traits::TangentBundle
 /// [`LieGroup`]: crate::traits::LieGroup
-pub trait Smooth<V: Tensor>: Point {
+pub trait Smooth<V: Tensor, C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::C<Self>>: Point<C> {
     /// The result of applying the exponential map.
     ///
     /// This is either `Self` or `Option<Self>`. Choosing `Self` certifies that
@@ -312,11 +312,11 @@ impl<V: Tensor, S: Smooth<V>> Chart<Self, V> for S {
     type Global = S::Global;
 
     fn to_local(&self, point: &Self) -> Option<V> {
-        self.log(point)
+        <S as Smooth<V>>::log(self, point)
     }
 
     fn to_global(&self, coord: V) -> S::Global {
-        self.exp(coord)
+        <S as Smooth<V>>::exp(self, coord)
     }
 
     fn chart_at(p: &Self) -> Self {

@@ -21,15 +21,15 @@
 use crate::traits::{Arrow, ArrowCategory, CodomainOf, DomainOf};
 
 use super::{
-    Ob, Signature, TangentBundle, Tensor, arrow, π, Ⱶ, 𝐀𝐫𝐫, 𝐌𝐚𝐧, 𝐓𝐨𝐩
+    Ob, Signature, TangentBundle, Tensor, arrow, π, Ⱶ, 𝐀𝐫𝐫, 𝐌𝐚𝐧, 𝐓𝐞𝐧𝐬, 𝐓𝐨𝐩
 };
 
 /// A chosen topology on a point type.
-pub trait Topological: super::Point {}
+pub trait Topological<C: 𝐓𝐨𝐩::Ⱶ = 𝐓𝐨𝐩::C<Self>>: super::Point<C> {}
 
 /// A smooth manifold compatible with Diffable's existing tangent-bundle API.
-pub trait Manifold: Topological + Sized {
-    type Tangent: Tensor;
+pub trait Manifold<C: 𝐌𝐚𝐧::Ⱶ = 𝐌𝐚𝐧::C<Self>>: Topological<C> + Sized {
+    type Tangent: Tensor<𝐓𝐞𝐧𝐬::C<Self::Tangent>>;
     type Atlas: TangentBundle<Self, Self::Tangent>;
 }
 

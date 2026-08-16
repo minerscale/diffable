@@ -58,7 +58,7 @@ impl<V: Euclidean<F: Real> + From<[<V as Tensor>::F; 1]>> Quotient<V, Z<V>, V> f
     }
 }
 
-impl_lie_group_via_quotient!(S1<V>, V, Z<V>, V, V: Euclidean + From<[<V as Tensor>::F; 1]>);
+impl_lie_group_via_quotient!(S1<V>, V, Z<V>, V, V: Euclidean<F: Real> + From<[V::F; 1]>);
 
 /// The 2-torus `T² = S¹ × S¹`.
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -271,7 +271,7 @@ mod simplicial {
     impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
         for TorusCover<I, V>
     {
-        fn sdf(&self, v: &V) -> <V as Tensor>::F {
+        fn sdf(&self, v: &V) -> V::F {
             let to = |x| <V::F as NumCast>::from(x).unwrap();
             v.norm() - (to(2).sqrt() + to(2)) / to(4 * S)
         }
@@ -329,7 +329,7 @@ mod simplicial {
     impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<KleinBottle<I, V>, KleinBottle<I, V>, V>
         for KleinBottleCover<I, V>
     {
-        fn sdf(&self, v: &V) -> <V as Tensor>::F {
+        fn sdf(&self, v: &V) -> V::F {
             let to = |x| <V::F as NumCast>::from(x).unwrap();
             v.norm() - (to(2).sqrt() + to(2)) / to(4 * S)
         }
@@ -405,7 +405,7 @@ mod simplicial {
     impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<Torus<I, V>, Torus<I, V>, V>
         for MyopicTorus<I, V>
     {
-        fn sdf(&self, v: &V) -> <V as Tensor>::F {
+        fn sdf(&self, v: &V) -> V::F {
             v.norm() - Self::radius()
         }
     }
@@ -437,7 +437,7 @@ mod simplicial {
     impl<I: ICompatible<V>, V: VCompatible<I>> Bounded<MyopicTorus<I, V>, Torus<I, V>, V>
         for MyopicTorusCover<I, V>
     {
-        fn sdf(&self, v: &V) -> <V as Tensor>::F {
+        fn sdf(&self, v: &V) -> V::F {
             let to = |x| <V::F as NumCast>::from(x).unwrap();
             v.norm() - (to(2).sqrt() + to(2)) / to(4 * MyopicTorus::<I, V>::s())
         }

@@ -15,19 +15,19 @@ use proptest::prelude::*;
 
 test_tangent_bundle!(
     tangent_bundle_s1_quotient,
-    S1<Coords<_, _>>,
+    S1<Coords<R64, 1>>,
     arb_s1_quotient()
 );
 test_quotient!(
     quotient_s1,
-    S1<Coords<_, _>>,
+    S1<Coords<R64, 1>>,
     arb_s1_quotient(),
     arb_vec1(),
     arb_z()
 );
 test_pseudo_riemannian!(
     riemannian_s1,
-    S1<Coords<_, _>>,
+    S1<Coords<R64, 1>>,
     arb_s1_quotient(),
     arb_vec1()
 );

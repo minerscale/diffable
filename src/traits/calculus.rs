@@ -36,10 +36,10 @@ use crate::{
         Absent, ActionExists, ApplyTensorDecoration, Array, AssocName, Atomic, BindsReflected,
         BothSided, CField, Cat, Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field,
         Form, Handedness, Interval, Jetted, Left, Metric, NonZero, Nondegenerate, NormalizeWith,
-        OneSided, Point, Real, Reflect, ReflectedContext, Right, Sesquilinear,
-        Sidedness, Sinister, TangentBundle, Tensor, TensorDecoration, TensorNormalization, TensorOf,
-        TensorProductAction, Undecorated, Vector, jet, tensor_of, Ø, ː, ι, π, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐓𝐞𝐧𝐬,
-        𝒯,
+        OneSided, Point, Real, Reflect, ReflectedContext, Right, Sesquilinear, Sidedness, Sinister,
+        TangentBundle, Tensor, TensorDecoration, TensorNormalization, TensorOf,
+        TensorProductAction, Undecorated, Vector, jet, tensor_of, Ø, ː, ι, π, Ⱶ, 𝐅𝐥𝐝, 𝐅𝐨𝐫𝐦, 𝐏𝐨𝐢𝐧𝐜,
+        𝐑𝐞𝐚𝐥, 𝐓𝐞𝐧𝐬, 𝒯,
     },
 };
 
@@ -64,12 +64,12 @@ impl<F: Field, H: Handedness, U: Tensor<F = F, Hand = H>, V: Tensor<F = F, Hand 
 {
     /// Applies the canonical isomorphism `(U ⊕ V)* ≅ U* ⊕ V*`.
     pub fn dual_isomorphism(dual: Dual<Self>) -> DirectSum<Dual<U>, Dual<V>> {
-        DirectSum::<Dual<U>, Dual<V>>::from_fn(|i| dual[i])
+        <DirectSum<Dual<U>, Dual<V>> as Tensor>::from_fn(|i| dual[i])
     }
 
     /// Applies the inverse canonical isomorphism `U* ⊕ V* ≅ (U ⊕ V)*`.
     pub fn dual_isomorphism_inverse(dual: DirectSum<Dual<U>, Dual<V>>) -> Dual<Self> {
-        Dual::<Self>::from_fn(|i| dual[i])
+        <Dual<Self> as Tensor>::from_fn(|i| dual[i])
     }
 }
 
@@ -176,7 +176,10 @@ where
     >>::Output;
 
     fn normalize(tensor: DirectSum<U, V>) -> Self::Normalized {
-        D::apply(DirectSum::from_fn(|i| tensor[i]))
+        D::apply(<DirectSum<
+            <U as NormalizeWith<Undecorated>>::Normalized,
+            <V as NormalizeWith<Undecorated>>::Normalized,
+        > as Tensor>::from_fn(|i| tensor[i]))
     }
 }
 
@@ -361,7 +364,10 @@ where
         >,
     >>::Output;
     fn normalize(tensor: TensorProduct<U, V>) -> Self::Normalized {
-        D::apply(TensorProduct::from_fn(|i| tensor[i]))
+        D::apply(<TensorProduct<
+            <U as NormalizeWith<Undecorated>>::Normalized,
+            <V as NormalizeWith<Undecorated>>::Normalized,
+        > as Tensor>::from_fn(|i| tensor[i]))
     }
 }
 
@@ -472,7 +478,7 @@ where
     type Reassociated = TensorProduct<A, Sinister<TensorProduct<Sinister<B>, C>>>;
 
     fn reassociate_kernel(self) -> Self::Reassociated {
-        Self::Reassociated::from_fn(|i| self[i])
+        <Self::Reassociated as Tensor>::from_fn(|i| self[i])
     }
 }
 
@@ -485,7 +491,7 @@ where
     type Reassociated = TensorProduct<TensorProduct<A, Sinister<B>>, C>;
 
     fn reassociate_kernel(self) -> Self::Reassociated {
-        Self::Reassociated::from_fn(|i| self[i])
+        <Self::Reassociated as Tensor>::from_fn(|i| self[i])
     }
 }
 
@@ -498,7 +504,7 @@ where
     type Reassociated = TensorProduct<<A as ReassociateKernel<P>>::Reassociated, B>;
 
     fn reassociate_kernel(self) -> Self::Reassociated {
-        Self::Reassociated::from_fn(|i| self[i])
+        <Self::Reassociated as Tensor>::from_fn(|i| self[i])
     }
 }
 
@@ -511,7 +517,7 @@ where
     type Reassociated = TensorProduct<A, <B as ReassociateKernel<P>>::Reassociated>;
 
     fn reassociate_kernel(self) -> Self::Reassociated {
-        Self::Reassociated::from_fn(|i| self[i])
+        <Self::Reassociated as Tensor>::from_fn(|i| self[i])
     }
 }
 
@@ -523,7 +529,7 @@ where
     type Reassociated = Sinister<<T as ReassociateKernel<P>>::Reassociated>;
 
     fn reassociate_kernel(self) -> Self::Reassociated {
-        Self::Reassociated::from_fn(|i| self[i])
+        <Self::Reassociated as Tensor>::from_fn(|i| self[i])
     }
 }
 
@@ -955,7 +961,7 @@ impl<
     type Action = <HomOf<BT, FT> as Tensor>::Action;
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
-        Self(HomOf::<BT, FT>::from_fn(f), PhantomData)
+        Self(<HomOf<BT, FT> as Tensor>::from_fn(f), PhantomData)
     }
 }
 impl_vector_ops!(TangentMap<BT, FP, FT, Fiber>,
@@ -1042,9 +1048,9 @@ where
     V: Tensor + Reflect<𝒞>,
     S: Field,
     Self: Reflect<𝒞>,
-    ReflectedFunctorImage<𝒞, tensor_of::Payload, V, ReflectedContext<𝒞, Self>>: Ⱶ<TensorOf<𝒞>>,
+    ReflectedFunctorImage<𝒞, tensor_of::Payload, V, <Self as Reflect<𝒞>>::Body>: Ⱶ<TensorOf<𝒞>>,
 {
-    type Body = ReflectedFunctorImage<𝒞, tensor_of::Payload, V, ReflectedContext<𝒞, Self>>;
+    type Body = ReflectedFunctorImage<𝒞, tensor_of::Payload, V, <Self as Reflect<𝒞>>::Body>;
 }
 
 impl<V: Tensor, S: Field> TensorOver<V, S> {
@@ -1123,7 +1129,7 @@ impl<𝒞: Cat, F: Field, const N: usize> Jet<𝒞, F, N> {
     /// Constructs all `N + 1` coefficients by index, beginning with the primal
     /// coefficient at index zero.
     fn from_fn(f: impl FnMut(usize) -> F) -> Self {
-        Self(JetCoords::from_fn(f), PhantomData)
+        Self(<JetCoords<F, N> as Tensor>::from_fn(f), PhantomData)
     }
 
     fn derivative(self) -> Self {
@@ -1182,9 +1188,9 @@ impl<𝒞: Cat, F, const N: usize> Reflect<Jetted<𝒞>> for Jet<𝒞, F, N>
 where
     F: Field + Reflect<𝒞>,
     Self: Reflect<𝒞>,
-    ReflectedFunctorImage<𝒞, jet::Payload, F, ReflectedContext<𝒞, Self>>: Ⱶ<Jetted<𝒞>>,
+    ReflectedFunctorImage<𝒞, jet::Payload, F, <Self as Reflect<𝒞>>::Body>: Ⱶ<Jetted<𝒞>>,
 {
-    type Body = ReflectedFunctorImage<𝒞, jet::Payload, F, ReflectedContext<𝒞, Self>>;
+    type Body = ReflectedFunctorImage<𝒞, jet::Payload, F, <Self as Reflect<𝒞>>::Body>;
 }
 
 #[allow(dead_code)]
@@ -1365,11 +1371,10 @@ impl<𝒞: Cat, F: Field, const N: usize> Inv for NonZero<Jet<𝒞, F, N>> {
         let input = self.0;
 
         // Spell this using your DivRing::Mul machinery.
-        let constant_inverse: F =
-            <F as DivRing<𝐅𝐥𝐝::C<F>>>::Mul::from(NonZero::new_unchecked(input[0]))
-                .inv()
-                .into()
-                .0;
+        let constant_inverse: F = <F as DivRing>::Mul::from(NonZero::new_unchecked(input[0]))
+            .inv()
+            .into()
+            .0;
 
         let mut output = Jet::<𝒞, F, N>::zero();
         output[0] = constant_inverse;
@@ -1550,7 +1555,9 @@ impl<P: Point, V: Tensor, T: TangentLift<P, V>, U: TangentBundle<Self, JetVector
 /// bundle. [`Tangent`] is the first lifted element; [`TM`] and [`LiftedTM`]
 /// describe its iterated tangent bundles. Vector spaces receive the canonical
 /// translation-based implementation.
-pub trait TangentLift<P: Point, V: Tensor>: TangentBundle<P, V> {
+pub trait TangentLift<P: Point, V: Tensor, C: crate::traits::𝐒𝐞𝐭::Ⱶ = crate::traits::𝐒𝐞𝐭::C<Self>>:
+    TangentBundle<P, V, C>
+{
     /// Expresses `local` in the lifted chart centred at `base`.
     fn tangent_to_local(
         base: Tangent<P, V>,
@@ -1603,7 +1610,7 @@ impl<V: Tensor> TangentLift<V, V> for V {
         base: Tangent<V, V>,
         local: Tangent<V, V>,
     ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>> {
-        Some(JetVector::from_fn(|i| {
+        Some(<JetVector<𝐅𝐥𝐝::𝒞, V> as Tensor>::from_fn(|i| {
             local.1[i] - base.1[i] + Jet::from_parts(local.0[i] - base.0[i], [V::F::zero()])
         }))
     }
@@ -1612,13 +1619,13 @@ impl<V: Tensor> TangentLift<V, V> for V {
         base: Tangent<V, V>,
         coordinate: JetVector<𝐅𝐥𝐝::𝒞, V>,
     ) -> (V, JetVector<𝐅𝐥𝐝::𝒞, V>) {
-        let combined = JetVector::<𝐅𝐥𝐝::𝒞, V>::from_fn(|i| {
+        let combined = <JetVector<𝐅𝐥𝐝::𝒞, V> as Tensor>::from_fn(|i| {
             Jet::from_parts(base.0[i], [V::F::zero()]) + base.1[i] + coordinate[i]
         });
 
         let base = V::from_fn(|i| combined[i][0]);
 
-        let tangent = JetVector::from_fn(|i| {
+        let tangent = <JetVector<𝐅𝐥𝐝::𝒞, V> as Tensor>::from_fn(|i| {
             let mut value = combined[i];
             value[0] = V::F::zero();
             value
@@ -1712,7 +1719,7 @@ where
 {
     fn evaluate_at(&self, point: BT) -> TangentMap<BT, FT, FT, FT> {
         let columns: BT::Array<FT> = BT::Array::from_fn(|input_coordinate| {
-            let input = JetVector::<𝒞, BT>::from_fn(|coordinate| {
+            let input = <JetVector<𝒞, BT> as Tensor>::from_fn(|coordinate| {
                 Jet::new(
                     point[coordinate],
                     [if input_coordinate == coordinate {
@@ -1749,7 +1756,7 @@ where
     Jet<𝒞, BT::F>: Field,
 {
     fn evaluate_at(&self, point: BT) -> FT {
-        let input = JetVector::<𝒞, BT, 1, BT::F>::from_fn(|coordinate| {
+        let input = <JetVector<𝒞, BT, 1, BT::F> as Tensor>::from_fn(|coordinate| {
             Jet::new(point[coordinate], [self.direction[coordinate]])
         });
 
@@ -1809,8 +1816,8 @@ where
         type OuterScalar<𝒞: Cat, S, const N: usize> = Jet<𝒞, S, N>;
 
         let columns: BT::Array<JetVector<𝒞, FT, N, S>> = BT::Array::from_fn(|input_coordinate| {
-            let nested_input =
-                JetVector::<𝒞, BT, 1, OuterScalar<𝒞, S, N>>::from_fn(|coordinate| {
+            let nested_input = <JetVector<𝒞, BT, 1, OuterScalar<𝒞, S, N>> as Tensor>::from_fn(
+                |coordinate| {
                     Jet::from_parts(
                         input[coordinate],
                         [if input_coordinate == coordinate {
@@ -1819,7 +1826,8 @@ where
                             OuterScalar::<𝒞, S, N>::zero()
                         }],
                     )
-                });
+                },
+            );
 
             let nested_output: JetVector<𝒞, FT, 1, OuterScalar<𝒞, S, N>> = <F as JetMap<
                 𝒞,
@@ -1832,7 +1840,7 @@ where
                 &self.0, nested_input
             );
 
-            JetVector::<𝒞, FT, N, S>::from_fn(|output_coordinate| {
+            <JetVector<𝒞, FT, N, S> as Tensor>::from_fn(|output_coordinate| {
                 nested_output[output_coordinate][1]
             })
         });
@@ -1869,7 +1877,7 @@ where
         type OuterScalar<𝒞: Cat, S, const N: usize> = Jet<𝒞, S, N>;
 
         let nested_input =
-            JetVector::<𝒞, BT, 1, OuterScalar<𝒞, S, N>>::from_fn(|coordinate| {
+            <JetVector<𝒞, BT, 1, OuterScalar<𝒞, S, N>> as Tensor>::from_fn(|coordinate| {
                 Jet::from_parts(
                     input[coordinate],
                     [Jet::from_parts(
@@ -1890,7 +1898,7 @@ where
             &self.f, nested_input
         );
 
-        JetVector::<𝒞, FT, N, S>::from_fn(|coordinate| nested_output[coordinate][1])
+        <JetVector<𝒞, FT, N, S> as Tensor>::from_fn(|coordinate| nested_output[coordinate][1])
     }
 }
 
@@ -1901,7 +1909,7 @@ where
 /// supplies the public tensor-valued wrapper. For a semilinear form the
 /// implementation must preserve the form's conjugation convention coefficient
 /// by coefficient.
-pub trait FormLift: Form {
+pub trait FormLift<C: 𝐅𝐨𝐫𝐦::Ⱶ = 𝐅𝐨𝐫𝐦::C<Self>>: Form {
     /// Applies the lifted lowering map to raw coordinate arrays.
     fn jet_flat_array<𝒞: Cat, S: Field, const N: usize>(
         value: &<Self as Tensor>::Array<Jet<𝒞, S, N>>,
@@ -1918,9 +1926,9 @@ pub trait FormLift: Form {
         JetVector<𝒞, Self, N, S>: Tensor<F = Jet<𝒞, S, N>>,
     {
         let value = <Self as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
-        let flat = Self::jet_flat_array(&value);
+        let flat = <Self as FormLift<C>>::jet_flat_array(&value);
 
-        Dual::from_fn(|coordinate| flat[coordinate])
+        <Dual<JetVector<𝒞, Self, N, S>> as Tensor>::from_fn(|coordinate| flat[coordinate])
     }
 }
 
@@ -1929,7 +1937,7 @@ pub trait FormLift: Form {
 /// This is the recursive counterpart of [`Nondegenerate`]. Requiring it on a
 /// Euclidean space ensures generic Euclidean functions remain valid when their
 /// scalar and vector arguments acquire further derivative layers.
-pub trait NondegenerateLift: Nondegenerate + FormLift {
+pub trait NondegenerateLift<C: 𝐏𝐨𝐢𝐧𝐜::Ⱶ = 𝐏𝐨𝐢𝐧𝐜::C<Self>>: Nondegenerate + FormLift {
     /// Applies the lifted raising map to raw coordinate arrays.
     fn jet_sharp_array<𝒞: Cat, S: Field, const N: usize>(
         value: &<Dual<Self> as Tensor>::Array<Jet<𝒞, S, N>>,
@@ -1949,9 +1957,9 @@ pub trait NondegenerateLift: Nondegenerate + FormLift {
 
         let value = <Dual<Self> as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
 
-        let sharp = Self::jet_sharp_array(&value);
+        let sharp = <Self as NondegenerateLift<C>>::jet_sharp_array(&value);
 
-        JetVector::from_fn(|coordinate| sharp[coordinate])
+        <JetVector<𝒞, Self, N, S> as Tensor>::from_fn(|coordinate| sharp[coordinate])
     }
 }
 
@@ -1980,7 +1988,7 @@ where
     V: NondegenerateLift,
     S: Field,
     Jet<𝒞, S, N>: Field,
-    Self: Nondegenerate<F = Jet<𝒞, S, N>>,
+    Self: Nondegenerate<F = Jet<𝒞, S, N>> + FormLift,
 {
     fn jet_sharp_array<𝒟: Cat, T: Field, const K: usize>(
         value: &<Dual<Self> as Tensor>::Array<Jet<𝒟, T, K>>,
@@ -2006,7 +2014,7 @@ where
         Jet<𝒞, S, N>: Field,
     {
         let value = <Dual<V> as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
-        let sharp = V::jet_sharp_array::<𝒞, S, N>(&value);
+        let sharp = <V as NondegenerateLift>::jet_sharp_array::<𝒞, S, N>(&value);
 
         <Dual<Self> as Tensor>::Array::from_fn(|coordinate| sharp[coordinate])
     }
@@ -2023,7 +2031,7 @@ where
         Jet<𝒞, S, N>: Field,
     {
         let value = <V as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
-        let flat = V::jet_flat_array::<𝒞, S, N>(&value);
+        let flat = <V as FormLift>::jet_flat_array::<𝒞, S, N>(&value);
 
         <Self as Tensor>::Array::from_fn(|coordinate| flat[coordinate])
     }
@@ -2040,7 +2048,7 @@ where
         Jet<𝒞, S, N>: Field,
     {
         let value = <V as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
-        let flat = V::jet_flat_array::<𝒞, S, N>(&value);
+        let flat = <V as FormLift>::jet_flat_array::<𝒞, S, N>(&value);
 
         <Dual<Self> as Tensor>::Array::from_fn(|coordinate| flat[coordinate])
     }
@@ -2057,7 +2065,7 @@ where
         Jet<𝒞, S, N>: Field,
     {
         let value = <Dual<V> as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
-        let sharp = V::jet_sharp_array::<𝒞, S, N>(&value);
+        let sharp = <V as NondegenerateLift>::jet_sharp_array::<𝒞, S, N>(&value);
 
         <Self as Tensor>::Array::from_fn(|coordinate| sharp[coordinate])
     }
@@ -2083,10 +2091,11 @@ where
     }
 }
 
-impl<𝒞: Cat, V: Sesquilinear + Interval, const N: usize, S: Field> Interval
+impl<𝒞: Cat, V: Sesquilinear + FormLift + Interval, const N: usize, S: Field> Interval
     for JetVector<𝒞, V, N, S>
 where
-    Self: Sesquilinear<F: Field<Fixed: Real>>,
+    Jet<𝒞, S, N>: Field<Fixed: Real>,
+    Self: Sesquilinear<F = Jet<𝒞, S, N>>,
 {
     type R = <<Self as Tensor>::F as Field>::Fixed;
 
@@ -2095,8 +2104,11 @@ where
     }
 }
 
-impl<𝒞: Cat, V: Sesquilinear, const N: usize, S: Field> Sesquilinear for JetVector<𝒞, V, N, S> where
-    Self: Nondegenerate + Vector
+impl<𝒞: Cat, V: Sesquilinear + FormLift, const N: usize, S: Field> Sesquilinear
+    for JetVector<𝒞, V, N, S>
+where
+    Jet<𝒞, S, N>: Field,
+    Self: Form + Vector,
 {
 }
 

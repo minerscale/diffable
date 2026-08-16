@@ -21,7 +21,7 @@ macro_rules! test_vector {
             use super::*;
             use $crate::{
                 test_group, test_tangent_bundle,
-                traits::{Field, Tensor},
+                traits::{Field, Tensor, Vector},
             };
 
             test_tangent_bundle!(tangent_bundle, $space, $arb_point);
@@ -87,7 +87,7 @@ macro_rules! test_euclidean {
             proptest! {
                 #[test]
                 fn pythagorean(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$space>::check_pythagorean(&a, &b));
+                    prop_assert!(<$space as Euclidean>::check_pythagorean(&a, &b));
                 }
             }
         }
@@ -385,12 +385,12 @@ macro_rules! test_metric {
             proptest! {
                 #[test]
                 fn non_negative(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_non_negative(a, b));
+                    prop_assert!(<$point as Metric>::check_non_negative(a, b));
                 }
 
                 #[test]
                 fn distance_agrees_with_interval(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_distance_agrees_with_interval(a, b))
+                    prop_assert!(<$point as Metric>::check_distance_agrees_with_interval(a, b))
                 }
             }
         }
@@ -408,17 +408,17 @@ macro_rules! test_interval {
             proptest! {
                 #[test]
                 fn interval_symmetry(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_interval_symmetry(a, b));
+                    prop_assert!(<$point as Interval>::check_interval_symmetry(a, b));
                 }
 
                 #[test]
                 fn self_interval_zero(p in $arb_point) {
-                    prop_assert!(<$point>::check_self_interval_zero(p))
+                    prop_assert!(<$point as Interval>::check_self_interval_zero(p))
                 }
 
                 #[test]
                 fn interval_squared_agrees_with_interval(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_interval_squared_agrees_with_interval(&a, &b))
+                    prop_assert!(<$point as Interval>::check_interval_squared_agrees_with_interval(&a, &b))
                 }
             }
         }
@@ -437,12 +437,12 @@ macro_rules! test_form {
             proptest! {
                 #[test]
                 fn dot_agrees_with_pairing(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_dot_agrees_with_pairing(&a, &b));
+                    prop_assert!(<$point as Form>::check_dot_agrees_with_pairing(&a, &b));
                 }
 
                 #[test]
                 fn translation_invariance(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point>::check_translation_invariance(&a, &b, &c));
+                    prop_assert!(<$point as Form>::check_translation_invariance(&a, &b, &c));
                 }
             }
         }
@@ -465,8 +465,9 @@ macro_rules! test_nondegenerate {
 
             proptest! {
                 #[test]
-                fn isomorphism(a in $arb_point) {
-                    prop_assert!(<$point>::check_isomorphism(&a));
+                fn isomorphism(a in $arb_point, b in $arb_point) {
+                    let alpha = Dual::from_raw(b);
+                    prop_assert!(<$point as Nondegenerate>::check_isomorphism(&a, &alpha));
                 }
             }
         }
@@ -486,17 +487,17 @@ macro_rules! test_sesquilinear {
             proptest! {
                 #[test]
                 fn hermitian_symmetry(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_hermitian_symmetry(a, b));
+                    prop_assert!(<$point as Sesquilinear>::check_hermitian_symmetry(a, b));
                 }
 
                 #[test]
                 fn additivity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point>::check_additivity(a, b, c));
+                    prop_assert!(<$point as Sesquilinear>::check_additivity(a, b, c));
                 }
 
                 #[test]
                 fn scalar_linearity(a in $arb_point, c in $arb_point, k in $arb_scalar) {
-                    prop_assert!(<$point>::check_scalar_linearity(a, c, k));
+                    prop_assert!(<$point as Sesquilinear>::check_scalar_linearity(a, c, k));
                 }
             }
         }
@@ -517,12 +518,12 @@ macro_rules! test_inner_product {
             proptest! {
                 #[test]
                 fn positive_definite(a in $arb_point) {
-                    prop_assert!(<$point>::check_positive_definite(a));
+                    prop_assert!(<$point as InnerProduct>::check_positive_definite(a));
                 }
 
                 #[test]
                 fn check_metric_compatibility(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point>::check_metric_compatibility(a, b));
+                    prop_assert!(<$point as InnerProduct>::check_metric_compatibility(a, b));
                 }
             }
         }

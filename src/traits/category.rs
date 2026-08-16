@@ -27,7 +27,8 @@
 use crate::{
     coords::Coords,
     traits::{
-        CField, Field, Manifold, Nat, NatCompare, NatZero, Real, Succ, Tensor, Topological, Vector,
+        Bilinear, CField, Euclidean, Field, Form, InnerProduct, Interval, Manifold, Metric, Nat,
+        NatCompare, NatZero, Nondegenerate, Real, Sesquilinear, Succ, Tensor, Topological, Vector,
     },
 };
 use core::{
@@ -118,11 +119,71 @@ pub struct ReflectedContext<𝒞: Cat, X>(PhantomData<fn() -> (𝒞, X)>);
 
 /// Finite nominal form used when [`Model`] must tie a recursive interpretation.
 ///
-/// Category modules expose this uniformly as `𝒞::C<T>`.  Its concrete shape
-/// remains theory-specific, while the representation is shared.
+/// Category modules expose this uniformly as `𝒞::C<T>`. Its property shape is
+/// uniform; theories with associated objects provide only their lazy projection
+/// implementations.
 #[doc(hidden)]
 #[derive(Debug, Copy, Clone)]
 pub struct ModelForm<𝒞: Cat, X>(PhantomData<fn() -> (𝒞, X)>);
+
+/// Re-root every property in a theory at one finite nominal model.
+///
+/// This is the single piece of machinery which lets a rich judgement retain
+/// its context when it is weakened. For example, the `Field` property of
+/// `𝐂𝐅𝐥𝐝::C<F>` points back to `𝐂𝐅𝐥𝐝::C<F>` itself.
+///
+/// `Context` is deliberately not bounded by [`Category`] here. This operation
+/// constructs the property list used to prove that a [`ModelForm`] is a
+/// category, so imposing that bound would make the proof assume its conclusion.
+/// The bound is imposed when a nominal property is resolved instead.
+#[doc(hidden)]
+pub trait NominalizeProperties<Context>: PropertyList {
+    type Output: PropertyList;
+}
+
+impl<Context> NominalizeProperties<Context> for Ø {
+    type Output = Ø;
+}
+
+impl<Context, Head: PropertyEntry, Tail: PropertyList + NominalizeProperties<Context>>
+    NominalizeProperties<Context> for ː<Head, Tail>
+{
+    type Output =
+        ː<NominalProperty<Head::Role, Context>, <Tail as NominalizeProperties<Context>>::Output>;
+}
+
+impl<𝒞, X> sealed::Category for ModelForm<𝒞, X>
+where
+    𝒞: Cat,
+    <𝒞::C as Category>::Properties: ExpandProperties,
+    <<𝒞::C as Category>::Properties as ExpandProperties>::Expansion:
+        NominalizeProperties<ModelForm<𝒞, X>>,
+{
+}
+
+impl<𝒞, X> Category for ModelForm<𝒞, X>
+where
+    𝒞: Cat,
+    <𝒞::C as Category>::Properties: ExpandProperties,
+    <<𝒞::C as Category>::Properties as ExpandProperties>::Expansion:
+        NominalizeProperties<ModelForm<𝒞, X>>,
+{
+    type Structure = Ø;
+    type Properties = ː<
+        NominalProperty<𝒞, Self>,
+        <<<𝒞::C as Category>::Properties as ExpandProperties>::Expansion as NominalizeProperties<Self>>::Output,
+    >;
+    type Equations = Ø;
+}
+
+impl<𝒞, X> RootContext for ModelForm<𝒞, X>
+where
+    𝒞: Cat,
+    ModelForm<𝒞, X>: Category,
+{
+    type 𝒞 = 𝒞;
+    type X = X;
+}
 
 impl<𝒞: Cat, X: Reflect<𝒞>> sealed::Category for ReflectedContext<𝒞, X> {}
 
@@ -386,6 +447,7 @@ macro_rules! assoc_relations {
 pub struct This;
 
 assoc_namespace!(tensor { F });
+assoc_namespace!(interval { R });
 assoc_namespace!(field {
     Fixed,
     Characteristic
@@ -400,6 +462,7 @@ assoc_namespace!(tensor_of { Payload });
 assoc_relations!(
     This,
     tensor::F,
+    interval::R,
     field::Fixed,
     field::Characteristic,
     manifold::Tangent,
@@ -533,9 +596,13 @@ pub struct BindsProperty<𝒞: Cat, Context: Category>(PhantomData<(𝒞, Contex
 /// property's context. The context itself is the finite witness, so following
 /// the edge returns it directly. This is used for concrete recursive models
 /// whose recursion is already closed by a nominal role.
+///
+/// The context is allowed to remain unchecked while a model's category witness
+/// is being constructed. [`ResolvedProperty`] requires it to be a [`Category`]
+/// before it can be observed as a refinement.
 #[doc(hidden)]
 #[derive(Debug, Copy, Clone)]
-pub struct NominalProperty<𝒞: Cat, Context: Category>(PhantomData<(𝒞, Context)>);
+pub struct NominalProperty<𝒞: Cat, Context>(PhantomData<(𝒞, Context)>);
 
 #[doc(hidden)]
 pub trait PropertyEntry: sealed::PropertyEntry {
@@ -552,8 +619,8 @@ impl<𝒞: Cat, C: Category> PropertyEntry for BindsProperty<𝒞, C> {
     type Role = 𝒞;
 }
 
-impl<𝒞: Cat, C: Category> sealed::PropertyEntry for NominalProperty<𝒞, C> {}
-impl<𝒞: Cat, C: Category> PropertyEntry for NominalProperty<𝒞, C> {
+impl<𝒞: Cat, C> sealed::PropertyEntry for NominalProperty<𝒞, C> {}
+impl<𝒞: Cat, C> PropertyEntry for NominalProperty<𝒞, C> {
     type Role = 𝒞;
 }
 
@@ -596,7 +663,7 @@ impl<𝒞: Cat, Context: Category<Properties: ExpandProperties>> ExpandProperty
     type Expansion = <<Context as Category>::Properties as ExpandProperties>::Expansion;
 }
 
-impl<𝒞: Cat, Context: Category> ExpandProperty for NominalProperty<𝒞, Context> {
+impl<𝒞: Cat, Context> ExpandProperty for NominalProperty<𝒞, Context> {
     type Expansion = Ø;
 }
 
@@ -777,8 +844,8 @@ impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>, Context: Ⱶ<𝒞>> 
     type Refinement = Context;
 }
 
-impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>, Context: Category>
-    ResolvedProperty<𝒞> for NominalProperty<𝒟, Context>
+impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>, Context: Category> ResolvedProperty<𝒞>
+    for NominalProperty<𝒟, Context>
 {
     type Refinement = Context;
 }
@@ -1231,8 +1298,8 @@ macro_rules! C {
 
 /// Elaborate one ordinary ontology declaration into its canonical structural context.
 ///
-/// The declaration syntax names ordinary theories by their bold module name; the
-/// actual first-class `Cat` type lives at `𝐗::𝒞`.
+/// The declaration syntax names ordinary theories by their bold module name;
+/// the actual first-class `Cat` type is that module's mathcal label.
 macro_rules! category_context {
     (@root {}) => {
         cat!{}
@@ -1505,7 +1572,7 @@ categories! {
 
     𝐅𝐢𝐱𝐅𝐥𝐝  => cat![
         (field::Fixed: 𝐂𝐅𝐥𝐝, field::Characteristic: 𝐍𝐚𝐭),
-        {𝐅𝐥𝐝, 𝐀𝐛},
+        {𝐂𝐅𝐥𝐝},
         {Equal<Follow<At<field::Fixed>, field::Fixed>, At<field::Fixed>>}
     ];
 
@@ -1521,6 +1588,14 @@ categories! {
     ];
     𝐓𝐞𝐧𝐬     => cat![(tensor::F: 𝐅𝐥𝐝), {𝐂𝐌𝐨𝐧}];
     𝐕𝐞𝐜𝐭     => cat!{𝐓𝐞𝐧𝐬, 𝐆𝐫𝐩};
+    𝐅𝐨𝐫𝐦     => cat!{𝐓𝐞𝐧𝐬};
+    𝐏𝐨𝐢𝐧𝐜    => cat!{𝐅𝐨𝐫𝐦};
+    𝐇𝐞𝐫𝐦     => cat!{𝐅𝐨𝐫𝐦, 𝐕𝐞𝐜𝐭};
+    𝐒𝐲𝐦𝐁𝐢𝐥  => cat!{𝐇𝐞𝐫𝐦};
+    𝐈𝐧𝐭      => cat![(interval::R: 𝐑𝐞𝐚𝐥), {𝐒𝐞𝐭}];
+    𝐌𝐞𝐭      => cat!{𝐈𝐧𝐭};
+    𝐇𝐢𝐥𝐛     => cat!{𝐇𝐞𝐫𝐦, 𝐏𝐨𝐢𝐧𝐜, 𝐌𝐞𝐭};
+    𝐄𝐮𝐜      => cat!{𝐒𝐲𝐦𝐁𝐢𝐥, 𝐇𝐢𝐥𝐛};
     𝐌𝐚𝐧      => cat![(manifold::Tangent: 𝐓𝐞𝐧𝐬), {𝐓𝐨𝐩}];
 
     @𝐇𝐨𝐦<N> => cat!{𝐌𝐚𝐧};
@@ -1534,83 +1609,42 @@ pub type 𝐃𝐢𝐟𝐟 = 𝐇𝐨𝐦<NatZero>;
 /// Its associated objects are projected lazily, after the corresponding
 /// `Field<𝐅𝐥𝐝::C<F>>` judgement is already available. The context itself
 /// therefore needs no eager reflection of `F`.
-impl<F> sealed::Category for 𝐅𝐥𝐝::C<F> {}
-
-impl<F> Category for 𝐅𝐥𝐝::C<F> {
-    type Structure = Ø;
-    type Properties = ː<
-        NominalProperty<𝐅𝐥𝐝::𝒞, Self>,
-        ː<𝐑𝐢𝐧𝐠::𝒞, ː<𝐆𝐫𝐩::𝒞, Ø>>,
-    >;
-    type Equations = Ø;
-}
-
-impl<F> RootContext for 𝐅𝐥𝐝::C<F> {
-    type 𝒞 = 𝐅𝐥𝐝::𝒞;
-    type X = F;
-}
-
+///
+/// This dependency is intentionally one-way: the judgement supplies its
+/// projections. Requiring these projections in `Field`'s own context bound
+/// would make `Field<𝐅𝐥𝐝::C<F>>` depend on the projection impl below,
+/// which would in turn depend on `Field<𝐅𝐥𝐝::C<F>>` and leave the trait
+/// solver with a circular proof rather than an inductive derivation.
 impl<F: Field<𝐅𝐥𝐝::C<F>>> ProjectAssoc<field::Fixed, Different> for 𝐅𝐥𝐝::C<F> {
     type 𝒞 = 𝐅𝐢𝐱𝐅𝐥𝐝::𝒞;
     type C = 𝐅𝐢𝐱𝐅𝐥𝐝::C<F::Fixed>;
     type X = F::Fixed;
 }
 
-impl<F: Field<𝐅𝐥𝐝::C<F>>> ProjectAssoc<field::Characteristic, Different>
-    for 𝐅𝐥𝐝::C<F>
-{
+impl<F: Field<𝐅𝐥𝐝::C<F>>> ProjectAssoc<field::Characteristic, Different> for 𝐅𝐥𝐝::C<F> {
     type 𝒞 = 𝐍𝐚𝐭::𝒞;
     type C = ReflectedContext<𝐍𝐚𝐭::𝒞, F::Characteristic>;
     type X = F::Characteristic;
 }
 
 /// The canonical finite model of an implementation of [`CField`].
-impl<F> sealed::Category for 𝐂𝐅𝐥𝐝::C<F> {}
-
-impl<F> Category for 𝐂𝐅𝐥𝐝::C<F> {
-    type Structure = Ø;
-    type Properties = ː<
-        NominalProperty<𝐂𝐅𝐥𝐝::𝒞, Self>,
-        ː<
-            NominalProperty<𝐅𝐥𝐝::𝒞, 𝐅𝐥𝐝::C<F>>,
-            ː<𝐀𝐛::𝒞, ː<𝐑𝐢𝐧𝐠::𝒞, ː<𝐆𝐫𝐩::𝒞, Ø>>>,
-        >,
-    >;
-    type Equations = Ø;
+impl<F: CField> ProjectAssoc<field::Fixed, Different> for 𝐂𝐅𝐥𝐝::C<F> {
+    type 𝒞 = 𝐅𝐢𝐱𝐅𝐥𝐝::𝒞;
+    type C = 𝐅𝐢𝐱𝐅𝐥𝐝::C<F::Fixed>;
+    type X = F::Fixed;
 }
 
-impl<F> RootContext for 𝐂𝐅𝐥𝐝::C<F> {
-    type 𝒞 = 𝐂𝐅𝐥𝐝::𝒞;
-    type X = F;
+impl<F: CField> ProjectAssoc<field::Characteristic, Different> for 𝐂𝐅𝐥𝐝::C<F> {
+    type 𝒞 = 𝐍𝐚𝐭::𝒞;
+    type C = ReflectedContext<𝐍𝐚𝐭::𝒞, F::Characteristic>;
+    type X = F::Characteristic;
 }
 
 /// The unique finite context of a commutative field fixed by its involution.
 ///
 /// Its `Fixed` projection is a literal back-edge to this same context, so the
 /// recursive field dependency terminates after one projection.
-impl<F> sealed::Category for 𝐅𝐢𝐱𝐅𝐥𝐝::C<F> {}
-
-impl<F> Category for 𝐅𝐢𝐱𝐅𝐥𝐝::C<F> {
-    type Structure = Ø;
-    type Properties = ː<
-        NominalProperty<𝐅𝐢𝐱𝐅𝐥𝐝::𝒞, Self>,
-        ː<
-            NominalProperty<𝐂𝐅𝐥𝐝::𝒞, Self>,
-            ː<
-                NominalProperty<𝐅𝐥𝐝::𝒞, 𝐅𝐥𝐝::C<F>>,
-                ː<𝐀𝐛::𝒞, ː<𝐑𝐢𝐧𝐠::𝒞, ː<𝐆𝐫𝐩::𝒞, Ø>>>,
-            >,
-        >,
-    >;
-    type Equations = Ø;
-}
-
-impl<F> RootContext for 𝐅𝐢𝐱𝐅𝐥𝐝::C<F> {
-    type 𝒞 = 𝐅𝐢𝐱𝐅𝐥𝐝::𝒞;
-    type X = F;
-}
-
-impl<F: CField<𝐅𝐢𝐱𝐅𝐥𝐝::C<F>, Fixed = F>> ProjectAssoc<field::Fixed, Different>
+impl<F: CField<Fixed = F>> ProjectAssoc<field::Fixed, Different>
     for 𝐅𝐢𝐱𝐅𝐥𝐝::C<F>
 {
     type 𝒞 = 𝐂𝐅𝐥𝐝::𝒞;
@@ -1618,12 +1652,90 @@ impl<F: CField<𝐅𝐢𝐱𝐅𝐥𝐝::C<F>, Fixed = F>> ProjectAssoc<field::F
     type X = F;
 }
 
-impl<F: CField<𝐅𝐢𝐱𝐅𝐥𝐝::C<F>, Fixed = F>>
-    ProjectAssoc<field::Characteristic, Different> for 𝐅𝐢𝐱𝐅𝐥𝐝::C<F>
+impl<F: CField<Fixed = F>> ProjectAssoc<field::Characteristic, Different>
+    for 𝐅𝐢𝐱𝐅𝐥𝐝::C<F>
 {
     type 𝒞 = 𝐍𝐚𝐭::𝒞;
     type C = ReflectedContext<𝐍𝐚𝐭::𝒞, F::Characteristic>;
     type X = F::Characteristic;
+}
+
+impl<R: Real<𝐑𝐞𝐚𝐥::C<R>, Fixed = R>> ProjectAssoc<field::Fixed, Different>
+    for 𝐑𝐞𝐚𝐥::C<R>
+{
+    type 𝒞 = 𝐅𝐢𝐱𝐅𝐥𝐝::𝒞;
+    type C = 𝐅𝐢𝐱𝐅𝐥𝐝::C<R>;
+    type X = R;
+}
+
+impl<R: Real<𝐑𝐞𝐚𝐥::C<R>, Fixed = R>> ProjectAssoc<field::Characteristic, Different>
+    for 𝐑𝐞𝐚𝐥::C<R>
+{
+    type 𝒞 = 𝐍𝐚𝐭::𝒞;
+    type C = ReflectedContext<𝐍𝐚𝐭::𝒞, R::Characteristic>;
+    type X = R::Characteristic;
+}
+
+impl<T: Tensor<𝐓𝐞𝐧𝐬::C<T>>> ProjectAssoc<tensor::F, Different> for 𝐓𝐞𝐧𝐬::C<T> {
+    type 𝒞 = 𝐅𝐥𝐝::𝒞;
+    type C = 𝐅𝐥𝐝::C<T::F>;
+    type X = T::F;
+}
+
+impl<T: Vector> ProjectAssoc<tensor::F, Different> for 𝐕𝐞𝐜𝐭::C<T> {
+    type 𝒞 = 𝐅𝐥𝐝::𝒞;
+    type C = 𝐅𝐥𝐝::C<T::F>;
+    type X = T::F;
+}
+
+macro_rules! project_tensor_scalar {
+    ($($category:ident => $judgement:ident),+ $(,)?) => {
+        $(
+            impl<T: $judgement<$category::C<T>>> ProjectAssoc<tensor::F, Different>
+                for $category::C<T>
+            {
+                type 𝒞 = 𝐅𝐥𝐝::𝒞;
+                type C = 𝐅𝐥𝐝::C<T::F>;
+                type X = T::F;
+            }
+        )+
+    };
+}
+
+project_tensor_scalar!(
+    𝐅𝐨𝐫𝐦 => Form,
+    𝐏𝐨𝐢𝐧𝐜 => Nondegenerate,
+    𝐇𝐞𝐫𝐦 => Sesquilinear,
+    𝐒𝐲𝐦𝐁𝐢𝐥 => Bilinear,
+    𝐇𝐢𝐥𝐛 => InnerProduct,
+    𝐄𝐮𝐜 => Euclidean,
+);
+
+macro_rules! project_interval_scalar {
+    ($($category:ident => $judgement:ident),+ $(,)?) => {
+        $(
+            impl<P: $judgement<$category::C<P>>> ProjectAssoc<interval::R, Different>
+                for $category::C<P>
+            {
+                type 𝒞 = 𝐑𝐞𝐚𝐥::𝒞;
+                type C = 𝐑𝐞𝐚𝐥::C<P::R>;
+                type X = P::R;
+            }
+        )+
+    };
+}
+
+project_interval_scalar!(
+    𝐈𝐧𝐭 => Interval,
+    𝐌𝐞𝐭 => Metric,
+    𝐇𝐢𝐥𝐛 => InnerProduct,
+    𝐄𝐮𝐜 => Euclidean,
+);
+
+impl<M: Manifold<𝐌𝐚𝐧::C<M>>> ProjectAssoc<manifold::Tangent, Different> for 𝐌𝐚𝐧::C<M> {
+    type 𝒞 = 𝐓𝐞𝐧𝐬::𝒞;
+    type C = 𝐓𝐞𝐧𝐬::C<M::Tangent>;
+    type X = M::Tangent;
 }
 
 // -----------------------------------------------------------------------------
@@ -1678,22 +1790,52 @@ impl<R: Real> Reflect<𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝::𝒞> for R {
 }
 
 impl<R: Real> Reflect<𝐑𝐞𝐚𝐥::𝒞> for R {
-    type Body = 𝒯<
-        Ø,
-        ː<
-            BindsProperty<𝐎𝐫𝐝𝐅𝐥𝐝::𝒞, ReflectedContext<𝐎𝐫𝐝𝐅𝐥𝐝::𝒞, R>>,
-            ː<BindsProperty<𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝::𝒞, ReflectedContext<𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝::𝒞, R>>, Ø>,
-        >,
-    >;
+    // `Real` has a diamond-shaped property graph (`OrdFld` and `Dedekind`
+    // both carry `Ord`). Re-elaborating that graph at every reflected use makes
+    // functor images repeatedly prove the same inherited branches. The nominal
+    // model records the complete closed judgement once and weakens through its
+    // finite property edges.
+    type Body = 𝐑𝐞𝐚𝐥::C<R>;
 }
 
 impl<T: Tensor> Reflect<𝐓𝐞𝐧𝐬::𝒞> for T {
-    type Body =
-        𝒯<ː<Binds<tensor::F, 𝐅𝐥𝐝::𝒞, T::F, 𝐅𝐥𝐝::C<T::F>>, Ø>, properties![𝐂𝐌𝐨𝐧::𝒞]>;
+    type Body = 𝒯<ː<Binds<tensor::F, 𝐅𝐥𝐝::𝒞, T::F, 𝐅𝐥𝐝::C<T::F>>, Ø>, properties![𝐂𝐌𝐨𝐧::𝒞]>;
 }
 
 impl<V: Vector> Reflect<𝐕𝐞𝐜𝐭::𝒞> for V {
     type Body = 𝒯<Ø, ː<BindsProperty<𝐓𝐞𝐧𝐬::𝒞, ReflectedContext<𝐓𝐞𝐧𝐬::𝒞, V>>, ː<𝐆𝐫𝐩::𝒞, Ø>>>;
+}
+
+impl<V: Form> Reflect<𝐅𝐨𝐫𝐦::𝒞> for V {
+    type Body = 𝐅𝐨𝐫𝐦::C<V>;
+}
+
+impl<V: Nondegenerate> Reflect<𝐏𝐨𝐢𝐧𝐜::𝒞> for V {
+    type Body = 𝐏𝐨𝐢𝐧𝐜::C<V>;
+}
+
+impl<V: Sesquilinear> Reflect<𝐇𝐞𝐫𝐦::𝒞> for V {
+    type Body = 𝐇𝐞𝐫𝐦::C<V>;
+}
+
+impl<V: Bilinear> Reflect<𝐒𝐲𝐦𝐁𝐢𝐥::𝒞> for V {
+    type Body = 𝐒𝐲𝐦𝐁𝐢𝐥::C<V>;
+}
+
+impl<P: Interval> Reflect<𝐈𝐧𝐭::𝒞> for P {
+    type Body = 𝐈𝐧𝐭::C<P>;
+}
+
+impl<P: Metric> Reflect<𝐌𝐞𝐭::𝒞> for P {
+    type Body = 𝐌𝐞𝐭::C<P>;
+}
+
+impl<V: InnerProduct> Reflect<𝐇𝐢𝐥𝐛::𝒞> for V {
+    type Body = 𝐇𝐢𝐥𝐛::C<V>;
+}
+
+impl<V: Euclidean> Reflect<𝐄𝐮𝐜::𝒞> for V {
+    type Body = 𝐄𝐮𝐜::C<V>;
 }
 
 impl<T: Topological> Reflect<𝐓𝐨𝐩::𝒞> for T {
@@ -1703,7 +1845,7 @@ impl<T: Topological> Reflect<𝐓𝐨𝐩::𝒞> for T {
 impl<M: Manifold> Reflect<𝐌𝐚𝐧::𝒞> for M {
     type Body = 𝒯<
         ː<BindsReflected<manifold::Tangent, 𝐓𝐞𝐧𝐬::𝒞, M::Tangent>, Ø>,
-        ː<BindsProperty<𝐓𝐨𝐩::𝒞, ReflectedContext<𝐓𝐨𝐩::𝒞, M>>, Ø>,
+        ː<BindsProperty<𝐓𝐨𝐩::𝒞, 𝐓𝐨𝐩::C<M>>, Ø>,
     >;
 }
 
@@ -1810,6 +1952,15 @@ impl<𝒞: Cat, 𝒟: Compare<𝒞, Relation = Same>, C: Ⱶ<𝒞>> RefineProper
     type Refinement = C;
 }
 
+impl<𝒞: Cat, 𝒟: Compare<𝒞, Relation = Same>, C: Category> RefineProperty<𝒞>
+    for NominalProperty<𝒟, C>
+{
+    // A nominal edge is already the trusted finite witness carried by its
+    // parent. Structural refinement must preserve it just as property
+    // selection does, rather than attempting to elaborate the child again.
+    type Refinement = C;
+}
+
 impl<𝒞: Cat, 𝒟: Cat<C: Ⱶ<𝒞>> + Compare<𝒞, Relation = Same>> RefineProperty<𝒞> for 𝒟 {
     type Refinement = <𝒟::C as Ⱶ<𝒞>>::C;
 }
@@ -1858,6 +2009,8 @@ trait ChildContext<𝒞: Cat, X>: Category {}
 impl<𝒞: Cat, X: Reflect<𝒞>> ChildContext<𝒞, X> for ReflectedContext<𝒞, X> {}
 
 impl<F: Field<𝐅𝐥𝐝::C<F>>> ChildContext<𝐅𝐥𝐝::𝒞, F> for 𝐅𝐥𝐝::C<F> {}
+
+impl<R: Real<𝐑𝐞𝐚𝐥::C<R>>> ChildContext<𝐑𝐞𝐚𝐥::𝒞, R> for 𝐑𝐞𝐚𝐥::C<R> {}
 
 impl<𝒞: Cat, X, C: Category> ChildContext<𝒞, X> for Rooted<𝒞, X, C> where
     Rooted<𝒞, X, C>: Ⱶ<𝒞>
@@ -1980,10 +2133,13 @@ where
     type C = <<X as Reflect<𝒞>>::Body as StructuralRefinement<Target>>::C;
 }
 
-/// The field context stores its recursive associated structure behind lazy
-/// projections, so refinement to the explicit field theory is a nominal
-/// judgement rather than a second eager expansion of that structure.
-impl<F: Field<𝐅𝐥𝐝::C<F>>> StructuralRefinement<𝐅𝐥𝐝::Theory> for 𝐅𝐥𝐝::C<F> {
+/// A finite nominal model satisfies its own open theory without eagerly
+/// unfolding associated objects. Weaker named theories are selected through
+/// its nominal property edges and retain this same context.
+impl<𝒞: Cat, X> StructuralRefinement<𝒞::C> for ModelForm<𝒞, X>
+where
+    ModelForm<𝒞, X>: Category,
+{
     type C = Self;
 }
 
@@ -2094,23 +2250,32 @@ fn test_this_whole_thing_baby() {
 
     assert_same_type(PhantomData::<RootRole>, PhantomData::<𝐕𝐞𝐜𝐭::𝒞>);
     assert_same_type(PhantomData::<RootC>, PhantomData::<ReflectedV>);
+    assert_same_type(PhantomData::<T>, PhantomData::<V>);
     assert_same_type(PhantomData::<Scalar>, PhantomData::<f64>);
 
     fn scalar_context_is_field<C: Ⱶ<𝐅𝐥𝐝::𝒞>>() {}
     scalar_context_is_field::<ScalarC>();
 
+    fn tensor_keeps_additive_context<C: 𝐓𝐞𝐧𝐬::Ⱶ + 𝐂𝐌𝐨𝐧::Ⱶ>() {}
+    tensor_keeps_additive_context::<T>();
+
+    // A Euclidean judgement retains one rich context through all of its
+    // mathematical weakenings, while its two labelled scalar edges remain
+    // independently navigable.
+    type EucC = 𝐄𝐮𝐜::C<Coords<f64, 2>>;
+    type EucAsHilb = <EucC as Ⱶ<𝐇𝐢𝐥𝐛::𝒞>>::C;
+    type EucScalar = <EucC as π<tensor::F>>::X;
+    type EucInterval = <EucC as π<interval::R>>::X;
+
+    assert_same_type(PhantomData::<EucAsHilb>, PhantomData::<EucC>);
+    assert_same_type(PhantomData::<EucScalar>, PhantomData::<f64>);
+    assert_same_type(PhantomData::<EucInterval>, PhantomData::<f64>);
+
     // `Model` is literally the composition of the two public operations:
     // include the Rust type through `ι`, then select a theory through `Ⱶ`.
     type DirectFieldC = Model<𝐅𝐥𝐝::𝒞, f64>;
-    assert_same_type(PhantomData::<ScalarC>, PhantomData::<DirectFieldC>);
-    assert_same_type(
-        PhantomData::<DirectFieldC>,
-        PhantomData::<𝐅𝐥𝐝::C<f64>>,
-    );
-
-    // `Ⱶ<𝐈𝐝<C>>` is the public concrete-category refinement judgement.
-    fn refines_concrete_field_theory<C: Ⱶ<𝐈𝐝<𝐅𝐥𝐝::Theory>>>() {}
-    refines_concrete_field_theory::<DirectFieldC>();
+    assert_same_type(PhantomData::<ScalarC>, PhantomData::<𝐅𝐥𝐝::C<f64>>);
+    assert_same_type(PhantomData::<DirectFieldC>, PhantomData::<𝐑𝐞𝐚𝐥::C<f64>>);
 
     // Self-referential associated structure remains a finite context handle.
     // For a real scalar, Fixed = Self, so following Fixed twice must return
@@ -2120,16 +2285,18 @@ fn test_this_whole_thing_baby() {
     type FixedRole = <FieldC as π<field::Fixed>>::𝒞;
     type FixedFixedC = <FixedC as π<field::Fixed>>::C;
     assert_same_type(PhantomData::<FixedRole>, PhantomData::<𝐅𝐢𝐱𝐅𝐥𝐝::𝒞>);
-    assert_same_type(
-        PhantomData::<FixedC>,
-        PhantomData::<𝐅𝐢𝐱𝐅𝐥𝐝::C<f64>>,
-    );
+    assert_same_type(PhantomData::<FixedC>, PhantomData::<𝐅𝐢𝐱𝐅𝐥𝐝::C<f64>>);
     assert_same_type(PhantomData::<FixedC>, PhantomData::<FixedFixedC>);
 
     fn fixed_context_is_cfield<C: 𝐂𝐅𝐥𝐝::Ⱶ>() {}
     fixed_context_is_cfield::<FixedC>();
 
-    fn scalar_implements_fixed_cfield<F: CField<𝐅𝐢𝐱𝐅𝐥𝐝::C<F>, Fixed = F>>() {}
+    // Weakening a nominal commutative-field model keeps the richer context.
+    type NominalCField = 𝐂𝐅𝐥𝐝::C<f64>;
+    type FieldViaCField = <NominalCField as Ⱶ<𝐅𝐥𝐝::𝒞>>::C;
+    assert_same_type(PhantomData::<FieldViaCField>, PhantomData::<NominalCField>);
+
+    fn scalar_implements_fixed_cfield<F: CField<Fixed = F>>() {}
     scalar_implements_fixed_cfield::<f64>();
 
     // The canonical inclusion of f64 retains its richest Real context.
@@ -2138,26 +2305,14 @@ fn test_this_whole_thing_baby() {
     // The new Real decomposition is itself navigable through the turnstile.
     type OrderedFieldViaReal = <RealC as Ⱶ<𝐎𝐫𝐝𝐅𝐥𝐝::𝒞>>::C;
     type DedekindViaReal = <RealC as Ⱶ<𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝::𝒞>>::C;
-    assert_same_type(
-        PhantomData::<OrderedFieldViaReal>,
-        PhantomData::<Model<𝐎𝐫𝐝𝐅𝐥𝐝::𝒞, f64>>,
-    );
-    assert_same_type(
-        PhantomData::<DedekindViaReal>,
-        PhantomData::<Model<𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝::𝒞, f64>>,
-    );
+    assert_same_type(PhantomData::<OrderedFieldViaReal>, PhantomData::<RealC>);
+    assert_same_type(PhantomData::<DedekindViaReal>, PhantomData::<RealC>);
 
     // Theory projection obeys the same normalization law as `π`: an inherited
     // theory returns the exact context stored by its parent.
     type CFieldViaReal = <RealC as Ⱶ<𝐂𝐅𝐥𝐝::𝒞>>::C;
-    assert_same_type(
-        PhantomData::<CFieldViaReal>,
-        PhantomData::<Model<𝐂𝐅𝐥𝐝::𝒞, f64>>,
-    );
-    assert_same_type(
-        PhantomData::<CFieldViaReal>,
-        PhantomData::<𝐂𝐅𝐥𝐝::C<f64>>,
-    );
+    assert_same_type(PhantomData::<CFieldViaReal>, PhantomData::<RealC>);
+    assert_same_type(PhantomData::<CFieldViaReal>, PhantomData::<𝐑𝐞𝐚𝐥::C<f64>>);
 
     // Bare inherited theories use the same frontend even when there is no
     // concrete `BindsProperty` context to preserve.
@@ -2167,10 +2322,7 @@ fn test_this_whole_thing_baby() {
     // The law is transitive too. Expanding Real -> CField -> Field must still
     // land on the canonical Field model, not a resolved proof graph.
     type FieldViaReal = <RealC as Ⱶ<𝐅𝐥𝐝::𝒞>>::C;
-    assert_same_type(
-        PhantomData::<FieldViaReal>,
-        PhantomData::<Model<𝐅𝐥𝐝::𝒞, f64>>,
-    );
+    assert_same_type(PhantomData::<FieldViaReal>, PhantomData::<RealC>);
 
     type Parent = 𝒯<ː<Binds<tensor::F, 𝐑𝐞𝐚𝐥::𝒞, f64, RealC>, Ø>, Ø>;
     type ChildRole = <Parent as π<tensor::F>>::𝒞;
@@ -2189,8 +2341,9 @@ fn test_this_whole_thing_baby() {
     child_keeps_real_information::<ChildC>();
 
     // Negative refinement is a real semantic judgement, not a proxy marker.
-    // `Model<CField, f64>` deliberately forgets the order/completeness evidence
-    // carried by the canonical Real inclusion of f64.
+    // A deliberately poorer nominal CField model has no order/completeness
+    // evidence. `Model<CField, f64>` itself now preserves the included Real
+    // context and therefore must not be used for this negative witness.
     fn is_constructively_not_real<C: Ⱶ<𝐑𝐞𝐚𝐥::𝒞, Absent>>() {}
-    is_constructively_not_real::<Model<𝐂𝐅𝐥𝐝::𝒞, f64>>();
+    is_constructively_not_real::<𝐂𝐅𝐥𝐝::C<f64>>();
 }

@@ -12,9 +12,7 @@ use crate::{
     complex::Complex,
     coords::Coords,
     impl_group_via_add,
-    traits::{
-        Field, FieldExp, LieGroup, Metric, NatZero, NonZero, Real, ReflectedContext, ι, 𝐅𝐥𝐝
-    },
+    traits::{Field, FieldExp, LieGroup, Metric, NatZero, NonZero, Real, ι, 𝐅𝐥𝐝},
 };
 
 /// The quaternion skew field `H`, with coordinates `a + bi + cj + dk`.
@@ -204,5 +202,5 @@ impl<R: Real> Field for Quaternion<R> {
 }
 
 impl<R: Real> ι for Quaternion<R> {
-    type C = ReflectedContext<𝐅𝐥𝐝::𝒞, Self>;
+    type C = 𝐅𝐥𝐝::C<Self>;
 }

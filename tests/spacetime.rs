@@ -33,8 +33,9 @@ pub fn arb_sl2c() -> impl Strategy<Value = Sl2c<R64>> {
 
 test_vector!(
     minkowski,
-    Minkowski<_>,
-    arb_vec::<4>().prop_map(|x| <Coords<R64, 4, 0> as Into<[R64; 4]>>::into(x).into()),
+    Minkowski<R64>,
+    arb_vec::<4>()
+        .prop_map(|x| -> Minkowski<R64> { <Coords<R64, 4, 0> as Into<[R64; 4]>>::into(x).into() }),
     arb_scalar()
 );
 

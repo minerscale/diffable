@@ -9,8 +9,8 @@
 use crate::{
     impl_group_via_mul,
     traits::{
-        Different, ExactCmp, FromReal, Interval, Metric, Real, ReflectedContext, Same, Tensor,
-        field, ι, π, 𝐀𝐛, 𝐂𝐅𝐥𝐝, 𝐅𝐢𝐱𝐅𝐥𝐝, 𝐅𝐥𝐝, 𝐆𝐫𝐩, 𝐌𝐨𝐧, 𝐑𝐢𝐠, 𝐑𝐢𝐧𝐠,
+        Different, ExactCmp, FromReal, Interval, Metric, Real, Same, Tensor, ι, 𝐀𝐛, 𝐂𝐅𝐥𝐝, 𝐅𝐥𝐝, 𝐆𝐫𝐩,
+        𝐌𝐨𝐧, 𝐑𝐢𝐠, 𝐑𝐢𝐧𝐠,
     },
 };
 use core::ops::{Add, Mul, Neg, Sub};
@@ -41,7 +41,7 @@ use super::{Point, Smooth, 𝐂𝐌𝐨𝐧};
 ///
 /// Certified by implementing this trait; verified by `test_cmonoid!`,
 /// which includes a commutativity check absent from `Monoid`'s tests.
-pub trait CMonoid<C: 𝐂𝐌𝐨𝐧::Ⱶ = 𝐂𝐌𝐨𝐧::Theory>: Point<C> + Zero {
+pub trait CMonoid<C: 𝐂𝐌𝐨𝐧::Ⱶ = 𝐂𝐌𝐨𝐧::C<Self>>: Point<C> + Zero {
     #[cfg(feature = "testing")]
     fn check_left_identity(&self) -> bool
     where
@@ -75,7 +75,7 @@ pub trait CMonoid<C: 𝐂𝐌𝐨𝐧::Ⱶ = 𝐂𝐌𝐨𝐧::Theory>: Point<C>
     }
 }
 
-impl<C: 𝐂𝐌𝐨𝐧::Ⱶ, M: Point<C> + Zero> CMonoid<C> for M {}
+impl<M: Point<𝐂𝐌𝐨𝐧::C<M>> + Zero> CMonoid for M {}
 
 /// A monoid, in multiplicative notation, with no commutativity assumed.
 ///
@@ -92,7 +92,7 @@ impl<C: 𝐂𝐌𝐨𝐧::Ⱶ, M: Point<C> + Zero> CMonoid<C> for M {}
 /// - **Associativity**: `(a * b) * c = a * (b * c)`
 ///
 /// Certified by implementing this trait; verified by `test_monoid!`.
-pub trait Monoid<C: 𝐌𝐨𝐧::Ⱶ = 𝐌𝐨𝐧::Theory>: Point<C> + One {
+pub trait Monoid<C: 𝐌𝐨𝐧::Ⱶ = 𝐌𝐨𝐧::C<Self>>: Point<C> + One {
     #[cfg(feature = "testing")]
     fn check_left_identity(&self) -> bool
     where
@@ -118,7 +118,7 @@ pub trait Monoid<C: 𝐌𝐨𝐧::Ⱶ = 𝐌𝐨𝐧::Theory>: Point<C> + One {
     }
 }
 
-impl<C: 𝐌𝐨𝐧::Ⱶ, M: Point<C> + One> Monoid<C> for M {}
+impl<M: Point<𝐌𝐨𝐧::C<M>> + One> Monoid for M {}
 
 /// An abelian group, in additive notation.
 ///
@@ -135,7 +135,9 @@ impl<C: 𝐌𝐨𝐧::Ⱶ, M: Point<C> + One> Monoid<C> for M {}
 ///
 /// [`impl_group_via_add`]: crate::impl_group_via_add
 /// [`impl_group_via_mul`]: crate::impl_group_via_mul
-pub trait CGroup<C: 𝐀𝐛::Ⱶ = 𝐀𝐛::Theory>: CMonoid<C> + Sub<Output = Self> + Neg<Output = Self> {
+pub trait CGroup<C: 𝐀𝐛::Ⱶ = 𝐀𝐛::C<Self>>:
+    CMonoid + Sub<Output = Self> + Neg<Output = Self>
+{
     #[cfg(feature = "testing")]
     fn check_left_inverse(&self) -> bool
     where
@@ -160,7 +162,7 @@ pub trait CGroup<C: 𝐀𝐛::Ⱶ = 𝐀𝐛::Theory>: CMonoid<C> + Sub<Output =
         a.clone() - b.clone() == a.clone() + -(b.clone())
     }
 }
-impl<C: 𝐀𝐛::Ⱶ, G: CMonoid<C> + Sub<Output = Self> + Neg<Output = Self>> CGroup<C> for G {}
+impl<G: CMonoid + Sub<Output = Self> + Neg<Output = Self>> CGroup for G {}
 
 /// Bridges a `+`/`-`-flavoured type into the spelling-agnostic [`Group`]
 /// by delegating `identity`/`compose`/`inverse` to its `Zero`/`Add`/`Neg`.
@@ -323,7 +325,7 @@ macro_rules! impl_ring_via_grothendieck {
 /// certified by [`Monoid`]; `Rig` adds only what connects `+` and `*`.)
 ///
 /// Certified by implementing this trait; verified by `test_rig!`.
-pub trait Rig<C: 𝐑𝐢𝐠::Ⱶ = 𝐑𝐢𝐠::Theory>: CMonoid<C> + Monoid<C> {
+pub trait Rig<C: 𝐑𝐢𝐠::Ⱶ = 𝐑𝐢𝐠::C<Self>>: CMonoid + Monoid {
     #[cfg(feature = "testing")]
     fn check_left_distributivity(a: Self, b: Self, c: Self) -> bool
     where
@@ -357,7 +359,7 @@ pub trait Rig<C: 𝐑𝐢𝐠::Ⱶ = 𝐑𝐢𝐠::Theory>: CMonoid<C> + Monoid<
     }
 }
 
-impl<C: 𝐑𝐢𝐠::Ⱶ, R: CMonoid<C> + One> Rig<C> for R {}
+impl<R: CMonoid + Monoid> Rig for R {}
 
 /// A newtype which certifies the value is non-zero
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -408,7 +410,7 @@ impl<T: Zero + One + Inv<Output = T>> Inv for NonZero<T> {
     }
 }
 
-impl<C: 𝐆𝐫𝐩::Ⱶ, T: Zero + One + Point> Group<C> for NonZero<T>
+impl<T: Zero + One + Point> Group for NonZero<T>
 where
     NonZero<T>: Inv<Output = Self>,
 {
@@ -436,15 +438,15 @@ where
 /// (`2` is not invertible in `Z`), which is exactly why `Ring` is bounded
 /// on `CGroup`, not [`MulGroup`]: requiring multiplicative inverses would
 /// make ordinary rings like `Z` unable to implement it.
-pub trait Ring<C: 𝐑𝐢𝐧𝐠::Ⱶ = 𝐑𝐢𝐧𝐠::Theory>: CGroup<C> + Rig<C> {}
-impl<C: 𝐑𝐢𝐧𝐠::Ⱶ, R: CGroup<C> + Rig<C>> Ring<C> for R {}
+pub trait Ring<C: 𝐑𝐢𝐧𝐠::Ⱶ = 𝐑𝐢𝐧𝐠::C<Self>>: CGroup + Rig {}
+impl<R: CGroup + Rig> Ring for R {}
 
 /// A division ring.
 ///
 /// A [`Ring`] whose nonzero elements form a [`MulGroup`], so every nonzero
 /// value is multiplicatively invertible. [`Field`] adds the involution, fixed
 /// field, and characteristic used by the tensor hierarchy.
-pub trait DivRing<C: 𝐑𝐢𝐧𝐠::Ⱶ = 𝐑𝐢𝐧𝐠::Theory>: Ring<C> {
+pub trait DivRing<C: 𝐑𝐢𝐧𝐠::Ⱶ = 𝐑𝐢𝐧𝐠::C<Self>>: Ring {
     /// Divides by a nonzero `rhs` using its multiplicative inverse.
     ///
     /// # Panics
@@ -458,12 +460,12 @@ pub trait DivRing<C: 𝐑𝐢𝐧𝐠::Ⱶ = 𝐑𝐢𝐧𝐠::Theory>: Ring<C> 
     }
 
     /// The multiplicative group corresponding to [`NonZero`].
-    type Mul: MulGroup<C> + From<NonZero<Self>> + Into<NonZero<Self>>;
+    type Mul: MulGroup + From<NonZero<Self>> + Into<NonZero<Self>>;
 }
 
-impl<C: 𝐑𝐢𝐧𝐠::Ⱶ, R: Ring<C>> DivRing<C> for R
+impl<R: Ring> DivRing for R
 where
-    NonZero<Self>: MulGroup<C>,
+    NonZero<Self>: MulGroup,
 {
     type Mul = NonZero<Self>;
 }
@@ -474,12 +476,7 @@ where
 /// an elected central involution, fixed field, characteristic, etc.
 ///
 /// “Field” here includes skew/noncommutative fields.
-pub trait Field<
-    C: 𝐅𝐥𝐝::Ⱶ
-        + π<field::Fixed, 𝒞 = 𝐅𝐢𝐱𝐅𝐥𝐝::𝒞, X = Self::Fixed>
-        + π<field::Characteristic, X = Self::Characteristic> = 𝐅𝐥𝐝::C<Self>,
->: DivRing<C> + Copy + PartialEq + core::fmt::Debug
-{
+pub trait Field<C: 𝐅𝐥𝐝::Ⱶ = 𝐅𝐥𝐝::C<Self>>: DivRing + Copy + PartialEq + core::fmt::Debug {
     /// A distinguished central subfield fixed pointwise by [`Self::conj`].
     ///
     /// Its embedding through [`Self::from_fixed`] must preserve the field
@@ -655,14 +652,19 @@ pub trait Field<
 
 /// A marker that asserts that a [`Field`](crate::traits::Field)
 /// is multiplicatively commutative.
-pub trait CField<C: 𝐂𝐅𝐥𝐝::Ⱶ = 𝐂𝐅𝐥𝐝::C<Self>>: Field<𝐅𝐥𝐝::C<Self>> {
+///
+/// The commutative-field judgement carries `C`, while the inherited field
+/// operations remain attached to their canonical field context. In particular,
+/// `F: CField<C>` must still make the ordinary context-free spelling
+/// `F: Field` available; otherwise every use of `F::Fixed`, `F::from_nat`, or a
+/// container such as `Coords<F, N>` would accidentally request an unrelated
+/// second proof of fieldhood.
+pub trait CField<C: 𝐂𝐅𝐥𝐝::Ⱶ = 𝐂𝐅𝐥𝐝::C<Self>>: Field {
     #[cfg(feature = "testing")]
     fn check_commutativity(a: Self, b: Self) -> bool {
         a * b == b * a
     }
 }
-
-impl<F> CField<𝐅𝐢𝐱𝐅𝐥𝐝::C<F>> for F where F: CField<Fixed = F> {}
 
 /// A characteristic-zero field equipped with an exponential map.
 ///
@@ -698,7 +700,7 @@ impl<F> CField<𝐅𝐢𝐱𝐅𝐥𝐝::C<F>> for F where F: CField<Fixed = F> 
 /// The series helper is an implementation convenience, not an additional
 /// requirement of `FieldExp`: an exponential may exist without electing the
 /// particular metric needed by its scaling-and-squaring algorithm.
-pub trait FieldExp: Field<Characteristic = NatZero> {
+pub trait FieldExp<C: 𝐅𝐥𝐝::Ⱶ = 𝐅𝐥𝐝::C<Self>>: Field<Characteristic = NatZero> {
     /// Computes the elected exponential of this field element.
     fn exp(&self) -> Self;
 
@@ -904,10 +906,12 @@ impl<F: CField> Inv for NonZero<Symmetrized<F>> {
 
     fn inv(self) -> Self::Output {
         NonZero::new_unchecked(Symmetrized(
-            <<F as DivRing<𝐅𝐥𝐝::C<F>>>::Mul>::from(NonZero::new_unchecked(self.0.0))
-                .inv()
-                .into()
-                .0,
+            <<F as DivRing>::Mul as core::convert::From<NonZero<F>>>::from(NonZero::new_unchecked(
+                self.0.0,
+            ))
+            .inv()
+            .into()
+            .0,
         ))
     }
 }
@@ -947,7 +951,7 @@ impl<F: CField + Metric> Metric for Symmetrized<F> {}
 impl<F: CField> CField for Symmetrized<F> {}
 
 impl<F: CField> ι for Symmetrized<F> {
-    type C = ReflectedContext<𝐂𝐅𝐥𝐝::𝒞, Self>;
+    type C = 𝐂𝐅𝐥𝐝::C<Self>;
 }
 
 impl<R: Real, F: Field<Fixed = R>> Interval for F {
@@ -1039,7 +1043,7 @@ impl<F: Field, const N: usize> Inv for RootOfUnity<F, N> {
 
     fn inv(self) -> Self::Output {
         Self(
-            <F as DivRing<𝐅𝐥𝐝::C<F>>>::Mul::from(NonZero::new_unchecked(self.0))
+            <F as DivRing>::Mul::from(NonZero::new_unchecked(self.0))
                 .inv()
                 .into()
                 .0,
@@ -1049,7 +1053,10 @@ impl<F: Field, const N: usize> Inv for RootOfUnity<F, N> {
 
 impl_group_via_mul!(RootOfUnity<F, N>, F: Field, const N: usize);
 
-impl<V: Tensor, const N: usize> LieGroup<V> for RootOfUnity<V::F, N> {
+impl<V: Tensor, const N: usize> LieGroup<V> for RootOfUnity<V::F, N>
+where
+    RootOfUnity<V::F, N>: Group,
+{
     fn identity_exp(_: V) -> Self {
         const { assert!(N != 0) }
         Self::one()
@@ -1085,7 +1092,7 @@ impl<F: Field, const N: usize> RootOfUnity<F, N> {
 /// - **Inverses**: `g.inv() * g == g * g.inv() == 1`
 ///
 /// Certified by implementing this trait; verified by `test_mul_group!`.
-pub trait MulGroup<C: 𝐆𝐫𝐩::Ⱶ = 𝐆𝐫𝐩::Theory>: Monoid<C> + Inv<Output = Self> {
+pub trait MulGroup<C: 𝐆𝐫𝐩::Ⱶ = 𝐆𝐫𝐩::C<Self>>: Monoid + Inv<Output = Self> {
     #[cfg(feature = "testing")]
     fn check_left_inverse(&self) -> bool
     where
@@ -1103,7 +1110,7 @@ pub trait MulGroup<C: 𝐆𝐫𝐩::Ⱶ = 𝐆𝐫𝐩::Theory>: Monoid<C> + Inv
     }
 }
 
-impl<C: 𝐆𝐫𝐩::Ⱶ, G: Monoid<C> + Inv<Output = Self>> MulGroup<C> for G {}
+impl<G: Monoid + Inv<Output = Self>> MulGroup for G {}
 
 /// Bridges a `*`/`Inv`-flavoured type into the spelling-agnostic [`Group`]
 /// by delegating `identity`/`compose`/`inverse` to its `One`/`Mul`/`Inv`.
@@ -1170,7 +1177,7 @@ macro_rules! impl_group_via_mul {
 /// [`Vector`]: crate::traits::Vector
 /// [`impl_group_via_add`]: crate::impl_group_via_add
 /// [`impl_group_via_mul`]: crate::impl_group_via_mul
-pub trait Group<C: 𝐆𝐫𝐩::Ⱶ = 𝐆𝐫𝐩::Theory>: Point {
+pub trait Group<C: 𝐆𝐫𝐩::Ⱶ = 𝐆𝐫𝐩::C<Self>>: Point<C> {
     fn identity() -> Self;
     fn compose(&self, other: &Self) -> Self;
     fn inverse(&self) -> Self;
@@ -1254,7 +1261,7 @@ pub trait Group<C: 𝐆𝐫𝐩::Ⱶ = 𝐆𝐫𝐩::Theory>: Point {
 /// [`Chart`]: crate::traits::Chart
 /// [`ExpMap`]: crate::traits::ExpMap
 /// [`TangentBundle`]: crate::traits::TangentBundle
-pub trait LieGroup<V: Tensor>: Group {
+pub trait LieGroup<V: Tensor, C: 𝐆𝐫𝐩::Ⱶ = 𝐆𝐫𝐩::C<Self>>: Group {
     fn identity_exp(v: V) -> Self;
     fn identity_log(p: &Self) -> Option<V>;
 }
