@@ -31,12 +31,12 @@ macro_rules! test_vector {
             proptest! {
                 #[test]
                 fn global_chart(p in $arb_point, q in $arb_point) {
-                    prop_assert!(<$space>::check_global_chart(&p, &q));
+                    prop_assert!(<$space as $crate::traits::Vector>::check_global_chart(&p, &q));
                 }
 
                 #[test]
                 fn global_geodesic_scaling(a in $arb_point, c in $arb_point, k in $arb_scalar) {
-                    prop_assert!(<$space>::check_global_geodesic_scaling(&a, c, k.to_fixed()));
+                    prop_assert!(<$space as $crate::traits::Vector>::check_global_geodesic_scaling(&a, c, k.to_fixed()));
                 }
             }
         }
@@ -180,7 +180,7 @@ macro_rules! test_pseudo_riemannian {
                 #[test]
                 fn chart_interval_compatibility(p in $arb_point, v in $arb_vec) {
                     let chart = <$chart>::chart_at(&p);
-                    prop_assert!(chart.check_isometry(v));
+                    prop_assert!(<$chart as PseudoRiemannian<_>>::check_isometry(&chart, v));
                 }
             }
         }

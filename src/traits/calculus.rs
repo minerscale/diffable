@@ -14,9 +14,9 @@
 //! [`JetVector`] names the tensor presentation needed by extension traits, while
 //! [`JetMap`] is the internal interpretation rule for ordinary functions and
 //! differential programs. [`ConstantRoute`] records how captured constants
-//! must be embedded through nested presentations. [`EvaluableAt`] is the final
-//! interpreter boundary and provides the user-facing diagnostic when a program
-//! cannot be evaluated.
+//! must be embedded through nested presentations. Evaluation itself is performed
+//! directly by [`d::at`] and [`Along::at`]; there is no separate interpreter
+//! boundary between the differential program and its jet presentation.
 //!
 //! [`TangentLift`] extends the construction from vector spaces to tangent
 //! bundles. [`FormLift`] and [`NondegenerateLift`] state that lowering and
@@ -35,11 +35,12 @@ use crate::{
     traits::{
         Absent, ActionExists, ApplyTensorDecoration, Array, AssocName, Atomic, BindsReflected,
         BothSided, CField, Cat, Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field,
-        Form, Handedness, Interval, Jetted, Left, Metric, NonZero, Nondegenerate, NormalizeWith,
+        Form, FormIn, Handedness, Interval, Jetted, Left, Metric, NonZero, Nondegenerate,
+        NondegenerateIn, NormalizeWith,
         OneSided, Point, Real, Reflect, ReflectedContext, Right, Sesquilinear, Sidedness, Sinister,
-        TangentBundle, Tensor, TensorDecoration, TensorNormalization, TensorOf,
+        TangentBundle, TangentBundleIn, Tensor, TensorDecoration, TensorNormalization, TensorOf,
         TensorProductAction, Undecorated, Vector, jet, tensor_of, Ø, ː, ι, π, Ⱶ, 𝐅𝐥𝐝, 𝐅𝐨𝐫𝐦, 𝐏𝐨𝐢𝐧𝐜,
-        𝐑𝐞𝐚𝐥, 𝐓𝐞𝐧𝐬, 𝒯,
+        𝐑𝐞𝐚𝐥, 𝐒𝐞𝐭, 𝐓𝐞𝐧𝐬, 𝒯,
     },
 };
 
@@ -1555,8 +1556,7 @@ impl<P: Point, V: Tensor, T: TangentLift<P, V>, U: TangentBundle<Self, JetVector
 /// bundle. [`Tangent`] is the first lifted element; [`TM`] and [`LiftedTM`]
 /// describe its iterated tangent bundles. Vector spaces receive the canonical
 /// translation-based implementation.
-pub trait TangentLift<P: Point, V: Tensor, C: crate::traits::𝐒𝐞𝐭::Ⱶ = crate::traits::𝐒𝐞𝐭::C<Self>>:
-    TangentBundle<P, V, C>
+pub trait TangentLift<P: Point, V: Tensor>: TangentBundle<P, V>
 {
     /// Expresses `local` in the lifted chart centred at `base`.
     fn tangent_to_local(
@@ -1568,6 +1568,18 @@ pub trait TangentLift<P: Point, V: Tensor, C: crate::traits::𝐒𝐞𝐭::Ⱶ =
         base: Tangent<P, V>,
         coordinate: JetVector<𝐅𝐥𝐝::𝒞, V>,
     ) -> (P, JetVector<𝐅𝐥𝐝::𝒞, V>);
+}
+
+/// Certifies that a stable [`TangentLift`] is interpreted in set context `C`.
+#[doc(hidden)]
+pub trait TangentLiftIn<P: Point, V: Tensor, C: 𝐒𝐞𝐭::Ⱶ>:
+    TangentLift<P, V> + TangentBundleIn<P, V, C>
+{
+}
+
+impl<P: Point, V: Tensor, C: 𝐒𝐞𝐭::Ⱶ, T> TangentLiftIn<P, V, C> for T where
+    T: TangentLift<P, V> + TangentBundleIn<P, V, C>
+{
 }
 
 impl<P: Point, V: Tensor, T: TangentLift<P, V>> Chart<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝::𝒞, V>>
@@ -1660,64 +1672,16 @@ impl<F> d<F> {
     /// output coordinates outermost and input coordinates innermost.
     pub fn at<
         𝒞: Cat,
-        BT: Tensor<Hand = Right, Action: ActionExists>,
+        BT: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
         FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
     >(
         &self,
         point: BT,
     ) -> TangentMap<BT, FT, FT, FT>
     where
-        Self: EvaluableAt<𝒞, BT, TangentMap<BT, FT, FT, FT>>,
+        F: JetMap<𝒞, BT, FT, 1, BT::F>,
+        Jet<𝒞, BT::F>: Field,
     {
-        <Self as EvaluableAt<𝒞, BT, TangentMap<BT, FT, FT, FT>>>::evaluate_at(self, point)
-    }
-
-    /// Contracts the next derivative slot with `direction`.
-    pub fn along<V>(self, direction: V) -> Along<F, V> {
-        Along {
-            f: self.0,
-            direction,
-        }
-    }
-}
-
-impl<F, BT> Along<F, BT> {
-    /// Evaluates the directional derivative at `point`.
-    pub fn at<𝒞: Cat, FT>(&self, point: BT) -> FT
-    where
-        Self: EvaluableAt<𝒞, BT, FT>,
-    {
-        <Self as EvaluableAt<𝒞, BT, FT>>::evaluate_at(self, point)
-    }
-}
-
-#[diagnostic::on_unimplemented(
-    message = "this differential program cannot be evaluated at `{Point}`",
-    label = "the composed differential operations are not defined for this point type",
-    note = "the function may not accept the required jet presentation",
-    note = "the input and output tensors may have incompatible fields, handedness, or actions",
-    note = "a required form or musical isomorphism may not lift through nested jets"
-)]
-#[doc(hidden)]
-/// The diagnostic evaluation boundary used by [`d::at`] and [`Along::at`].
-///
-/// Keeping their large proof obligations behind this trait replaces a wall of
-/// nested associated-type failures with one explanation of why a differential
-/// program is not evaluable at a particular point type.
-pub trait EvaluableAt<𝒞: Cat, Point, Output> {
-    fn evaluate_at(&self, point: Point) -> Output;
-}
-
-impl<
-    𝒞: Cat,
-    F: JetMap<𝒞, BT, FT, 1, BT::F>,
-    BT: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
-    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
-> EvaluableAt<𝒞, BT, TangentMap<BT, FT, FT, FT>> for d<F>
-where
-    Jet<𝒞, BT::F>: Field,
-{
-    fn evaluate_at(&self, point: BT) -> TangentMap<BT, FT, FT, FT> {
         let columns: BT::Array<FT> = BT::Array::from_fn(|input_coordinate| {
             let input = <JetVector<𝒞, BT> as Tensor>::from_fn(|coordinate| {
                 Jet::new(
@@ -1744,18 +1708,25 @@ where
 
         TangentMap::new(TensorProduct(TensorProductArray(rows, PhantomData)))
     }
+
+    /// Contracts the next derivative slot with `direction`.
+    pub fn along<V>(self, direction: V) -> Along<F, V> {
+        Along {
+            f: self.0,
+            direction,
+        }
+    }
 }
 
-impl<
-    𝒞: Cat,
-    F: JetMap<𝒞, BT, FT, 1, BT::F>,
-    BT: Vector<F: ι<C: JetRegion<𝒞>>>,
-    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
-> EvaluableAt<𝒞, BT, FT> for Along<F, BT>
-where
-    Jet<𝒞, BT::F>: Field,
-{
-    fn evaluate_at(&self, point: BT) -> FT {
+impl<F, BT> Along<F, BT> {
+    /// Evaluates the directional derivative at `point`.
+    pub fn at<𝒞: Cat, FT>(&self, point: BT) -> FT
+    where
+        F: JetMap<𝒞, BT, FT, 1, BT::F>,
+        BT: Vector<F: ι<C: JetRegion<𝒞>>>,
+        FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+        Jet<𝒞, BT::F>: Field,
+    {
         let input = <JetVector<𝒞, BT, 1, BT::F> as Tensor>::from_fn(|coordinate| {
             Jet::new(point[coordinate], [self.direction[coordinate]])
         });
@@ -1909,7 +1880,7 @@ where
 /// supplies the public tensor-valued wrapper. For a semilinear form the
 /// implementation must preserve the form's conjugation convention coefficient
 /// by coefficient.
-pub trait FormLift<C: 𝐅𝐨𝐫𝐦::Ⱶ = 𝐅𝐨𝐫𝐦::C<Self>>: Form {
+pub trait FormLift: Form {
     /// Applies the lifted lowering map to raw coordinate arrays.
     fn jet_flat_array<𝒞: Cat, S: Field, const N: usize>(
         value: &<Self as Tensor>::Array<Jet<𝒞, S, N>>,
@@ -1926,18 +1897,27 @@ pub trait FormLift<C: 𝐅𝐨𝐫𝐦::Ⱶ = 𝐅𝐨𝐫𝐦::C<Self>>: Form {
         JetVector<𝒞, Self, N, S>: Tensor<F = Jet<𝒞, S, N>>,
     {
         let value = <Self as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
-        let flat = <Self as FormLift<C>>::jet_flat_array(&value);
+        let flat = <Self as FormLift>::jet_flat_array(&value);
 
         <Dual<JetVector<𝒞, Self, N, S>> as Tensor>::from_fn(|coordinate| flat[coordinate])
     }
 }
+
+/// Certifies that the lifted lowering map is valid for the contextual form
+/// judgement `C`. The public [`FormLift`] interface remains single-instanced so
+/// its methods stay unambiguous; this hidden bridge carries the mathematical
+/// context through the hierarchy.
+#[doc(hidden)]
+pub trait FormLiftIn<C: 𝐅𝐨𝐫𝐦::Ⱶ>: FormLift + FormIn<C> {}
+
+impl<C: 𝐅𝐨𝐫𝐦::Ⱶ, V> FormLiftIn<C> for V where V: FormLift + FormIn<C> {}
 
 /// Extends an invertible lowering map and its raising map through jets.
 ///
 /// This is the recursive counterpart of [`Nondegenerate`]. Requiring it on a
 /// Euclidean space ensures generic Euclidean functions remain valid when their
 /// scalar and vector arguments acquire further derivative layers.
-pub trait NondegenerateLift<C: 𝐏𝐨𝐢𝐧𝐜::Ⱶ = 𝐏𝐨𝐢𝐧𝐜::C<Self>>: Nondegenerate + FormLift {
+pub trait NondegenerateLift: Nondegenerate + FormLift {
     /// Applies the lifted raising map to raw coordinate arrays.
     fn jet_sharp_array<𝒞: Cat, S: Field, const N: usize>(
         value: &<Dual<Self> as Tensor>::Array<Jet<𝒞, S, N>>,
@@ -1957,10 +1937,23 @@ pub trait NondegenerateLift<C: 𝐏𝐨𝐢𝐧𝐜::Ⱶ = 𝐏𝐨𝐢𝐧𝐜:
 
         let value = <Dual<Self> as Tensor>::Array::from_fn(|coordinate| value[coordinate]);
 
-        let sharp = <Self as NondegenerateLift<C>>::jet_sharp_array(&value);
+        let sharp = <Self as NondegenerateLift>::jet_sharp_array(&value);
 
         <JetVector<𝒞, Self, N, S> as Tensor>::from_fn(|coordinate| sharp[coordinate])
     }
+}
+
+/// Certifies that the lifted musical isomorphism is valid for the contextual
+/// nondegenerate-form judgement `C`.
+#[doc(hidden)]
+pub trait NondegenerateLiftIn<C: 𝐏𝐨𝐢𝐧𝐜::Ⱶ>:
+    NondegenerateLift + NondegenerateIn<C> + FormLiftIn<C>
+{
+}
+
+impl<C: 𝐏𝐨𝐢𝐧𝐜::Ⱶ, V> NondegenerateLiftIn<C> for V where
+    V: NondegenerateLift + NondegenerateIn<C> + FormLiftIn<C>
+{
 }
 
 impl<𝒞: Cat, V, const N: usize, S> FormLift for JetVector<𝒞, V, N, S>
