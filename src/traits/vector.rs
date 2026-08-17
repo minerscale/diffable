@@ -693,7 +693,7 @@ impl<V: Tensor<Action = BothSided>> Sinister<Sinister<V>> {
     /// Dancing with two left feet.
     /// Two wrongs make a right.
     /// You get the point.
-    pub fn collapse(self: Self) -> V {
+    pub fn collapse(self) -> V {
         self.0.0
     }
 }

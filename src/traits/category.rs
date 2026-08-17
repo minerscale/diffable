@@ -140,8 +140,8 @@ pub trait Cat: Copy + Clone + Debug + Send + Sync + 'static {
 /// selects the distinguished context from which weaker models are derived through
 /// [`Ⱶ`].
 #[allow(non_camel_case_types)]
-pub trait ι {
-    type C: Category;
+pub trait ι: Sized {
+    type C: RootContext<X = Self>;
 }
 
 /// The canonical model of theory `𝒞` obtained from the included Rust type `X`.
@@ -157,14 +157,22 @@ pub type Model<𝒞: Cat, X: ι<C: Ⱶ<𝒞>>> = <<X as ι>::C as Ⱶ<𝒞>>::C;
 /// Objecthood is derived from the single canonical context selected by [`ι`]. Thus a
 /// value included with a rich context is automatically an object of every weaker
 /// category refined by that context.
-pub trait Ob<C: Category>: ι {}
+pub trait Ob<C: Category + 'static>: ι {
+    /// The contextual witness used to admit `Self` as an object of `C`.
+    ///
+    /// Context-free objecthood chooses the canonical context supplied by [`ι`],
+    /// but exposes that witness explicitly so dependent constructions can retain
+    /// it instead of reconstructing the endpoint through [`ι`] later.
+    type Context: RootContext<X = Self> + Ⱶ<𝐈𝐝<C>>;
+}
 
 impl<X, C> Ob<C> for X
 where
     X: ι,
     C: Category + 'static,
-    X::C: Ⱶ<𝐈𝐝<C>>,
+    X::C: RootContext<X = X> + Ⱶ<𝐈𝐝<C>>,
 {
+    type Context = X::C;
 }
 
 // -----------------------------------------------------------------------------
@@ -185,8 +193,9 @@ pub struct Requires<Name: AssocName, 𝒞: Cat>(PhantomData<(Name, 𝒞)>);
 ///
 /// `Context` is the *entire child subcontext owned by the parent*. Projection
 /// never reconstructs it from `Value`: [`π::C`] simply selects this stored graph.
-/// The role `𝒞` records the nominal interface under which the edge is exposed,
-/// while `Context` may carry strictly richer information.
+/// The role `𝒞` records the actual nominal interface carried by the edge. A
+/// parent's requirement may be weaker; structural refinement checks that relationship
+/// without changing either the stored role or `Context`.
 #[derive(Debug, Copy, Clone)]
 pub struct Binds<Name: AssocName, 𝒞: Cat, Value, Context: Category>(
     PhantomData<(Name, 𝒞, Value, Context)>,
@@ -195,11 +204,28 @@ pub struct Binds<Name: AssocName, 𝒞: Cat, Value, Context: Category>(
 /// The ordinary reflected binding, whose child context is the canonical
 /// reflection of `Value` in the edge role.
 ///
-/// More informative parents should use [`Binds`] directly and provide the richer
-/// child context explicitly.
+/// This is intentionally *role-local*: it records exactly the interpretation
+/// justified by the parent's Rust bound. If the parent already owns a richer
+/// child context, use [`Binds`] directly; if the child has a distinguished [`ι`]
+/// inclusion which should be preserved, use [`BindsIncluded`].
 #[allow(type_alias_bounds)]
 pub type BindsReflected<Name: AssocName, 𝒞: Cat, Value: Reflect<𝒞>> =
     Binds<Name, 𝒞, Value, ReflectedContext<𝒞, Value>>;
+
+/// Bind an associated object using its distinguished included context.
+///
+/// Unlike [`BindsReflected`], this does not first choose the minimum role required
+/// by the parent and then reflect `Value` in that role. It stores the child
+/// selected by [`ι`] verbatim, including that context's actual root role. A parent
+/// which merely requires a weaker role can still consume the edge through
+/// the nominal weakening machinery.
+///
+/// This is the canonical dependent-functor operation when the associated object is
+/// known to have an [`ι`] inclusion. Generic reflected implementations should keep
+/// using [`BindsReflected`] when their Rust bounds do not provide such an inclusion.
+#[allow(type_alias_bounds)]
+pub type BindsIncluded<Name: AssocName, Value: ι> =
+    Binds<Name, <<Value as ι>::C as RootContext>::𝒞, Value, <Value as ι>::C>;
 
 /// A concrete binding whose child context is supplied explicitly.
 ///
@@ -251,14 +277,20 @@ impl<C: Category, D, E> Signature for ArrowSignature<C, D, E> {
 /// Bind the [`arrow::Typing`] of an arrow in `C`.
 ///
 /// This is the admission boundary for an arrow signature. Unlike the
-/// projection-only [`Signature`] trait, a `BindsTyping<C, D, E>` certifies that
-/// both `D` and `E` are objects of `C`, so an arrow can never acquire a domain
-/// independently of its codomain (or vice versa).
+/// projection-only [`Signature`] trait, a
+/// `BindsTyping<C, D, DContext, E, EContext>` certifies both endpoints together
+/// with the exact contexts under which they were admitted as objects of `C`, so
+/// an arrow can never acquire a domain independently of its codomain (or vice
+/// versa). Keeping those contexts explicit also lets higher arrow constructions
+/// retain contextual information instead of re-running [`ι`] on the endpoint
+/// carriers.
 ///
 /// Its associated value is the single [`ArrowSignature<C, D, E>`] from which
 /// domain and codomain may subsequently be projected.
 #[derive(Debug, Copy, Clone)]
-pub struct BindsTyping<C: Category + 'static, D: Ob<C>, E: Ob<C>>(PhantomData<fn() -> (C, D, E)>);
+pub struct BindsTyping<C: Category + 'static, D, DContext: Category, E, EContext: Category>(
+    PhantomData<fn() -> (C, D, DContext, E, EContext)>,
+);
 
 /// Placeholder used as [`AssocEntry::Value`] by a canonical requirement.
 #[derive(Debug, Copy, Clone)]
@@ -296,9 +328,20 @@ impl<𝒞: Cat, N: AssocName, V, C: Category> AssocEntry for BindsAs<N, 𝒞, V,
     type Value = V;
 }
 
-impl<C: Category + 'static, D: Ob<C>, E: Ob<C>> sealed::AssocEntry for BindsTyping<C, D, E> {}
+impl<C, D, DContext, E, EContext> sealed::AssocEntry for BindsTyping<C, D, DContext, E, EContext>
+where
+    C: Category + 'static,
+    DContext: RootContext<X = D> + Ⱶ<𝐈𝐝<C>>,
+    EContext: RootContext<X = E> + Ⱶ<𝐈𝐝<C>>,
+{
+}
 
-impl<C: Category + 'static, D: Ob<C>, E: Ob<C>> AssocEntry for BindsTyping<C, D, E> {
+impl<C, D, DContext, E, EContext> AssocEntry for BindsTyping<C, D, DContext, E, EContext>
+where
+    C: Category + 'static,
+    DContext: RootContext<X = D> + Ⱶ<𝐈𝐝<C>>,
+    EContext: RootContext<X = E> + Ⱶ<𝐈𝐝<C>>,
+{
     type Name = arrow::Typing;
     type Role = 𝐓𝐲𝐩𝐢𝐧𝐠<C>;
     type C = Rooted<
@@ -306,8 +349,8 @@ impl<C: Category + 'static, D: Ob<C>, E: Ob<C>> AssocEntry for BindsTyping<C, D,
         ArrowSignature<C, D, E>,
         𝒯<
             ː<
-                BindsAs<signature::Domain, 𝐈𝐝<C>, D, <D as ι>::C>,
-                ː<BindsAs<signature::Codomain, 𝐈𝐝<C>, E, <E as ι>::C>, Ø>,
+                BindsAs<signature::Domain, 𝐈𝐝<C>, D, DContext>,
+                ː<BindsAs<signature::Codomain, 𝐈𝐝<C>, E, EContext>, Ø>,
             >,
             Ø,
         >,
@@ -1562,6 +1605,10 @@ impl<R: Real> Reflect<𝐑𝐞𝐚𝐥::𝒞> for R {
 }
 
 impl<T: Tensor> Reflect<𝐓𝐞𝐧𝐬::𝒞> for T {
+    // `Tensor` guarantees only that `F` is a `Field`; it does not guarantee that
+    // `F` has a distinguished `ι` inclusion. Reflection therefore records the
+    // role-local Field interpretation here. A construction which already knows
+    // a richer scalar context can store it with `Binds`/`BindsIncluded` instead.
     type Body = 𝒯<ː<BindsReflected<tensor::F, 𝐅𝐥𝐝::𝒞, T::F>, Ø>, properties![𝐂𝐌𝐨𝐧::𝒞]>;
 }
 
@@ -1600,7 +1647,7 @@ pub type CodomainOf<C: π<arrow::Typing, X: Signature>> =
 /// exist without its codomain.
 #[allow(type_alias_bounds)]
 pub type ArrowCategory<C: Category + 'static, D: Ob<C>, E: Ob<C>> =
-    𝒯<ː<BindsTyping<C, D, E>, Ø>, Ø>;
+    𝒯<ː<BindsTyping<C, D, <D as Ob<C>>::Context, E, <E as Ob<C>>::Context>, Ø>, Ø>;
 
 /// A concrete callable admitted as a morphism in structural context `C`.
 ///
@@ -1768,14 +1815,19 @@ impl<
     Name: AssocName,
     Required: Category + 'static,
     Actual: Ⱶ<𝐈𝐝<Required>> + 'static,
-    Context: Category,
-    Value: ι<C = Context> + Ob<Actual>,
+    Context: RootContext<X = Value> + Ⱶ<𝐈𝐝<Actual>>,
+    Value,
 > SatisfiesAssoc<𝐈𝐝<Required>> for BindsAs<Name, 𝐈𝐝<Actual>, Value, Context>
 {
 }
 
-impl<Required: Category + 'static, Actual: Ⱶ<𝐈𝐝<Required>> + 'static, D: Ob<Actual>, E: Ob<Actual>>
-    SatisfiesAssoc<𝐓𝐲𝐩𝐢𝐧𝐠<Required>> for BindsTyping<Actual, D, E>
+impl<Required, Actual, D, DContext, E, EContext> SatisfiesAssoc<𝐓𝐲𝐩𝐢𝐧𝐠<Required>>
+    for BindsTyping<Actual, D, DContext, E, EContext>
+where
+    Required: Category + 'static,
+    Actual: Ⱶ<𝐈𝐝<Required>> + 'static,
+    DContext: RootContext<X = D> + Ⱶ<𝐈𝐝<Actual>>,
+    EContext: RootContext<X = E> + Ⱶ<𝐈𝐝<Actual>>,
 {
 }
 
@@ -2031,6 +2083,18 @@ fn test_this_whole_thing_baby() {
 
     fn child_keeps_real_information<C: Ⱶ<𝐅𝐥𝐝::𝒞> + Ⱶ<𝐑𝐞𝐚𝐥::𝒞>>() {}
     child_keeps_real_information::<ChildC>();
+
+    // `BindsIncluded` is the canonical form of the same construction when the
+    // child has an `ι` inclusion. The parent can require only Field while the
+    // edge retains f64's actual Real role and exact Real context.
+    type IncludedParent = 𝒯<ː<BindsIncluded<tensor::F, f64>, Ø>, Ø>;
+    type IncludedChildRole = <IncludedParent as π<tensor::F>>::𝒞;
+    type IncludedChildC = <IncludedParent as π<tensor::F>>::C;
+    assert_same_type(PhantomData::<IncludedParent>, PhantomData::<Parent>);
+    assert_same_type(PhantomData::<IncludedChildRole>, PhantomData::<𝐑𝐞𝐚𝐥::𝒞>);
+    assert_same_type(PhantomData::<IncludedChildC>, PhantomData::<RealC>);
+    richer_edge_satisfies_weaker_requirement::<IncludedParent>();
+    child_keeps_real_information::<IncludedChildC>();
 
     // Negative refinement is a real semantic judgement, not a proxy marker.
     // `Model<CField, f64>` deliberately forgets the order/completeness evidence

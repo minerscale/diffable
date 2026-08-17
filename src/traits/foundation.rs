@@ -14,8 +14,6 @@ use crate::{
 };
 use num_traits::{Euclid, Inv, ToPrimitive, real::Real as _};
 
-use super::𝐒𝐞𝐭;
-
 /// An element of the carrier set of a manifold, group, or metric space.
 ///
 /// The space of all values of a type `P: Point` is interpreted as a bare
@@ -41,9 +39,9 @@ use super::𝐒𝐞𝐭;
 /// [`Chart`]: crate::traits::Chart
 /// [`Group`]: crate::traits::Group
 /// [`Real`]: crate::traits::Real
-pub trait Point<C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::C>: Clone + core::fmt::Debug {}
+pub trait Point: Clone + core::fmt::Debug {}
 
-impl<C: 𝐒𝐞𝐭::Ⱶ, T: Clone + core::fmt::Debug> Point<C> for T {}
+impl<T: Clone + core::fmt::Debug> Point for T {}
 
 /// A scalar field for use as the coordinate type of a Euclidean space.
 ///

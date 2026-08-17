@@ -16,7 +16,7 @@ use crate::{
 use core::ops::{Add, Mul, Neg, Sub};
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 
-use super::{Point, Smooth, 𝐂𝐌𝐨𝐧};
+use super::{Point, Smooth};
 
 /// A commutative monoid, in additive notation.
 ///
@@ -41,7 +41,7 @@ use super::{Point, Smooth, 𝐂𝐌𝐨𝐧};
 ///
 /// Certified by implementing this trait; verified by `test_cmonoid!`,
 /// which includes a commutativity check absent from `Monoid`'s tests.
-pub trait CMonoid<C: 𝐂𝐌𝐨𝐧::Ⱶ = 𝐂𝐌𝐨𝐧::C>: Point<C> + Zero {
+pub trait CMonoid: Point + Zero {
     #[cfg(feature = "testing")]
     fn check_left_identity(&self) -> bool
     where
@@ -75,7 +75,7 @@ pub trait CMonoid<C: 𝐂𝐌𝐨𝐧::Ⱶ = 𝐂𝐌𝐨𝐧::C>: Point<C> + Ze
     }
 }
 
-impl<C: 𝐂𝐌𝐨𝐧::Ⱶ, M: Point<C> + Zero> CMonoid<C> for M {}
+impl<M: Point + Zero> CMonoid for M {}
 
 /// A monoid, in multiplicative notation, with no commutativity assumed.
 ///
