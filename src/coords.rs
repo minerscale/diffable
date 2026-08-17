@@ -13,7 +13,7 @@ use crate::{
     impl_vector_ops,
     traits::{
         Array, Atomic, BothSided, Cat, DivRing, Dual, Euclidean, Field, Form, Interval, Metric,
-        Nondegenerate, Point, Real, Right, Sesquilinear, Tensor,
+        Nondegenerate, Point, Real, ReflectedContext, Right, Sesquilinear, Tensor,
         calculus::{FormLift, Jet, NondegenerateLift},
         ι, 𝐕𝐞𝐜𝐭,
     },
@@ -99,7 +99,7 @@ pub(crate) fn array_zip_map<A, B, C, const N: usize>(
 impl_vector_ops!(Coords<F, N, M>, F: Field, const N: usize, const M: usize);
 
 impl<F: Field, const N: usize, const M: usize> ι for Coords<F, N, M> {
-    type C = 𝐕𝐞𝐜𝐭::C<Self>;
+    type C = ReflectedContext<𝐕𝐞𝐜𝐭::𝒞, Self>;
 }
 
 impl<F: Field, const N: usize, const M: usize> Tensor for Coords<F, N, M> {

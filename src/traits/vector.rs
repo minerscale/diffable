@@ -9,18 +9,13 @@
 use core::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{Zero, real::Real as _};
 
-use super::{
-    Field, FieldIn, Group, GroupIn, LieGroup, Metric, MetricIn, Real,
-    calculus::NondegenerateLiftIn,
-};
 #[cfg(feature = "testing")]
-use crate::traits::Chart;
+use super::Chart;
+
+use super::{Field, LieGroup, Metric, Real, calculus::NondegenerateLift};
 use crate::{
     impl_group_via_add, impl_vector_ops,
-    traits::{
-        Interval, Point, tensor, π, 𝐄𝐮𝐜, 𝐅𝐥𝐝, 𝐅𝐨𝐫𝐦, 𝐇𝐞𝐫𝐦, 𝐇𝐢𝐥𝐛, 𝐏𝐨𝐢𝐧𝐜, 𝐒𝐲𝐦𝐁𝐢𝐥, 𝐓𝐞𝐧𝐬,
-        𝐕𝐞𝐜𝐭,
-    },
+    traits::{Interval, Point},
 };
 
 /// A finite-dimensional Euclidean space.
@@ -70,14 +65,8 @@ use crate::{
 /// [`Nondegenerate`]: crate::traits::Nondegenerate
 /// [`NondegenerateLift`]: crate::traits::calculus::NondegenerateLift
 /// [`Sesquilinear`]: crate::traits::Sesquilinear
-// `C` classifies this Euclidean judgement. Method-owning inherited interfaces
-// remain single-instanced at the frontend, while their hidden `*In<C>` bridges
-// and `Vector<C>` carry the same rich context through the mathematical proof.
-pub trait Euclidean<C: 𝐄𝐮𝐜::Ⱶ = 𝐄𝐮𝐜::C<Self>>:
-    Bilinear<C, F: Real, Action = BothSided>
-    + InnerProductIn<C>
-    + NondegenerateLiftIn<C>
-    + Vector<C>
+pub trait Euclidean:
+    Bilinear<F: Real, Action = BothSided> + InnerProduct + NondegenerateLift + Vector
 {
     // Pythagorean theorem: d(a, b)² == |a - b|²
     #[cfg(feature = "testing")]
@@ -284,22 +273,17 @@ impl<V: Tensor> AsMut<<Dual<V> as Tensor>::Array<V::F>> for Dual<V> {
 
 impl<V: Nondegenerate> Form for Dual<V> {
     fn flat(&self) -> Dual<Self> {
-        Dual(Dual(<V as Nondegenerate>::sharp(self.clone())))
+        Dual(Dual(V::sharp(self.clone())))
     }
 }
 
 impl<V: Nondegenerate> Nondegenerate for Dual<V> {
     fn sharp(v: Dual<Self>) -> Self {
-        <V as Form>::flat(&v.0.0)
+        v.0.0.flat()
     }
 }
 
-impl<V> Sesquilinear for Dual<V>
-where
-    V: Nondegenerate + Sesquilinear,
-    Self: Vector,
-{
-}
+impl<V: Nondegenerate + Sesquilinear> Sesquilinear for Dual<V> where Self: Vector {}
 
 impl<V: Nondegenerate + Interval> Interval for Dual<V> {
     type R = V::R;
@@ -414,7 +398,7 @@ where
     V: Form<Action = BothSided>,
 {
     fn flat(&self) -> Dual<Self> {
-        let flat: Dual<V> = <V as Form>::flat(&self.0);
+        let flat: Dual<V> = self.0.flat();
 
         // Dual<Sinister<V>> and Sinister<Dual<V>>
         // are coordinate-identical.
@@ -424,7 +408,7 @@ where
 
 impl<V: Nondegenerate<Action = BothSided>> Nondegenerate for Sinister<V> {
     fn sharp(v: Dual<Self>) -> Self {
-        Sinister(<V as Nondegenerate>::sharp(Dual(v.0.0)))
+        Sinister(V::sharp(Dual(v.0.0)))
     }
 }
 
@@ -787,8 +771,7 @@ pub trait Tensor:
     + Zero
     + Index<usize, Output = Self::F>
     + IndexMut<usize>
-    + Clone
-    + core::fmt::Debug
+    + Point
     + AsRef<Self::Array<Self::F>>
     + AsMut<Self::Array<Self::F>>
 {
@@ -889,37 +872,31 @@ pub trait Tensor:
 
         out
     }
-}
 
-// Context-indexed certification is deliberately separate from `Tensor` itself.
-// `Tensor` remains the unique public owner of the carrier's associated data and
-// operations; the only implementation route for `TensorIn<C>` validates the
-// exact ontology context `C`.
-mod tensor_in_sealed {
-    use super::*;
-
-    pub trait Sealed<C>: Tensor {}
-
-    impl<C, T> Sealed<C> for T
-    where
-        T: Tensor + Point<C>,
-        C: 𝐓𝐞𝐧𝐬::Ⱶ
-            + π<X = T>
-            + π<tensor::F, X = T::F>,
-        <C as π<tensor::F>>::C: 𝐅𝐥𝐝::Ⱶ,
-        T::F: FieldIn<<C as π<tensor::F>>::C>,
-    {
+    // Flat space has no singularities — to_local is always Some
+    #[cfg(feature = "testing")]
+    fn check_global_chart(p: &Self, q: &Self) -> bool {
+        let chart = Self::chart_at(p);
+        chart.to_local(q).is_some()
     }
-}
 
-/// Certifies that the tensor structure of `Self` is valid in ontology context `C`.
-#[doc(hidden)]
-#[allow(private_bounds)]
-pub trait TensorIn<C: 𝐓𝐞𝐧𝐬::Ⱶ>: Tensor + Point<C> + tensor_in_sealed::Sealed<C> {}
-
-impl<C: 𝐓𝐞𝐧𝐬::Ⱶ, T> TensorIn<C> for T where
-    T: Tensor + Point<C> + tensor_in_sealed::Sealed<C>
-{
+    // Geodesic scaling holds globally (infinite injectivity radius):
+    // to_global(v * t) is parallel to to_global(v) AND scaled by t exactly
+    #[cfg(feature = "testing")]
+    fn check_global_geodesic_scaling(p: &Self, v: Self, t: <Self::F as Field>::Fixed) -> bool
+    where
+        Self: Vector + PartialEq,
+    {
+        let t = Self::F::from_fixed(t);
+        let chart = Self::chart_at(p);
+        match (
+            chart.to_local(&chart.to_global(v.clone() * t)),
+            chart.to_local(&chart.to_global(v)),
+        ) {
+            (Some(tv_local), Some(v_local)) => tv_local == v_local * t,
+            _ => false,
+        }
+    }
 }
 
 /// A tensor on which the elected scalar action is available directly.
@@ -970,56 +947,8 @@ impl<C: 𝐓𝐞𝐧𝐬::Ⱶ, T> TensorIn<C> for T where
 ///
 /// This separation keeps invalid scalar multiplication unrepresentable without
 /// excluding completed tensor composites from the tensor algebra.
-// `C` governs the vector-space judgement through `TensorIn<C>` and `GroupIn<C>`.
-// The carrier-facing `Tensor` interface remains unique, so `Self::F` and the
-// rest of the ordinary tensor API stay unambiguous.
-pub trait Vector<C: 𝐕𝐞𝐜𝐭::Ⱶ = 𝐕𝐞𝐜𝐭::C<Self>>:
-    TensorIn<C> + Tensor<Action: ActionExists> + GroupIn<C> + Mul<Self::F, Output = Self>
-{
-    // Flat space has no singularities — to_local is always Some
-    #[cfg(feature = "testing")]
-    fn check_global_chart(p: &Self, q: &Self) -> bool
-    where
-        Self: Chart<Self, Self>,
-    {
-        let chart = <Self as Chart<Self, Self>>::chart_at(p);
-        <Self as Chart<Self, Self>>::to_local(&chart, q).is_some()
-    }
-
-    // Geodesic scaling holds globally (infinite injectivity radius):
-    // to_global(v * t) is parallel to to_global(v) AND scaled by t exactly
-    #[cfg(feature = "testing")]
-    fn check_global_geodesic_scaling(
-        p: &Self,
-        v: Self,
-        t: <<Self as Tensor>::F as Field>::Fixed,
-    ) -> bool
-    where
-        Self: Chart<Self, Self, Global = Self> + PartialEq,
-    {
-        let t = <<Self as Tensor>::F as Field>::from_fixed(t);
-        let chart = <Self as Chart<Self, Self>>::chart_at(p);
-
-        let tv_global = <Self as Chart<Self, Self>>::to_global(&chart, v.clone() * t);
-        let v_global = <Self as Chart<Self, Self>>::to_global(&chart, v);
-
-        match (
-            <Self as Chart<Self, Self>>::to_local(&chart, &tv_global),
-            <Self as Chart<Self, Self>>::to_local(&chart, &v_global),
-        ) {
-            (Some(tv_local), Some(v_local)) => tv_local == v_local * t,
-            _ => false,
-        }
-    }
-}
-impl<C: 𝐕𝐞𝐜𝐭::Ⱶ, V> Vector<C> for V
-where
-    V: TensorIn<C>
-        + Tensor<Action: ActionExists>
-        + GroupIn<C>
-        + Mul<V::F, Output = V>,
-{
-}
+pub trait Vector: Tensor<Action: ActionExists> + Mul<Self::F, Output = Self> {}
+impl<V: Tensor<Action: ActionExists> + Mul<Self::F, Output = Self>> Vector for V {}
 
 /// Implements the canonical coordinate-wise operations for a tensor type.
 ///
@@ -1096,7 +1025,7 @@ macro_rules! impl_vector_ops {
             type Output = $target;
 
             fn add(self, rhs: Self) -> Self::Output {
-                <$target as $crate::traits::Tensor>::from_fn(|i| self[i] + rhs[i])
+                Self::from_fn(|i| self[i] + rhs[i])
             }
         }
 
@@ -1104,7 +1033,7 @@ macro_rules! impl_vector_ops {
             type Output = $target;
 
             fn sub(self, rhs: Self) -> Self::Output {
-                <$target as $crate::traits::Tensor>::from_fn(|i| self[i] - rhs[i])
+                Self::from_fn(|i| self[i] - rhs[i])
             }
         }
 
@@ -1112,7 +1041,7 @@ macro_rules! impl_vector_ops {
             type Output = $target;
 
             fn neg(self) -> Self::Output {
-                <$target as $crate::traits::Tensor>::from_fn(|i| -self[i])
+                Self::from_fn(|i| -self[i])
             }
         }
 
@@ -1123,7 +1052,7 @@ macro_rules! impl_vector_ops {
             type Output = $target;
 
             fn mul(self, scalar: <$target as $crate::traits::Tensor>::F) -> Self::Output {
-                <$target as $crate::traits::Tensor>::from_fn(|i| match <<$target as $crate::traits::Tensor>::Hand as $crate::traits::Handedness>::H {
+                Self::from_fn(|i| match <<$target as $crate::traits::Tensor>::Hand as $crate::traits::Handedness>::H {
                     $crate::traits::Hand::Left => scalar * self[i],
                     $crate::traits::Hand::Right => self[i] * scalar,
                 })
@@ -1132,11 +1061,11 @@ macro_rules! impl_vector_ops {
 
         impl<$($generics)*> num_traits::Zero for $target {
             fn zero() -> Self {
-                <$target as $crate::traits::Tensor>::from_fn(|_| <$target as $crate::traits::Tensor>::F::zero())
+                Self::from_fn(|_| <$target as $crate::traits::Tensor>::F::zero())
             }
 
             fn is_zero(&self) -> bool {
-                <$target as $crate::traits::Tensor>::iter(self).all(num_traits::Zero::is_zero)
+                self.iter().all(num_traits::Zero::is_zero)
             }
         }
 
@@ -1194,11 +1123,6 @@ pub trait Form: Tensor {
     }
 }
 
-#[doc(hidden)]
-pub trait FormIn<C: 𝐅𝐨𝐫𝐦::Ⱶ>: Form + TensorIn<C> {}
-
-impl<C: 𝐅𝐨𝐫𝐦::Ⱶ, V> FormIn<C> for V where V: Form + TensorIn<C> {}
-
 /// A [`Form`] whose lowering map is invertible — a nondegenerate form.
 ///
 /// [`sharp`](Nondegenerate::sharp) is the raising map `♯: V* → V`, inverse to
@@ -1210,24 +1134,19 @@ pub trait Nondegenerate: Form {
 
     // check flat/sharp inverse functions
     #[cfg(feature = "testing")]
-    fn check_isomorphism(a: &Self, alpha: &Dual<Self>) -> bool
+    fn check_isomorphism(a: &Self) -> bool
     where
         Self: PartialEq<Self>,
     {
-        <Self as Nondegenerate>::sharp(<Self as Form>::flat(a)) == a.clone()
-            && <Self as Form>::flat(&<Self as Nondegenerate>::sharp(alpha.clone()))
-                == alpha.clone()
+        let flat = a.flat();
+
+        Self::sharp(flat.clone()) == *a && Dual::<Self>::sharp(flat.flat()) == flat
     }
 }
 
-#[doc(hidden)]
-pub trait NondegenerateIn<C: 𝐏𝐨𝐢𝐧𝐜::Ⱶ>: Nondegenerate + FormIn<C> {}
-
-impl<C: 𝐏𝐨𝐢𝐧𝐜::Ⱶ, V> NondegenerateIn<C> for V where V: Nondegenerate + FormIn<C> {}
-
 impl_group_via_add!(V, V: Tensor);
 
-impl<V: Tensor + Group> LieGroup<V> for V {
+impl<V: Tensor> LieGroup<V> for V {
     fn identity_exp(v: V) -> Self {
         v
     }
@@ -1263,12 +1182,8 @@ impl<V: Tensor + Group> LieGroup<V> for V {
 /// The three certified invariants — symmetry, additivity, and scalar
 /// linearity of the pairing — are signature-agnostic and hold in the
 /// indefinite case exactly as in the definite one.
-pub trait Bilinear<C: 𝐒𝐲𝐦𝐁𝐢𝐥::Ⱶ = 𝐒𝐲𝐦𝐁𝐢𝐥::C<Self>>: SesquilinearIn<C> {}
-impl<C: 𝐒𝐲𝐦𝐁𝐢𝐥::Ⱶ, F: Field<Fixed = F>, V> Bilinear<C> for V
-where
-    V: SesquilinearIn<C> + Tensor<F = F>,
-{
-}
+pub trait Bilinear: Sesquilinear {}
+impl<F: Field<Fixed = F>, V: Sesquilinear<F = F>> Bilinear for V {}
 
 /// A Hermitian (sesquilinear) form on a vector space.
 ///
@@ -1297,7 +1212,7 @@ where
 /// The certified invariants are Hermitian symmetry, additivity, and scalar
 /// linearity in the first argument. Conjugate-linearity in the second argument
 /// follows from these together with Hermitian symmetry.
-pub trait Sesquilinear: Form + Mul<Self::F, Output = Self> {
+pub trait Sesquilinear: Form + Vector {
     // Hermitian spaces are exactly the spaces where
     // self.dot(self) lands in the fixed field of F
     fn norm_squared(&self) -> <Self::F as Field>::Fixed {
@@ -1331,11 +1246,6 @@ pub trait Sesquilinear: Form + Mul<Self::F, Output = Self> {
     }
 }
 
-#[doc(hidden)]
-pub trait SesquilinearIn<C: 𝐇𝐞𝐫𝐦::Ⱶ>: Sesquilinear + FormIn<C> + Vector<C> {}
-
-impl<C: 𝐇𝐞𝐫𝐦::Ⱶ, V> SesquilinearIn<C> for V where V: Sesquilinear + FormIn<C> + Vector<C> {}
-
 /// An inner product structure on a vector space.
 ///
 /// Refines [`Bilinear`] with **positive-definiteness**: `⟨v,v⟩ > 0` for all
@@ -1351,7 +1261,9 @@ impl<C: 𝐇𝐞𝐫𝐦::Ⱶ, V> SesquilinearIn<C> for V where V: Sesquilinear 
 /// Minkowski scalar product is bilinear and symmetric but indefinite, so it
 /// induces no metric at all.
 pub trait InnerProduct:
-    Sesquilinear<F: Field<Fixed: Real>> + Nondegenerate + Metric<R = <Self::F as Field>::Fixed>
+    Sesquilinear + Nondegenerate + Metric<R = <Self::F as Field>::Fixed>
+where
+    <Self::F as Field>::Fixed: Real,
 {
     /// The norm `‖v‖ = sqrt(⟨v,v⟩)`. Well-defined and real because the form
     /// is positive-definite. On an indefinite [`Bilinear`] space this would
@@ -1374,20 +1286,7 @@ pub trait InnerProduct:
     }
 }
 
-impl<P> InnerProduct for P
-where
-    P: Sesquilinear + Nondegenerate + Metric<R = <P::F as Field>::Fixed>,
-    <P::F as Field>::Fixed: Real,
-{
-}
-
-#[doc(hidden)]
-pub trait InnerProductIn<C: 𝐇𝐢𝐥𝐛::Ⱶ>:
-    InnerProduct + SesquilinearIn<C> + NondegenerateIn<C> + MetricIn<C>
-{
-}
-
-impl<C: 𝐇𝐢𝐥𝐛::Ⱶ, V> InnerProductIn<C> for V where
-    V: InnerProduct + SesquilinearIn<C> + NondegenerateIn<C> + MetricIn<C>
+impl<P: Sesquilinear + Nondegenerate + Metric<R = <Self::F as Field>::Fixed>> InnerProduct for P where
+    <Self::F as Field>::Fixed: Real
 {
 }

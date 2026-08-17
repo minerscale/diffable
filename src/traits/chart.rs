@@ -11,9 +11,9 @@ use crate::traits::Form;
 #[cfg(feature = "testing")]
 use num_traits::Zero;
 
-use crate::traits::{Bilinear, Field, InnerProduct, Interval, IntervalIn, Real, Tensor};
+use crate::traits::{Bilinear, Euclidean, Field, Interval, Real, Tensor};
 
-use super::{manifold, π, Point, PseudoRiemannianContext, 𝐏𝐬𝐞𝐮𝐝𝐨𝐑𝐢𝐞𝐦, 𝐒𝐞𝐭, 𝐒𝐲𝐦𝐁𝐢𝐥};
+use super::Point;
 
 mod sealed {
     pub trait Sealed<T> {}
@@ -69,7 +69,7 @@ impl<T> OptionallyOption<T> for Option<T> {
 /// returning `None` at genuine singularities of the manifold. If
 /// the charted manifold is geodesically complete, then to_global returns
 /// `P` rather than `Option<P>`.
-pub trait Chart<P: Clone + core::fmt::Debug, V: Tensor>: Clone + core::fmt::Debug {
+pub trait Chart<P: Point, V: Tensor>: Point {
     /// The result of mapping local coordinates back onto the manifold.
     ///
     /// This is either `P` or `Option<P>`. Choosing `P` certifies that
@@ -91,7 +91,7 @@ pub trait Chart<P: Clone + core::fmt::Debug, V: Tensor>: Clone + core::fmt::Debu
     /// in local coordinates, based at &self.
     fn local_distance(&self, other: &P) -> Option<<V::F as Field>::Fixed>
     where
-        V: InnerProduct,
+        V: Euclidean,
     {
         self.to_local(other).map(|v| v.norm())
     }
@@ -112,32 +112,12 @@ pub trait Chart<P: Clone + core::fmt::Debug, V: Tensor>: Clone + core::fmt::Debu
     }
 }
 
-/// Certifies that the chart carrier `Self` is interpreted in set context `C`.
-///
-/// [`Chart`] remains single-instanced because it owns [`Chart::Global`] and the
-/// user-facing coordinate methods. The contextual point judgement is carried
-/// here so richer set contexts do not create competing associated-type owners.
-#[doc(hidden)]
-pub trait ChartIn<P: Clone + core::fmt::Debug, V: Tensor, C: 𝐒𝐞𝐭::Ⱶ>:
-    Chart<P, V> + Point<C>
-{
-}
-
-impl<P, V, C, T> ChartIn<P, V, C> for T
-where
-    P: Clone + core::fmt::Debug,
-    V: Tensor,
-    C: 𝐒𝐞𝐭::Ⱶ,
-    T: Chart<P, V> + Point<C>,
-{
-}
-
 /// By implementing ExpMap you certify that for C<P, V>: ExpMap<P, V> that
 /// straight lines through the origin in R^N map to geodesics on M, and
 /// that distances from the origin equal arc lengths along those geodesics.
 ///
 /// Additionally, you certify that `Self::chart_at(&self.base_point()) == self`
-pub trait ExpMap<P: Clone + core::fmt::Debug, V: Tensor>: Chart<P, V> {
+pub trait ExpMap<P: Point, V: Tensor>: Chart<P, V> {
     fn base_point(&self) -> P {
         self.to_global(V::zero()).into_option().unwrap()
     }
@@ -187,22 +167,6 @@ pub trait ExpMap<P: Clone + core::fmt::Debug, V: Tensor>: Chart<P, V> {
     }
 }
 
-/// Contextual certification for an exponential chart.
-#[doc(hidden)]
-pub trait ExpMapIn<P: Clone + core::fmt::Debug, V: Tensor, C: 𝐒𝐞𝐭::Ⱶ>:
-    ExpMap<P, V> + ChartIn<P, V, C>
-{
-}
-
-impl<P, V, C, T> ExpMapIn<P, V, C> for T
-where
-    P: Clone + core::fmt::Debug,
-    V: Tensor,
-    C: 𝐒𝐞𝐭::Ⱶ,
-    T: ExpMap<P, V> + ChartIn<P, V, C>,
-{
-}
-
 /// A manifold whose exponential coordinates preserve the signed interval — a
 /// pseudo-Riemannian manifold.
 ///
@@ -246,15 +210,7 @@ where
 /// Verified by `test_pseudo_riemannian!`.
 ///
 /// [`Bilinear`]: crate::traits::Bilinear
-pub trait PseudoRiemannian<
-    V: Tensor<F: Real>,
-    C: 𝐏𝐬𝐞𝐮𝐝𝐨𝐑𝐢𝐞𝐦::Ⱶ = PseudoRiemannianContext<Self, V>,
->: ExpMapIn<Self, V, C> + IntervalIn<C> + Interval<R = V::F>
-where
-    C: π<X = Self> + π<manifold::Tangent, X = V>,
-    <C as π<manifold::Tangent>>::C: 𝐒𝐲𝐦𝐁𝐢𝐥::Ⱶ,
-    V: Bilinear<<C as π<manifold::Tangent>>::C>,
-{
+pub trait PseudoRiemannian<V: Bilinear<F: Real>>: ExpMap<Self, V> + Interval<R = V::F> {
     #[cfg(feature = "testing")]
     fn check_isometry(&self, v: V) -> bool {
         let global = match self.to_global(v).into_option() {
@@ -275,15 +231,7 @@ where
     }
 }
 
-impl<V, C, E> PseudoRiemannian<V, C> for E
-where
-    V: Tensor<F: Real>,
-    C: 𝐏𝐬𝐞𝐮𝐝𝐨𝐑𝐢𝐞𝐦::Ⱶ + π<X = E> + π<manifold::Tangent, X = V>,
-    <C as π<manifold::Tangent>>::C: 𝐒𝐲𝐦𝐁𝐢𝐥::Ⱶ,
-    V: Bilinear<<C as π<manifold::Tangent>>::C>,
-    E: ExpMapIn<E, V, C> + IntervalIn<C> + Interval<R = V::F>,
-{
-}
+impl<V: Bilinear<F: Real>, E: ExpMap<Self, V> + Interval<R = V::F>> PseudoRiemannian<V> for E {}
 
 /// A tangent bundle structure on a manifold.
 ///
@@ -301,7 +249,7 @@ where
 /// bare [`Chart`] or [`ExpMap`].
 ///
 /// Use the `test_tangent_bundle!` macro to verify this invariant.
-pub trait TangentBundle<P: Clone + core::fmt::Debug, V: Tensor>: ExpMap<P, V> {
+pub trait TangentBundle<P: Point, V: Tensor>: ExpMap<P, V> {
     // p is the point on the manifold which is the base point.
     #[cfg(feature = "testing")]
     fn check_universal_centring(p: P) -> bool
@@ -311,22 +259,6 @@ pub trait TangentBundle<P: Clone + core::fmt::Debug, V: Tensor>: ExpMap<P, V> {
         let chart = Self::chart_at(&p);
         chart.check_preservation_of_origin() && chart.check_base_point_is_origin()
     }
-}
-
-/// Contextual certification for a tangent-bundle chart carrier.
-#[doc(hidden)]
-pub trait TangentBundleIn<P: Clone + core::fmt::Debug, V: Tensor, C: 𝐒𝐞𝐭::Ⱶ>:
-    TangentBundle<P, V> + ExpMapIn<P, V, C>
-{
-}
-
-impl<P, V, C, T> TangentBundleIn<P, V, C> for T
-where
-    P: Clone + core::fmt::Debug,
-    V: Tensor,
-    C: 𝐒𝐞𝐭::Ⱶ,
-    T: TangentBundle<P, V> + ExpMapIn<P, V, C>,
-{
 }
 
 /// Intrinsic smooth structure on a manifold.
@@ -351,7 +283,7 @@ where
 /// [`ExpMap<Self, V>`]: crate::traits::ExpMap
 /// [`TangentBundle<Self, V>`]: crate::traits::TangentBundle
 /// [`LieGroup`]: crate::traits::LieGroup
-pub trait Smooth<V: Tensor>: Clone + core::fmt::Debug {
+pub trait Smooth<V: Tensor>: Point {
     /// The result of applying the exponential map.
     ///
     /// This is either `Self` or `Option<Self>`. Choosing `Self` certifies that
@@ -376,21 +308,15 @@ pub trait Smooth<V: Tensor>: Clone + core::fmt::Debug {
     fn log(&self, other: &Self) -> Option<V>;
 }
 
-/// Certifies that a stable [`Smooth`] structure is interpreted in set context `C`.
-#[doc(hidden)]
-pub trait SmoothIn<V: Tensor, C: 𝐒𝐞𝐭::Ⱶ>: Smooth<V> + Point<C> {}
-
-impl<V: Tensor, C: 𝐒𝐞𝐭::Ⱶ, S> SmoothIn<V, C> for S where S: Smooth<V> + Point<C> {}
-
 impl<V: Tensor, S: Smooth<V>> Chart<Self, V> for S {
     type Global = S::Global;
 
     fn to_local(&self, point: &Self) -> Option<V> {
-        <S as Smooth<V>>::log(self, point)
+        self.log(point)
     }
 
     fn to_global(&self, coord: V) -> S::Global {
-        <S as Smooth<V>>::exp(self, coord)
+        self.exp(coord)
     }
 
     fn chart_at(p: &Self) -> Self {

@@ -21,7 +21,7 @@ macro_rules! test_vector {
             use super::*;
             use $crate::{
                 test_group, test_tangent_bundle,
-                traits::{Field, Tensor, Vector},
+                traits::{Field, Tensor},
             };
 
             test_tangent_bundle!(tangent_bundle, $space, $arb_point);
@@ -31,12 +31,12 @@ macro_rules! test_vector {
             proptest! {
                 #[test]
                 fn global_chart(p in $arb_point, q in $arb_point) {
-                    prop_assert!(<$space as $crate::traits::Vector>::check_global_chart(&p, &q));
+                    prop_assert!(<$space>::check_global_chart(&p, &q));
                 }
 
                 #[test]
                 fn global_geodesic_scaling(a in $arb_point, c in $arb_point, k in $arb_scalar) {
-                    prop_assert!(<$space as $crate::traits::Vector>::check_global_geodesic_scaling(&a, c, k.to_fixed()));
+                    prop_assert!(<$space>::check_global_geodesic_scaling(&a, c, k.to_fixed()));
                 }
             }
         }
@@ -87,7 +87,7 @@ macro_rules! test_euclidean {
             proptest! {
                 #[test]
                 fn pythagorean(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$space as Euclidean>::check_pythagorean(&a, &b));
+                    prop_assert!(<$space>::check_pythagorean(&a, &b));
                 }
             }
         }
@@ -180,7 +180,7 @@ macro_rules! test_pseudo_riemannian {
                 #[test]
                 fn chart_interval_compatibility(p in $arb_point, v in $arb_vec) {
                     let chart = <$chart>::chart_at(&p);
-                    prop_assert!(<$chart as PseudoRiemannian<_>>::check_isometry(&chart, v));
+                    prop_assert!(chart.check_isometry(v));
                 }
             }
         }
@@ -339,7 +339,7 @@ macro_rules! test_cgroup {
 
                 #[test]
                 fn sub_agrees_with_neg(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as CGroup>::check_sub_agrees_with_neg(&a, &b))
+                    prop_assert!(<$point>::check_sub_agrees_with_neg(&a, &b))
                 }
             }
         }
@@ -385,12 +385,12 @@ macro_rules! test_metric {
             proptest! {
                 #[test]
                 fn non_negative(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as Metric>::check_non_negative(a, b));
+                    prop_assert!(<$point>::check_non_negative(a, b));
                 }
 
                 #[test]
                 fn distance_agrees_with_interval(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as Metric>::check_distance_agrees_with_interval(a, b))
+                    prop_assert!(<$point>::check_distance_agrees_with_interval(a, b))
                 }
             }
         }
@@ -408,17 +408,17 @@ macro_rules! test_interval {
             proptest! {
                 #[test]
                 fn interval_symmetry(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as Interval>::check_interval_symmetry(a, b));
+                    prop_assert!(<$point>::check_interval_symmetry(a, b));
                 }
 
                 #[test]
                 fn self_interval_zero(p in $arb_point) {
-                    prop_assert!(<$point as Interval>::check_self_interval_zero(p))
+                    prop_assert!(<$point>::check_self_interval_zero(p))
                 }
 
                 #[test]
                 fn interval_squared_agrees_with_interval(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as Interval>::check_interval_squared_agrees_with_interval(&a, &b))
+                    prop_assert!(<$point>::check_interval_squared_agrees_with_interval(&a, &b))
                 }
             }
         }
@@ -437,12 +437,12 @@ macro_rules! test_form {
             proptest! {
                 #[test]
                 fn dot_agrees_with_pairing(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as Form>::check_dot_agrees_with_pairing(&a, &b));
+                    prop_assert!(<$point>::check_dot_agrees_with_pairing(&a, &b));
                 }
 
                 #[test]
                 fn translation_invariance(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point as Form>::check_translation_invariance(&a, &b, &c));
+                    prop_assert!(<$point>::check_translation_invariance(&a, &b, &c));
                 }
             }
         }
@@ -465,9 +465,8 @@ macro_rules! test_nondegenerate {
 
             proptest! {
                 #[test]
-                fn isomorphism(a in $arb_point, b in $arb_point) {
-                    let alpha = Dual::from_raw(b);
-                    prop_assert!(<$point as Nondegenerate>::check_isomorphism(&a, &alpha));
+                fn isomorphism(a in $arb_point) {
+                    prop_assert!(<$point>::check_isomorphism(&a));
                 }
             }
         }
@@ -487,17 +486,17 @@ macro_rules! test_sesquilinear {
             proptest! {
                 #[test]
                 fn hermitian_symmetry(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as Sesquilinear>::check_hermitian_symmetry(a, b));
+                    prop_assert!(<$point>::check_hermitian_symmetry(a, b));
                 }
 
                 #[test]
                 fn additivity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point as Sesquilinear>::check_additivity(a, b, c));
+                    prop_assert!(<$point>::check_additivity(a, b, c));
                 }
 
                 #[test]
                 fn scalar_linearity(a in $arb_point, c in $arb_point, k in $arb_scalar) {
-                    prop_assert!(<$point as Sesquilinear>::check_scalar_linearity(a, c, k));
+                    prop_assert!(<$point>::check_scalar_linearity(a, c, k));
                 }
             }
         }
@@ -518,12 +517,12 @@ macro_rules! test_inner_product {
             proptest! {
                 #[test]
                 fn positive_definite(a in $arb_point) {
-                    prop_assert!(<$point as InnerProduct>::check_positive_definite(a));
+                    prop_assert!(<$point>::check_positive_definite(a));
                 }
 
                 #[test]
                 fn check_metric_compatibility(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as InnerProduct>::check_metric_compatibility(a, b));
+                    prop_assert!(<$point>::check_metric_compatibility(a, b));
                 }
             }
         }
@@ -587,7 +586,7 @@ macro_rules! test_cfield {
             proptest! {
                 #[test]
                 fn commutativity(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as CField>::check_commutativity(a, b));
+                    prop_assert!(<$point>::check_commutativity(a, b));
                 }
             }
         }
@@ -606,63 +605,63 @@ macro_rules! test_field {
             proptest! {
                 #[test]
                 fn conj_additive(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as Field>::check_conj_additive(a, b));
+                    prop_assert!(<$point>::check_conj_additive(a, b));
                 }
 
                 #[test]
                 fn conj_multiplicative(a in $arb_point, b in $arb_point) {
-                    prop_assert!(<$point as Field>::check_conj_multiplicative(a, b));
+                    prop_assert!(<$point>::check_conj_multiplicative(a, b));
                 }
 
                 #[test]
                 fn conj_involution(a in $arb_point) {
-                    prop_assert!(<$point as Field>::check_conj_involution(a));
+                    prop_assert!(<$point>::check_conj_involution(a));
                 }
 
                 #[test]
                 fn from_fixed_additive(x in $arb_fixed, y in $arb_fixed) {
-                    prop_assert!(<$point as Field>::check_from_fixed_additive(x, y));
+                    prop_assert!(<$point>::check_from_fixed_additive(x, y));
                 }
 
                 #[test]
                 fn from_fixed_multiplicative(x in $arb_fixed, y in $arb_fixed) {
-                    prop_assert!(<$point as Field>::check_from_fixed_multiplicative(x, y));
+                    prop_assert!(<$point>::check_from_fixed_multiplicative(x, y));
                 }
 
                 #[test]
                 fn descent(x in $arb_point) {
-                    prop_assert!(<$point as Field>::check_descent(x));
+                    prop_assert!(<$point>::check_descent(x));
                 }
 
                 #[test]
                 fn norm_squared_self_adjoint(x in $arb_point) {
-                    prop_assert!(<$point as Field>::check_norm_squared_self_adjoint(x));
+                    prop_assert!(<$point>::check_norm_squared_self_adjoint(x));
                 }
 
                 #[test]
                 fn from_fixed_is_fixed(x in $arb_fixed) {
-                    prop_assert!(<$point as Field>::check_from_fixed_is_fixed(x));
+                    prop_assert!(<$point>::check_from_fixed_is_fixed(x));
                 }
 
                 #[test]
                 fn fixed_field_is_central(x in $arb_fixed, y in $arb_point) {
-                    prop_assert!(<$point as Field>::check_fixed_field_is_central(x, y));
+                    prop_assert!(<$point>::check_fixed_field_is_central(x, y));
                 }
             }
 
             #[test]
             fn characteristic() {
-                assert!(<$point as Field>::check_characteristic_up_to(256))
+                assert!(<$point>::check_characteristic_up_to(256))
             }
 
             #[test]
             fn conj_unit() {
-                assert!(<$point as Field>::check_conj_unit());
+                assert!(<$point>::check_conj_unit());
             }
 
             #[test]
             fn from_fixed_unit() {
-                assert!(<$point as Field>::check_from_fixed_unit());
+                assert!(<$point>::check_from_fixed_unit());
             }
         }
     };
@@ -699,22 +698,22 @@ macro_rules! test_rig {
             proptest! {
                 #[test]
                 fn left_distributivity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point as Rig>::check_left_distributivity(a, b, c));
+                    prop_assert!(<$point>::check_left_distributivity(a, b, c));
                 }
 
                 #[test]
                 fn right_distributivity(a in $arb_point, b in $arb_point, c in $arb_point) {
-                    prop_assert!(<$point as Rig>::check_right_distributivity(a, b, c));
+                    prop_assert!(<$point>::check_right_distributivity(a, b, c));
                 }
 
                 #[test]
                 fn left_annihilation(g in $arb_point) {
-                    prop_assert!(<$point as Rig>::check_left_annihilation(&g));
+                    prop_assert!(g.check_left_annihilation());
                 }
 
                 #[test]
                 fn right_annihilation(g in $arb_point) {
-                    prop_assert!(<$point as Rig>::check_right_annihilation(&g));
+                    prop_assert!(g.check_right_annihilation());
                 }
             }
         }

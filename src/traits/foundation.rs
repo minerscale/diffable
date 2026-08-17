@@ -10,9 +10,7 @@ use num_traits::Zero;
 
 use crate::{
     complex::Complex,
-    traits::{
-        CField, CFieldIn, Field, FieldExp, NatZero, NonZero, interval, π, ι, 𝐈𝐧𝐭, 𝐌𝐞𝐭, 𝐑𝐞𝐚𝐥
-    },
+    traits::{CField, Field, FieldExp, NatZero, NonZero, ReflectedContext, ι, 𝐑𝐞𝐚𝐥},
 };
 use num_traits::{Euclid, Inv, ToPrimitive, real::Real as _};
 
@@ -43,7 +41,7 @@ use super::𝐒𝐞𝐭;
 /// [`Chart`]: crate::traits::Chart
 /// [`Group`]: crate::traits::Group
 /// [`Real`]: crate::traits::Real
-pub trait Point<C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::C<Self>>: Clone + core::fmt::Debug {}
+pub trait Point<C: 𝐒𝐞𝐭::Ⱶ = 𝐒𝐞𝐭::C>: Clone + core::fmt::Debug {}
 
 impl<C: 𝐒𝐞𝐭::Ⱶ, T: Clone + core::fmt::Debug> Point<C> for T {}
 
@@ -136,21 +134,15 @@ impl<R: RealNum> CField for R where NonZero<R>: Inv<Output = NonZero<R>> {}
 /// transitive order an iterative algorithm needs to decide convergence — hence
 /// [`ExactCmp`], which recovers the genuine order from the sign bit instead of
 /// the tolerant comparison.
-///
-/// `C` labels the real judgement itself and is threaded into the inherited
-/// commutative-field certification through [`CFieldIn`]. Ordinary scalar
-/// operations remain single-instanced on the stable [`Field`] / [`CField`]
-/// frontend traits.
-pub trait Real<C: 𝐑𝐞𝐚𝐥::Ⱶ = 𝐑𝐞𝐚𝐥::C<Self>>: RealNum + CFieldIn<C> + Field<Fixed = Self> {}
-
-impl<C: 𝐑𝐞𝐚𝐥::Ⱶ, R> Real<C> for R where R: RealNum + CFieldIn<C> + Field<Fixed = R> {}
+pub trait Real: RealNum + CField<Fixed = Self> {}
+impl<R: RealNum + CField<Fixed = Self>> Real for R {}
 
 // A real scalar is admitted once at its richest reflected scalar context.
 // Weaker models (for example as a field) are selected from this
 // closed graph rather than by reflecting the same Rust type under competing
 // category labels.
 impl<R: Real> ι for R {
-    type C = 𝐑𝐞𝐚𝐥::C<R>;
+    type C = ReflectedContext<𝐑𝐞𝐚𝐥::𝒞, R>;
 }
 
 impl<R: Real> Metric for R {}
@@ -232,11 +224,6 @@ pub trait Metric: Interval {
     }
 }
 
-#[doc(hidden)]
-pub trait MetricIn<C: 𝐌𝐞𝐭::Ⱶ>: Metric + IntervalIn<C> {}
-
-impl<C: 𝐌𝐞𝐭::Ⱶ, P> MetricIn<C> for P where P: Metric + IntervalIn<C> {}
-
 /// Embeds an [`Interval::R`] value into the interval-bearing scalar type.
 ///
 /// Fields whose fixed field is real receive the canonical implementation via
@@ -245,15 +232,6 @@ pub trait FromReal: Interval {
     /// Embeds a value from the real interval field.
     fn from_real(r: Self::R) -> Self;
 }
-
-/// Contextual certification for [`FromReal`].
-///
-/// The conversion method itself stays on the stable frontend trait while the
-/// interval context is carried by this proof-only bridge.
-#[doc(hidden)]
-pub trait FromRealIn<C: 𝐈𝐧𝐭::Ⱶ>: FromReal + IntervalIn<C> {}
-
-impl<C: 𝐈𝐧𝐭::Ⱶ, F> FromRealIn<C> for F where F: FromReal + IntervalIn<C> {}
 
 impl<F: Field<Fixed: Real>> FromReal for F {
     fn from_real(r: Self::R) -> Self {
@@ -267,7 +245,7 @@ impl<F: Field<Fixed: Real>> FromReal for F {
 /// zero null, positive spacelike (or your sign convention). No metric-space
 /// axioms are claimed — this is not a distance, it is the value of the
 /// line element between two points along the connecting geodesic.
-pub trait Interval: Clone + core::fmt::Debug {
+pub trait Interval: Point {
     /// The ordered field the interval is valued in — the real field where
     /// magnitudes, distances, and convergence live. Distinct from a scalar
     /// field's involution `Fixed`: analysis happens here regardless of the
@@ -305,36 +283,4 @@ pub trait Interval: Clone + core::fmt::Debug {
     fn check_interval_squared_agrees_with_interval(a: &Self, b: &Self) -> bool {
         Complex::real_sqrt(a.interval_squared(b)) == a.interval(b)
     }
-}
-
-// `Interval` owns the carrier-intrinsic real interval field `R`. Keep that
-// associated type on one stable frontend trait, and certify the same interval
-// structure in richer interval contexts through this hidden bridge.
-mod interval_in_sealed {
-    use super::*;
-
-    pub trait Sealed<C>: Interval {}
-
-    impl<C, P> Sealed<C> for P
-    where
-        C: 𝐈𝐧𝐭::Ⱶ
-            + π<X = P>
-            + π<interval::R, X = P::R>,
-        <C as π<interval::R>>::C: 𝐑𝐞𝐚𝐥::Ⱶ + π<X = P::R>,
-        P: Interval + Point<C>,
-        P::R: Real<<C as π<interval::R>>::C>,
-    {
-    }
-}
-
-#[doc(hidden)]
-#[allow(private_bounds)]
-pub trait IntervalIn<C: 𝐈𝐧𝐭::Ⱶ>:
-    Interval + Point<C> + interval_in_sealed::Sealed<C>
-{
-}
-
-impl<C: 𝐈𝐧𝐭::Ⱶ, P> IntervalIn<C> for P where
-    P: Interval + Point<C> + interval_in_sealed::Sealed<C>
-{
 }

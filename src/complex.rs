@@ -12,8 +12,8 @@ use crate::{
     coords::Coords,
     impl_group_via_add,
     traits::{
-        CField, Field, FieldExp, Interval, LieGroup, Metric, NatZero, NonZero, Real, Sesquilinear,
-        Smooth, ι, 𝐂𝐅𝐥𝐝,
+        CField, Field, FieldExp, Interval, LieGroup, Metric, NatZero, NonZero, Real,
+        ReflectedContext, Sesquilinear, Smooth, ι, 𝐂𝐅𝐥𝐝,
     },
 };
 
@@ -217,5 +217,5 @@ impl<R: Real> Field for Complex<R> {
 impl<R: Real> CField for Complex<R> {}
 
 impl<R: Real> ι for Complex<R> {
-    type C = 𝐂𝐅𝐥𝐝::C<Self>;
+    type C = ReflectedContext<𝐂𝐅𝐥𝐝::𝒞, Self>;
 }

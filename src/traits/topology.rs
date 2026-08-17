@@ -21,52 +21,16 @@
 use crate::traits::{Arrow, ArrowCategory, CodomainOf, DomainOf};
 
 use super::{
-    Ob, Signature, TangentBundle, Tensor, TensorIn, arrow, manifold, π, Ⱶ, 𝐀𝐫𝐫, 𝐌𝐚𝐧, 𝐓𝐞𝐧𝐬, 𝐓𝐨𝐩
+    Ob, Signature, TangentBundle, Tensor, arrow, π, Ⱶ, 𝐀𝐫𝐫, 𝐌𝐚𝐧, 𝐓𝐨𝐩
 };
 
 /// A chosen topology on a point type.
-pub trait Topological<C: 𝐓𝐨𝐩::Ⱶ = 𝐓𝐨𝐩::C<Self>>: super::Point<C> {}
+pub trait Topological: super::Point {}
 
 /// A smooth manifold compatible with Diffable's existing tangent-bundle API.
-///
-/// [`Manifold`] remains the unique carrier-level owner of the tangent and atlas
-/// associated types. It is deliberately only a stable Rust frontend shell:
-/// the mathematical topological judgement belongs to [`ManifoldIn<C>`], so
-/// multiple valid manifold contexts do not create competing `Tangent` owners
-/// and the shell does not silently select `Topological`'s default context.
-pub trait Manifold: Clone + core::fmt::Debug + Sized {
+pub trait Manifold: Topological + Sized {
     type Tangent: Tensor;
     type Atlas: TangentBundle<Self, Self::Tangent>;
-}
-
-mod manifold_in_sealed {
-    use super::*;
-
-    pub trait Sealed<C: 𝐌𝐚𝐧::Ⱶ>: Manifold + Topological<C> {}
-
-    impl<C, M> Sealed<C> for M
-    where
-        M: Manifold + Topological<C>,
-        C: 𝐌𝐚𝐧::Ⱶ
-            + π<X = M>
-            + π<manifold::Tangent, X = M::Tangent>,
-        <C as π<manifold::Tangent>>::C: 𝐓𝐞𝐧𝐬::Ⱶ,
-        M::Tangent: TensorIn<<C as π<manifold::Tangent>>::C>,
-    {
-    }
-}
-
-/// Certifies that the manifold structure of `Self` is valid in ontology context `C`.
-#[doc(hidden)]
-#[allow(private_bounds)]
-pub trait ManifoldIn<C: 𝐌𝐚𝐧::Ⱶ>:
-    Manifold + Topological<C> + manifold_in_sealed::Sealed<C>
-{
-}
-
-impl<C: 𝐌𝐚𝐧::Ⱶ, M> ManifoldIn<C> for M where
-    M: Manifold + Topological<C> + manifold_in_sealed::Sealed<C>
-{
 }
 
 // -----------------------------------------------------------------------------
@@ -81,7 +45,7 @@ impl<C: 𝐌𝐚𝐧::Ⱶ, M> ManifoldIn<C> for M where
 #[allow(dead_code)]
 fn theorem_about_continuous_maps<F, C>(_f: &Arrow<C, F>)
 where
-    C: Ⱶ<𝐀𝐫𝐫<𝐓𝐨𝐩::Theory>> + π<arrow::Typing, X: Signature>,
+    C: Ⱶ<𝐀𝐫𝐫<𝐓𝐨𝐩::C>> + π<arrow::Typing, X: Signature>,
     F: Fn(&DomainOf<C>) -> CodomainOf<C>,
 {
 }
@@ -92,10 +56,10 @@ where
 #[allow(dead_code)]
 fn smooth_maps_are_continuous_without_a_nominal_bridge<M, N>(_m: M, n: N)
 where
-    M: Manifold + Ob<𝐌𝐚𝐧::Theory>,
-    N: Manifold + Ob<𝐌𝐚𝐧::Theory>,
+    M: Manifold + Ob<𝐌𝐚𝐧::C>,
+    N: Manifold + Ob<𝐌𝐚𝐧::C>,
 {
-    let f = Arrow::<ArrowCategory<𝐌𝐚𝐧::Theory, M, N>>::new(|_x: &M| n.clone());
+    let f = Arrow::<ArrowCategory<𝐌𝐚𝐧::C, M, N>>::new(|_x: &M| n.clone());
 
     theorem_about_continuous_maps(&f);
 }
