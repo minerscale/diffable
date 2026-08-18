@@ -1154,7 +1154,6 @@ impl<𝒞: Cat, F: Field, const N: usize> Jet<𝒞, F, N> {
 /// contexts which constructively do not satisfy the Real theory select the
 /// `𝐅𝐥𝐝` fallback. The trait exists only to present that disjoint proof to rustc
 /// through one inherent constructor namespace.
-#[doc(hidden)]
 pub trait JetRegion<𝒞: Cat>: Category {}
 
 impl<C> JetRegion<𝐅𝐥𝐝::𝒞> for C where

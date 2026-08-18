@@ -759,7 +759,7 @@ impl<V: Tensor<Action = BothSided>> Sinister<Dual<V>> {
 /// The dual space `V*` is [`Dual<Self>`](Dual), and the canonical evaluation
 /// pairing between them is [`pairing`](Tensor::pairing). Because that pairing is
 /// pinned to the coordinate dot product, `V`, `V*`, and `V**` are
-/// coordinate-identical, which is what makes [`collapse`](Tensor::collapse) a
+/// coordinate-identical, which is what makes [`collapse`](Dual<Dual<Tensor>>::collapse) a
 /// free relabel. Double dualisation restores the original hand.
 ///
 /// [`Add`], [`Sub`], [`Neg`], [`Zero`], [`Index`] and [`IndexMut`] should all be
@@ -1127,7 +1127,7 @@ pub trait Form: Tensor {
 ///
 /// [`sharp`](Nondegenerate::sharp) is the raising map `♯: V* → V`, inverse to
 /// [`flat`](Form::flat). This is the *musical* isomorphism `V ≅ V*` (and, via
-/// [`collapse`](Tensor::collapse), `V ≅ V**`); it depends on the metric, unlike
+/// [`collapse`](Dual<Dual<Tensor>>::collapse), `V ≅ V**`); it depends on the metric, unlike
 /// the purely dimensional evaluation iso.
 pub trait Nondegenerate: Form {
     fn sharp(v: Dual<Self>) -> Self;

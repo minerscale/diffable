@@ -112,7 +112,7 @@ macro_rules! test_chart {
     };
 }
 
-/// Tests the universally observable `ExpMap` laws.
+/// Tests the universally observable [`ExpMap`] laws.
 ///
 /// This macro checks chart coverage and the origin/centring invariants. It does
 /// not test that radial lines in the tangent space are mapped to geodesics with

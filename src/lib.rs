@@ -1,4 +1,4 @@
-//! Diffable is a differential-geometry framework for Rust. Its
+//! Diffable is an opinionated differential-geometry framework for Rust. Its
 //! central idea is that mathematical structure should be executable:
 //!
 //! - a type supplies the underlying values;
@@ -16,6 +16,8 @@
 //!
 //! > **Traits are mathematical certificates. Blanket implementations are
 //! > theorems.**
+//!
+//! Also, it is optionally `no-std`.
 //!
 //! ## Geometry from one local implementation
 //!
@@ -90,8 +92,8 @@
 //! V** ≅ V
 //! ```
 //!
-//! implemented by [`Tensor::collapse`](traits::Tensor::collapse). Geometry enters when [`Form`](traits::Form)
-//! chooses a lowering map
+//! implemented by [`Dual<Dual<Tensor>>::collapse`](traits::Dual<traits::Dual<traits::Tensor>>::collapse).
+//! Geometry enters when [`Form`](traits::Form) chooses a lowering map
 //!
 //! ```text
 //! ♭ : V → V*
@@ -215,6 +217,238 @@
 //! [`NondegenerateLift`](traits::calculus::NondegenerateLift) do the corresponding job for
 //! the lowering and raising maps, allowing generic Euclidean code to remain valid
 //! inside higher derivatives.
+//!
+//! ## Categories, contexts, and dependent structure
+//!
+//! Rust traits describe what a value *is* operationally. Diffable's category
+//! machinery describes the corresponding mathematical theories and records how
+//! particular mathematical objects depend on one another.
+//!
+//! It is useful to distinguish three levels:
+//!
+//! ```text
+//! Rust trait       Field, Vector, Manifold
+//!                  operational interface implemented by values
+//!
+//! category         𝐅𝐥𝐝, 𝐕𝐞𝐜𝐭, 𝐌𝐚𝐧
+//!                  nominal mathematical theory describing required structure
+//!
+//! context          C![𝐅𝐥𝐝], C![𝐑𝐞𝐚𝐥], ...
+//!                  finite type-level model witnessing a theory
+//! ```
+//!
+//! The typography is deliberate. Ordinary Rust names denote executable traits
+//! and types, while bold mathematical names denote theories in the category
+//! language. `C![𝒞]` denotes the context of a theory `𝒞`.
+//!
+//! A category does not represent a runtime value. It describes the structure,
+//! inherited properties, associated objects, and equations required by a
+//! mathematical theory. Categories themselves form a refinement graph: for
+//! example, `𝐑𝐞𝐚𝐥` carries field structure, while `𝐕𝐞𝐜𝐭` carries tensor and
+//! group structure.
+//!
+//! A context is a finite model of such a theory for a particular Rust object.
+//! The category says *what must hold*; the context records *how it holds here*.
+//! In particular, a context may contain named dependent edges to other
+//! mathematical objects, together with the exact contexts in which those child
+//! objects are known.
+//!
+//! For example, a tensor has a scalar field. At the ordinary Rust level this is
+//! simply an associated type:
+//!
+//! ```text
+//! Tensor::F : Field
+//! ```
+//!
+//! But the concrete scalar may carry more structure than `Tensor` requires. A
+//! Euclidean coordinate space over `f64`, for example, may retain an edge of the
+//! form
+//!
+//! ```text
+//! tensor context
+//!     |
+//!     `-- tensor::F
+//!           role    = Real
+//!           value   = f64
+//!           context = the Real context of f64
+//! ```
+//!
+//! The tensor theory requires only that this child satisfy `Field`. Because
+//! `Real` is a stronger role, the edge satisfies that weaker requirement without
+//! losing the context it already stores. Thus a parent may be viewed through a
+//! weaker theory while its dependent children retain stronger evidence.
+//!
+//! **Requirements may weaken; stored context does not.**
+//!
+//! Four operations form the core of this system:
+//!
+//! ```text
+//! ι          include an ordinary Rust type in its distinguished richest context
+//! Ⱶ<𝒞>       view an existing context as satisfying the weaker theory 𝒞
+//! π<Name>    follow a named dependent edge and recover its stored child context
+//! Model<𝒞,X> include X and then view its context as a model of 𝒞
+//! ```
+//!
+//! A named binding is therefore richer than an associated-type equality.
+//! Conceptually,
+//!
+//! ```text
+//! Binds<Name, Role, Value, Context>
+//! ```
+//!
+//! says that following `Name` reaches `Value`, that the child is known there
+//! under `Role`, and that `Context` is the exact contextual evidence carried by
+//! that edge. Applying `π<Name>` returns this stored information rather than
+//! reconstructing a fresh interpretation from the Rust type.
+//!
+//! This gives Diffable a restricted form of dependent programming. Generic code
+//! can reason not only about the type of an associated object, but about facts
+//! which depend on the particular context in which that object was reached. A
+//! manifold may therefore carry a tangent space together with its mathematical
+//! structure, or a tensor may carry a scalar whose stronger field properties
+//! remain available to later reasoning.
+//!
+//! Importantly, this machinery does **not** replace the ordinary trait hierarchy.
+//! [`Field`](traits::Field), [`Tensor`](traits::Tensor),
+//! [`Vector`](traits::Vector), [`Manifold`](traits::Manifold), and the rest remain
+//! the normal computational API. Contexts are used only when code needs to retain
+//! or inspect mathematical evidence which ordinary associated types cannot
+//! express.
+//!
+//! The resulting picture is:
+//!
+//! ```text
+//! ordinary Rust object
+//!        |
+//!        |  ι
+//!        v
+//! contextual object
+//!        |
+//!        |  π<Name>
+//!        v
+//! contextual child object
+//! ```
+//!
+//! Most users need never spell these types explicitly. Their purpose is to let
+//! Diffable's implementations preserve and derive mathematical facts without
+//! forcing that proof machinery into ordinary numerical code.
+//!
+//! ### Stable negative bounds
+//!
+//! The same finite context language also provides a restricted form of stable
+//! negative trait reasoning.
+//!
+//! Rust does not provide general stable negative trait bounds. In ordinary Rust,
+//! it is difficult to write two coherent implementations distinguished only by
+//!
+//! ```text
+//! T: Real
+//! ```
+//!
+//! versus
+//!
+//! ```text
+//! T: Field but not Real
+//! ```
+//!
+//! because ordinary trait lookup is open-ended: the compiler cannot generally
+//! treat the absence of an implementation as permanent mathematical evidence.
+//!
+//! A Diffable context is different. Its nominal theory graph is finite and
+//! closed. Searching that graph for a property therefore has a total type-level
+//! result: the property is either present or constructively absent. Diffable
+//! represents these outcomes using witnesses such as `Present` and `Absent`.
+//!
+//! Thus
+//!
+//! ```text
+//! C contains Real
+//! ```
+//!
+//! and
+//!
+//! ```text
+//! C contains Field
+//! C does not contain Real
+//! ```
+//!
+//! become disjoint regions of the context language. Implementations can dispatch
+//! on those regions without unstable specialization or language-level negative
+//! trait bounds.
+//!
+//! Automatic differentiation uses exactly this capability.
+//!
+//! A jet over a real scalar must itself support real operations so that ordinary
+//! generic real-valued functions remain differentiable. A jet over a field which
+//! is not real must remain merely field-valued. These implementations would
+//! otherwise overlap precisely when a concrete real scalar is passed through
+//! generic code which asks only for the weaker `Field` structure.
+//!
+//! [`JetRegion`](traits::calculus::JetRegion) resolves that ambiguity by
+//! partitioning canonical scalar contexts into two disjoint cases:
+//!
+//! ```text
+//! Real present
+//!     ⇒ use the Real jet interpretation
+//!
+//! Field present, Real absent
+//!     ⇒ use the Field jet interpretation
+//! ```
+//!
+//! The distinction matters at the public API. The differentiated function itself
+//! need not advertise that its concrete scalar will eventually be real:
+//!
+//! ```rust
+//! use diffable::{
+//!     coords::Coords,
+//!     traits::{calculus::d, Vector},
+//! };
+//!
+//! fn square<V: Vector>(x: V) -> V {
+//!     V::from_iter([x[0] * x[0]])
+//! }
+//!
+//! let first = d(square).at(Coords::from(3.0));
+//! let second = d(d(square)).at(Coords::from(3.0));
+//!
+//! assert_eq!(first[0], 6.0);
+//! assert_eq!(second[0], 2.0);
+//! ```
+//!
+//! Here `square` requires only [`Vector`](traits::Vector), so its scalar is known
+//! generically only through the weaker field theory. At evaluation, however,
+//! `Coords<f64, 1>` supplies a concrete real scalar.
+//!
+//! At the context-free `at` boundary, `ι` selects that scalar's distinguished
+//! richest context. `JetRegion` can then use both positive and negative facts
+//! about the finite context to select exactly one jet interpretation. Nested
+//! differentiation repeats the same process without requiring the caller to
+//! choose a jet mode, specify a scalar theory, or disambiguate overlapping
+//! implementations.
+//!
+//! Conceptually:
+//!
+//! ```text
+//! ordinary Rust type
+//!        |
+//!        |  ι
+//!        v
+//! finite closed context
+//!        |
+//!        |  property search
+//!        v
+//!   Present / Absent
+//!        |
+//!        v
+//! coherent implementation dispatch
+//! ```
+//!
+//! This is intentionally weaker than general negative trait bounds. Diffable
+//! cannot prove that an arbitrary Rust trait implementation will never exist.
+//! It can prove absence only inside the finite nominal theory graph represented
+//! by a context. That smaller closed-world proposition is nevertheless enough to
+//! make otherwise-overlapping mathematical implementations coherently selectable
+//! on stable Rust.
 //!
 //! ## Trait hierarchy
 //!
