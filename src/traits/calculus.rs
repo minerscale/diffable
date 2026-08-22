@@ -18,7 +18,7 @@
 //! interpreter boundary and provides the user-facing diagnostic when a program
 //! cannot be evaluated.
 //!
-//! [`TangentLift`] extends the construction from vector spaces to tangent
+//! [`Connection`] extends the construction from vector spaces to tangent
 //! bundles. [`FormLift`] and [`NondegenerateLift`] state that lowering and
 //! raising maps extend coherently when coordinates are replaced by jets.
 
@@ -33,13 +33,12 @@ use crate::{
     coords::Coords,
     impl_vector_ops,
     traits::{
-        Absent, ActionExists, ApplyTensorDecoration, Array, AssocName, Atomic, BindsReflected,
-        BothSided, CField, Cat, Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field,
-        Form, Handedness, Interval, Jetted, Left, Metric, NonZero, Nondegenerate, NormalizeWith,
-        OneSided, Point, Real, Reflect, ReflectedContext, Right, Sesquilinear, Sidedness, Sinister,
-        TangentBundle, Tensor, TensorDecoration, TensorNormalization, TensorOf,
-        TensorProductAction, Undecorated, Vector, jet, tensor_of, Ø, ː, ι, π, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐓𝐞𝐧𝐬,
-        𝒯,
+        Absent, ActionExists, Array, AssocName, Atomic, BindsReflected, BothSided, CField, Cat,
+        Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field, Form, Handedness,
+        Interval, Jetted, Left, Metric, NonZero, Nondegenerate, Normalize, NormalizeWith, OneSided,
+        Point, Real, Reflect, ReflectedContext, Rehandable, Right, Sesquilinear, Sidedness,
+        Sinister, TangentBundle, Tensor, TensorNormalizer, TensorOf, TensorProductAction,
+        Undecorated, Vector, jet, tensor_of, Ø, ː, ι, π, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐓𝐞𝐧𝐬, 𝒯,
     },
 };
 
@@ -138,6 +137,58 @@ impl<T: Point, U: Array<T>, V: Array<T>> IntoIterator for DirectSumArray<T, U, V
     }
 }
 
+type NormalizedDirectSum<U, V> = DirectSum<
+    <U as NormalizeWith<Undecorated>>::Normalized,
+    <V as NormalizeWith<Undecorated>>::Normalized,
+>;
+
+type NormalizedTensorProduct<U, V> = TensorProduct<
+    <U as NormalizeWith<Undecorated>>::Normalized,
+    <V as NormalizeWith<Undecorated>>::Normalized,
+>;
+
+impl<U, V> TensorNormalizer<DirectSum<U, V>> for NormalizeDirectSum
+where
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+{
+    type Undecorated = NormalizedDirectSum<U, V>;
+
+    type Dualized = Dual<NormalizedDirectSum<U, V>>;
+
+    type Sinistered
+        = Sinister<Self::Undecorated>
+    where
+        <DirectSum<U, V> as Tensor>::Action: Rehandable;
+
+    type DualSinistered
+        = Sinister<Dual<Self::Undecorated>>
+    where
+        <DirectSum<U, V> as Tensor>::Action: Rehandable;
+
+    fn undecorated(tensor: DirectSum<U, V>) -> Self::Undecorated {
+        Self::Undecorated::from_fn(|i| tensor[i])
+    }
+
+    fn dualized(tensor: DirectSum<U, V>) -> Self::Dualized {
+        Self::Dualized::from_fn(|i| tensor[i])
+    }
+
+    fn sinistered(tensor: DirectSum<U, V>) -> Self::Sinistered
+    where
+        <DirectSum<U, V> as Tensor>::Action: Rehandable,
+    {
+        Self::Sinistered::from_fn(|i| tensor[i])
+    }
+
+    fn dual_sinistered(tensor: DirectSum<U, V>) -> Self::DualSinistered
+    where
+        <DirectSum<U, V> as Tensor>::Action: Rehandable,
+    {
+        Self::DualSinistered::from_fn(|i| tensor[i])
+    }
+}
+
 impl<F: Field, H: Handedness, U: Tensor<F = F, Hand = H>, V: Tensor<F = F, Hand = H>> Tensor
     for DirectSum<U, V>
 {
@@ -150,33 +201,6 @@ impl<F: Field, H: Handedness, U: Tensor<F = F, Hand = H>, V: Tensor<F = F, Hand 
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(Self::Array::<V::F>::from_fn(f))
-    }
-}
-impl<U, V, D> TensorNormalization<DirectSum<U, V>, D> for NormalizeDirectSum
-where
-    U: Tensor + NormalizeWith<Undecorated>,
-    V: Tensor<F = U::F, Hand = U::Hand> + NormalizeWith<Undecorated>,
-    <U as NormalizeWith<Undecorated>>::Normalized:
-        Tensor<F = U::F, Hand = U::Hand, Action = U::Action>,
-    <V as NormalizeWith<Undecorated>>::Normalized:
-        Tensor<F = U::F, Hand = U::Hand, Action = V::Action>,
-    D: TensorDecoration
-        + ApplyTensorDecoration<
-            DirectSum<
-                <U as NormalizeWith<Undecorated>>::Normalized,
-                <V as NormalizeWith<Undecorated>>::Normalized,
-            >,
-        >,
-{
-    type Normalized = <D as ApplyTensorDecoration<
-        DirectSum<
-            <U as NormalizeWith<Undecorated>>::Normalized,
-            <V as NormalizeWith<Undecorated>>::Normalized,
-        >,
-    >>::Output;
-
-    fn normalize(tensor: DirectSum<U, V>) -> Self::Normalized {
-        D::apply(DirectSum::from_fn(|i| tensor[i]))
     }
 }
 
@@ -320,6 +344,85 @@ impl<
     pub fn from_fn_ij(f: impl FnMut(usize, usize) -> V::F) -> Self {
         Self(TensorProductArray::from_fn_ij(f))
     }
+
+    pub fn inverse(
+        mut self,
+    ) -> <TensorProduct<Dual<V>, Dual<U>> as NormalizeWith<Undecorated>>::Normalized
+    where
+        V::Action: TensorProductAction<U::Action>,
+    {
+        const { assert!(U::N == V::N, "cannot invert a non-square tensor product") }
+
+        let n = U::N;
+
+        let mut inverse = TensorProduct::<Dual<V>, Dual<U>>::from_fn_ij(|i, j| {
+            if i == j { V::F::one() } else { V::F::zero() }
+        });
+
+        for column in 0..n {
+            // Any nonzero pivot suffices algebraically; no metric/order required.
+            let pivot_row = (column..n)
+                .find(|&row| !self[row * n + column].is_zero())
+                .expect("tensor product is singular during Gauss-Jordan elimination");
+
+            if pivot_row != column {
+                for j in 0..n {
+                    let a = column * n + j;
+                    let b = pivot_row * n + j;
+
+                    let tmp = self[a];
+                    self[a] = self[b];
+                    self[b] = tmp;
+
+                    let tmp = inverse[a];
+                    inverse[a] = inverse[b];
+                    inverse[b] = tmp;
+                }
+            }
+
+            let pivot = self[column * n + column];
+
+            let pivot_inv = <V::F as DivRing>::Mul::inv(
+                NonZero::new(pivot)
+                    .expect("pivot selected as nonzero")
+                    .into(),
+            )
+            .into()
+            .0;
+
+            // Left-multiply the pivot row by pivot^{-1}.
+            for j in 0..n {
+                let index = column * n + j;
+
+                self[index] = pivot_inv * self[index];
+                inverse[index] = pivot_inv * inverse[index];
+            }
+
+            // Eliminate this column from every other row.
+            for row in 0..n {
+                if row == column {
+                    continue;
+                }
+
+                let factor = self[row * n + column];
+
+                if factor.is_zero() {
+                    continue;
+                }
+
+                for j in 0..n {
+                    let index = row * n + j;
+                    let pivot_index = column * n + j;
+
+                    self[index] = self[index] - factor * self[pivot_index];
+
+                    inverse[index] = inverse[index] - factor * inverse[pivot_index];
+                }
+            }
+        }
+
+        inverse.normalize()
+    }
 }
 
 impl<
@@ -338,33 +441,48 @@ impl<
         Self(Self::Array::from_fn(f))
     }
 }
-impl<U, V, D> TensorNormalization<TensorProduct<U, V>, D> for NormalizeTensorProduct
+
+impl<U, V> TensorNormalizer<TensorProduct<U, V>> for NormalizeTensorProduct
 where
-    U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>> + NormalizeWith<Undecorated>,
-    V: Tensor<F = U::F, Hand = Left, Action: ActionExists> + NormalizeWith<Undecorated>,
-    <U as NormalizeWith<Undecorated>>::Normalized:
-        Tensor<F = U::F, Hand = Right, Action = U::Action>,
-    <V as NormalizeWith<Undecorated>>::Normalized:
-        Tensor<F = U::F, Hand = Left, Action = V::Action>,
-    D: TensorDecoration
-        + ApplyTensorDecoration<
-            TensorProduct<
-                <U as NormalizeWith<Undecorated>>::Normalized,
-                <V as NormalizeWith<Undecorated>>::Normalized,
-            >,
-        >,
+    U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
+    V: Tensor<F = U::F, Hand = Left, Action: ActionExists>,
 {
-    type Normalized = <D as ApplyTensorDecoration<
-        TensorProduct<
-            <U as NormalizeWith<Undecorated>>::Normalized,
-            <V as NormalizeWith<Undecorated>>::Normalized,
-        >,
-    >>::Output;
-    fn normalize(tensor: TensorProduct<U, V>) -> Self::Normalized {
-        D::apply(TensorProduct::from_fn(|i| tensor[i]))
+    type Undecorated = NormalizedTensorProduct<U, V>;
+
+    type Dualized = Dual<NormalizedTensorProduct<U, V>>;
+
+    type Sinistered
+        = Sinister<Self::Undecorated>
+    where
+        <TensorProduct<U, V> as Tensor>::Action: Rehandable;
+
+    type DualSinistered
+        = Sinister<Dual<Self::Undecorated>>
+    where
+        <TensorProduct<U, V> as Tensor>::Action: Rehandable;
+
+    fn undecorated(tensor: TensorProduct<U, V>) -> Self::Undecorated {
+        Self::Undecorated::from_fn(|i| tensor[i])
+    }
+
+    fn dualized(tensor: TensorProduct<U, V>) -> Self::Dualized {
+        Self::Dualized::from_fn(|i| tensor[i])
+    }
+
+    fn sinistered(tensor: TensorProduct<U, V>) -> Self::Sinistered
+    where
+        <TensorProduct<U, V> as Tensor>::Action: Rehandable,
+    {
+        Self::Sinistered::from_fn(|i| tensor[i])
+    }
+
+    fn dual_sinistered(tensor: TensorProduct<U, V>) -> Self::DualSinistered
+    where
+        <TensorProduct<U, V> as Tensor>::Action: Rehandable,
+    {
+        Self::DualSinistered::from_fn(|i| tensor[i])
     }
 }
-
 impl<
     U: Tensor<Hand = Right, Action: TensorProductAction<V::Action>>,
     V: Tensor<F = U::F, Hand = Left, Action: ActionExists>,
@@ -562,6 +680,19 @@ where
         left * B::N + right
     }
 }
+
+impl<T, P> SwapKernel<ThroughSinister<P>> for Sinister<T>
+where
+    T: Tensor<Action: Rehandable> + SwapKernel<P>,
+    <T as SwapKernel<P>>::Swapped: Tensor<F = T::F, Hand = T::Hand, Action = T::Action>,
+{
+    type Swapped = Sinister<<T as SwapKernel<P>>::Swapped>;
+
+    fn source_index(output: usize) -> usize {
+        <T as SwapKernel<P>>::source_index(output)
+    }
+}
+
 impl<A, B, P> SwapKernel<OnLeft<P>> for TensorProduct<A, B>
 where
     A: Tensor<Hand = Right, Action: TensorProductAction<B::Action>> + SwapKernel<P>,
@@ -1434,15 +1565,15 @@ where
 /// runtime representations. Use [`TangentElement::new`] rather than spelling
 /// the marker explicitly.
 #[derive(Debug, Clone)]
-pub struct TangentElement<P: Point, V: Tensor, Tower>(
+pub struct TangentElement<P: Point, V: Tensor, Tower, const N: usize = 1>(
     pub P,
-    pub JetVector<𝐅𝐥𝐝::𝒞, V>,
+    pub JetVector<𝐅𝐥𝐝::𝒞, V, N>,
     PhantomData<Tower>,
 );
 
-impl<P: Point, V: Tensor, Tower> TangentElement<P, V, Tower> {
+impl<P: Point, V: Tensor, Tower, const N: usize> TangentElement<P, V, Tower, N> {
     /// Constructs a tangent element from its base point and local jet.
-    pub fn new(p: P, v: JetVector<𝐅𝐥𝐝::𝒞, V>) -> Self {
+    pub fn new(p: P, v: JetVector<𝐅𝐥𝐝::𝒞, V, N>) -> Self {
         Self(p, v, PhantomData)
     }
 
@@ -1452,25 +1583,30 @@ impl<P: Point, V: Tensor, Tower> TangentElement<P, V, Tower> {
     }
 
     /// Borrows the jet-valued tangent coordinate.
-    pub fn jet(&self) -> &JetVector<𝐅𝐥𝐝::𝒞, V> {
+    pub fn jet(&self) -> &JetVector<𝐅𝐥𝐝::𝒞, V, N> {
         &self.1
     }
 }
 
-type Prolongation<P, V, T> = TangentElement<P, V, ː<T, Ø>>;
+type Prolongation<P, V, T, const N: usize = 1> = TangentElement<P, V, ː<T, Ø>, N>;
 
 /// A first [`TangentElement`] at a point of `P`, expressed in `V` coordinates.
-pub type Tangent<P, V> = TangentElement<P, V, Ø>;
+pub type Tangent<P, V, const N: usize = 1> = TangentElement<P, V, Ø, N>;
 /// An iterated [`TangentElement`] with explicit [`TangentBundle`] witnesses.
-pub type TM<P, V, T, U> = TangentElement<P, V, ː<T, ː<U, Ø>>>;
+pub type TM<P, V, T, U, const N: usize = 1> = TangentElement<P, V, ː<T, ː<U, Ø>>, N>;
 /// The tangent bundle of `T`, represented by the canonical jet prolongation.
 ///
 /// This is the concrete iterated-tangent representation constructed by
-/// [`TangentLift`].
-pub type LiftedTM<P, V, T> = TM<P, V, T, Prolongation<P, V, T>>;
+/// [`Connection`].
+pub type LiftedTM<P, V, T, const N: usize = 1> = TM<P, V, T, Prolongation<P, V, T, N>, N>;
 
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
-    Chart<P, V> for TM<P, V, T, U>
+impl<
+    P: Point,
+    V: Tensor,
+    T: TangentBundle<P, V>,
+    U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+    const N: usize,
+> Chart<P, V> for TM<P, V, T, U, N>
 {
     type Global = T::Global;
 
@@ -1486,25 +1622,40 @@ impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVect
         Self(p.clone(), JetVector::zero(), PhantomData)
     }
 }
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
-    ExpMap<P, V> for TM<P, V, T, U>
+impl<
+    P: Point,
+    V: Tensor,
+    T: TangentBundle<P, V>,
+    U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+    const N: usize,
+> ExpMap<P, V> for TM<P, V, T, U, N>
 {
 }
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
-    TangentBundle<P, V> for TM<P, V, T, U>
+impl<
+    P: Point,
+    V: Tensor,
+    T: TangentBundle<P, V>,
+    U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+    const N: usize,
+> TangentBundle<P, V> for TM<P, V, T, U, N>
 {
 }
 
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
-    Chart<Self, JetVector<𝐅𝐥𝐝::𝒞, V>> for TM<P, V, T, U>
+impl<
+    P: Point,
+    V: Tensor,
+    T: TangentBundle<P, V>,
+    U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+    const N: usize,
+> Chart<Self, JetVector<𝐅𝐥𝐝::𝒞, V, N>> for TM<P, V, T, U, N>
 {
     type Global = U::Global;
 
-    fn to_local(&self, point: &Self) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>> {
+    fn to_local(&self, point: &Self) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V, N>> {
         U::chart_at(self).to_local(point)
     }
 
-    fn to_global(&self, coord: JetVector<𝐅𝐥𝐝::𝒞, V>) -> Self::Global {
+    fn to_global(&self, coord: JetVector<𝐅𝐥𝐝::𝒞, V, N>) -> Self::Global {
         U::chart_at(self).to_global(coord)
     }
 
@@ -1512,31 +1663,96 @@ impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVect
         p.clone()
     }
 }
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
-    ExpMap<Self, JetVector<𝐅𝐥𝐝::𝒞, V>> for TM<P, V, T, U>
+impl<
+    P: Point,
+    V: Tensor,
+    T: TangentBundle<P, V>,
+    U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+    const N: usize,
+> ExpMap<Self, JetVector<𝐅𝐥𝐝::𝒞, V, N>> for TM<P, V, T, U, N>
 {
 }
 
-impl<P: Point, V: Tensor, T: TangentBundle<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
-    TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>> for TM<P, V, T, U>
+impl<
+    P: Point,
+    V: Tensor,
+    T: TangentBundle<P, V>,
+    U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+    const N: usize,
+> TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V, N>> for TM<P, V, T, U, N>
 {
 }
 
-impl<P: Point, V: Tensor, T: TangentLift<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
-    TangentLift<P, V> for TM<P, V, T, U>
+impl<P: Point, V: Tensor, T: Connection<P, V>, U: TangentBundle<Self, JetVector<𝐅𝐥𝐝::𝒞, V>>>
+    Connection<P, V> for TM<P, V, T, U>
 {
-    fn tangent_to_local(
-        base: Tangent<P, V>,
-        local: Tangent<P, V>,
-    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>> {
+    fn tangent_to_local<const M: usize>(
+        base: Tangent<P, V, M>,
+        local: Tangent<P, V, M>,
+    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V, M>> {
         T::tangent_to_local(base, local)
     }
 
-    fn tangent_to_global(
-        base: Tangent<P, V>,
-        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V>,
-    ) -> (P, JetVector<𝐅𝐥𝐝::𝒞, V>) {
+    fn tangent_to_global<const M: usize>(
+        base: Tangent<P, V, M>,
+        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V, M>,
+    ) -> (P, JetVector<𝐅𝐥𝐝::𝒞, V, M>) {
         T::tangent_to_global(base, coordinate)
+    }
+}
+
+impl<P, V, T, const N: usize> Connection<LiftedTM<P, V, T, N>, JetVector<𝐅𝐥𝐝::𝒞, V, N>>
+    for Prolongation<P, V, T, N>
+where
+    P: Point,
+    V: Tensor,
+    T: Connection<P, V>,
+{
+    fn tangent_to_local<const M: usize>(
+        base: Tangent<LiftedTM<P, V, T, N>, JetVector<𝐅𝐥𝐝::𝒞, V, N>, M>,
+        local: Tangent<LiftedTM<P, V, T, N>, JetVector<𝐅𝐥𝐝::𝒞, V, N>, M>,
+    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, JetVector<𝐅𝐥𝐝::𝒞, V, N>, M>> {
+        let point = T::tangent_to_local::<N>(
+            TangentElement::new(base.0.0.clone(), base.0.1.clone()),
+            TangentElement::new(local.0.0.clone(), local.0.1.clone()),
+        )?;
+
+        Some(JetVector::from_fn(|i| {
+            local.1[i] - base.1[i] + Jet::from_parts(point[i], [Jet::<𝐅𝐥𝐝::𝒞, V::F, N>::zero(); M])
+        }))
+    }
+
+    fn tangent_to_global<const M: usize>(
+        base: Tangent<LiftedTM<P, V, T, N>, JetVector<𝐅𝐥𝐝::𝒞, V, N>, M>,
+        coordinate: JetVector<𝐅𝐥𝐝::𝒞, JetVector<𝐅𝐥𝐝::𝒞, V, N>, M>,
+    ) -> (
+        LiftedTM<P, V, T, N>,
+        JetVector<𝐅𝐥𝐝::𝒞, JetVector<𝐅𝐥𝐝::𝒞, V, N>, M>,
+    ) {
+        let combined =
+            JetVector::<𝐅𝐥𝐝::𝒞, JetVector<𝐅𝐥𝐝::𝒞, V, N>, M>::from_fn(
+                |i| base.1[i] + coordinate[i],
+            );
+
+        // The outer constant coefficient is an ordinary coordinate in the
+        // Prolongation chart on LiftedTM.
+        let point_coordinate = JetVector::<𝐅𝐥𝐝::𝒞, V, N>::from_fn(|i| combined[i][0]);
+
+        let (point, jet) = T::tangent_to_global::<N>(
+            TangentElement::new(base.0.0.clone(), base.0.1.clone()),
+            point_coordinate,
+        );
+
+        let point = TangentElement::new(point, jet);
+
+        // Everything above outer order zero is the tangent part.
+        let tangent = JetVector::from_fn(|i| {
+            let mut value = combined[i];
+            value[0] = Jet::<𝐅𝐥𝐝::𝒞, V::F, N>::zero();
+            value
+        });
+
+        (point, tangent)
     }
 }
 
@@ -1548,32 +1764,173 @@ impl<P: Point, V: Tensor, T: TangentLift<P, V>, U: TangentBundle<Self, JetVector
 /// bundle. [`Tangent`] is the first lifted element; [`TM`] and [`LiftedTM`]
 /// describe its iterated tangent bundles. Vector spaces receive the canonical
 /// translation-based implementation.
-pub trait TangentLift<P: Point, V: Tensor>: TangentBundle<P, V> {
+pub trait Connection<P: Point, V: Tensor>: TangentBundle<P, V> {
     /// Expresses `local` in the lifted chart centred at `base`.
-    fn tangent_to_local(
-        base: Tangent<P, V>,
-        local: Tangent<P, V>,
-    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>>;
+    fn tangent_to_local<const N: usize>(
+        base: Tangent<P, V, N>,
+        local: Tangent<P, V, N>,
+    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V, N>>;
     /// Reconstructs a global point and tangent jet from a lifted coordinate.
-    fn tangent_to_global(
-        base: Tangent<P, V>,
-        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V>,
-    ) -> (P, JetVector<𝐅𝐥𝐝::𝒞, V>);
+    fn tangent_to_global<const N: usize>(
+        base: Tangent<P, V, N>,
+        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V, N>,
+    ) -> (P, JetVector<𝐅𝐥𝐝::𝒞, V, N>);
+
+    /// Returns the coordinate acceleration at `p` of the geodesic with
+    /// initial tangent `v`, expressed in the fixed chart `self`.
+    ///
+    /// If
+    /// ```text
+    /// γ_v(t) = exp_p(t v)
+    /// ```
+    ///
+    /// and `x_v(t)` is that geodesic expressed in the coordinates of
+    /// `self`, this returns
+    ///
+    /// ```text
+    ///     x_v''(0).
+    /// ```
+    ///
+    /// The observing chart must contain `p`.
+    #[cfg(feature = "testing")]
+    fn geodesic_acceleration(&self, p: P, v: V) -> Option<V>
+    where
+        Self: Sized,
+        V: Vector,
+    {
+        // Observe everything in the fixed chart `self`.
+        //
+        // By the ExpMap law,
+        //
+        // Self::chart_at(&self.base_point()) == self,
+        //
+        // so the zero tangent based at `self.base_point()` selects exactly
+        // this lifted chart.
+        let observer =
+            Tangent::<P, V, 2>::new(self.base_point(), JetVector::<𝐅𝐥𝐝::𝒞, V, 2>::zero());
+
+        // The exponential chart centred at p.
+        let origin = Tangent::<P, V, 2>::new(p, JetVector::<𝐅𝐥𝐝::𝒞, V, 2>::zero());
+
+        // The 2-jet of t ↦ t v:
+        //
+        //     0 + v t + 0 t².
+        //
+        // Pushing this through the lifted exponential chart therefore
+        // constructs the 2-jet of γ_v(t) = exp_p(t v).
+        let radial = JetVector::<𝐅𝐥𝐝::𝒞, V, 2>::from_fn(|i| {
+            Jet::from_parts(V::F::zero(), [v[i], V::F::zero()])
+        });
+
+        let (point, tangent) = Self::tangent_to_global::<2>(origin, radial);
+
+        let geodesic = Tangent::<P, V, 2>::new(point, tangent);
+
+        // Re-express the geodesic in ONE FIXED chart. Using the chart
+        // centred at p here would make its coordinate acceleration vanish
+        // tautologically.
+        let local = Self::tangent_to_local::<2>(observer, geodesic)?;
+
+        // Jets store Taylor coefficients:
+        //
+        //     jet[2] = x''(0) / 2!
+        //
+        // so recover the actual acceleration.
+        let two = V::F::from_nat(2);
+
+        Some(V::from_fn(|i| local[i][2] * two))
+    }
+
+    /// Certifies that the geodesic spray is quadratic in tangent velocity.
+    ///
+    /// For a fixed chart and point p, define
+    ///
+    /// ```text
+    /// A_p(v) = d²/dt² |₀ chart(exp_p(t v)).
+    /// ```
+    ///
+    /// `Connection` requires:
+    ///
+    /// ```text
+    /// A_p(u + v) + A_p(u - v) = 2 A_p(u) + 2 A_p(v)
+    /// ```
+    ///
+    /// and
+    ///
+    /// ```text
+    ///     A_p(a v) = a² A_p(v).
+    /// ```
+    ///
+    /// Thus A_p is quadratic. Polarization therefore determines a unique
+    /// symmetric bilinear Christoffel operation
+    ///
+    /// ```text
+    ///     Γ_p(u, v)
+    ///       = -½ (A_p(u + v) - A_p(u) - A_p(v)),
+    /// ```
+    ///
+    /// so the lifted geodesic structure determines a torsion-free affine
+    /// connection.
+    #[cfg(feature = "testing")]
+    fn check_quadratic_geodesic_acceleration(&self, p: P, u: V, v: V, a: V::F) -> bool
+    where
+        Self: Sized,
+        V: Vector + PartialEq,
+    {
+        // The assertion is local to the observing chart. If p is not in
+        // this chart, there is no coordinate acceleration here to test.
+        if self.to_local(&p).is_none() {
+            return true;
+        }
+
+        let Some(a_u) = self.geodesic_acceleration(p.clone(), u.clone()) else {
+            return false;
+        };
+
+        let Some(a_v) = self.geodesic_acceleration(p.clone(), v.clone()) else {
+            return false;
+        };
+
+        let Some(a_u_plus_v) = self.geodesic_acceleration(p.clone(), u.clone() + v.clone()) else {
+            return false;
+        };
+
+        let Some(a_u_minus_v) = self.geodesic_acceleration(p.clone(), u - v.clone()) else {
+            return false;
+        };
+
+        let two = V::F::from_nat(2);
+
+        // Quadratic parallelogram identity.
+        if a_u_plus_v + a_u_minus_v != (a_u + a_v.clone()) * two {
+            return false;
+        }
+
+        let Some(a_av) = self.geodesic_acceleration(p, v * a) else {
+            return false;
+        };
+
+        // Degree-two homogeneity.
+        a_av == a_v * (a * a)
+    }
 }
 
-impl<P: Point, V: Tensor, T: TangentLift<P, V>> Chart<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝::𝒞, V>>
-    for Prolongation<P, V, T>
+impl<P: Point, V: Tensor, T: Connection<P, V>, const N: usize>
+    Chart<LiftedTM<P, V, T, N>, JetVector<𝐅𝐥𝐝::𝒞, V, N>> for Prolongation<P, V, T, N>
 {
-    type Global = LiftedTM<P, V, T>;
+    type Global = LiftedTM<P, V, T, N>;
 
-    fn to_local(&self, point: &LiftedTM<P, V, T>) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>> {
+    fn to_local(
+        &self,
+        point: &LiftedTM<P, V, T, N>,
+    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V, N>> {
         T::tangent_to_local(
             TangentElement::new(self.0.clone(), self.1.clone()),
             TangentElement::new(point.0.clone(), point.1.clone()),
         )
     }
 
-    fn to_global(&self, coordinate: JetVector<𝐅𝐥𝐝::𝒞, V>) -> Self::Global {
+    fn to_global(&self, coordinate: JetVector<𝐅𝐥𝐝::𝒞, V, N>) -> Self::Global {
         let (base, jet) = T::tangent_to_global(
             TangentElement::new(self.0.clone(), self.1.clone()),
             coordinate,
@@ -1582,36 +1939,36 @@ impl<P: Point, V: Tensor, T: TangentLift<P, V>> Chart<LiftedTM<P, V, T>, JetVect
         TangentElement::new(base, jet)
     }
 
-    fn chart_at(point: &LiftedTM<P, V, T>) -> Self {
+    fn chart_at(point: &LiftedTM<P, V, T, N>) -> Self {
         TangentElement::new(point.0.clone(), point.1.clone())
     }
 }
 
-impl<P: Point, V: Tensor, T: TangentLift<P, V>> ExpMap<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝::𝒞, V>>
-    for Prolongation<P, V, T>
+impl<P: Point, V: Tensor, T: Connection<P, V>, const N: usize>
+    ExpMap<LiftedTM<P, V, T, N>, JetVector<𝐅𝐥𝐝::𝒞, V, N>> for Prolongation<P, V, T, N>
 {
 }
-impl<P: Point, V: Tensor, T: TangentLift<P, V>>
-    TangentBundle<LiftedTM<P, V, T>, JetVector<𝐅𝐥𝐝::𝒞, V>> for Prolongation<P, V, T>
+impl<P: Point, V: Tensor, T: Connection<P, V>, const N: usize>
+    TangentBundle<LiftedTM<P, V, T, N>, JetVector<𝐅𝐥𝐝::𝒞, V, N>> for Prolongation<P, V, T, N>
 {
 }
 
-impl<V: Tensor> TangentLift<V, V> for V {
-    fn tangent_to_local(
-        base: Tangent<V, V>,
-        local: Tangent<V, V>,
-    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V>> {
+impl<V: Tensor> Connection<V, V> for V {
+    fn tangent_to_local<const N: usize>(
+        base: Tangent<V, V, N>,
+        local: Tangent<V, V, N>,
+    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V, N>> {
         Some(JetVector::from_fn(|i| {
-            local.1[i] - base.1[i] + Jet::from_parts(local.0[i] - base.0[i], [V::F::zero()])
+            local.1[i] - base.1[i] + Jet::from_parts(local.0[i] - base.0[i], [V::F::zero(); N])
         }))
     }
 
-    fn tangent_to_global(
-        base: Tangent<V, V>,
-        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V>,
-    ) -> (V, JetVector<𝐅𝐥𝐝::𝒞, V>) {
-        let combined = JetVector::<𝐅𝐥𝐝::𝒞, V>::from_fn(|i| {
-            Jet::from_parts(base.0[i], [V::F::zero()]) + base.1[i] + coordinate[i]
+    fn tangent_to_global<const N: usize>(
+        base: Tangent<V, V, N>,
+        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V, N>,
+    ) -> (V, JetVector<𝐅𝐥𝐝::𝒞, V, N>) {
+        let combined = JetVector::<𝐅𝐥𝐝::𝒞, V, N>::from_fn(|i| {
+            Jet::from_parts(base.0[i], [V::F::zero(); N]) + base.1[i] + coordinate[i]
         });
 
         let base = V::from_fn(|i| combined[i][0]);

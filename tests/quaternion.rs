@@ -12,7 +12,7 @@ use diffable::{
     hypersphere::S3,
     quaternion::Quaternion,
     test_field, test_nondegenerate, test_sesquilinear, test_vector,
-    traits::{Dual, Field, Form, Nondegenerate, Tensor},
+    traits::{Dual, Field, Form, Nondegenerate, Tensor, calculus::TensorProduct},
 };
 use num_traits::{One, Zero};
 use proptest::prelude::*;
@@ -178,5 +178,69 @@ proptest! {
             Quaternion::from(Complex::from(r));
 
         prop_assert_eq!(direct, through_complex);
+    }
+}
+
+#[test]
+fn tensor_product_inverse_is_two_sided_over_quaternions() {
+    type H2 = Coords<H, 2>;
+
+    let zero = H::zero();
+    let one = H::one();
+    let i = H::i();
+    let j = H::j();
+    let k = H::k();
+
+    // A = [ i  j ]
+    //     [ 0  k ]
+    //
+    // This is deliberately quaternion-valued so multiplication order matters.
+    let a: TensorProduct<H2, Dual<H2>> =
+        TensorProduct::from_fn_ij(|row, column| match (row, column) {
+            (0, 0) => i,
+            (0, 1) => j,
+            (1, 0) => zero,
+            (1, 1) => k,
+            _ => unreachable!(),
+        });
+
+    let inverse = a.inverse();
+
+    // For an upper-triangular matrix over a division ring,
+    //
+    // [a b]^-1 = [a^-1  -a^-1 b d^-1]
+    // [0 d]      [  0          d^-1    ]
+    //
+    // Here:
+    //   i^-1 = -i
+    //   k^-1 = -k
+    //   -(-i) j (-k) = 1
+    //
+    assert_eq!(inverse[0], -i);
+    assert_eq!(inverse[1], one);
+    assert_eq!(inverse[2], zero);
+    assert_eq!(inverse[3], -k);
+
+    // Check A A^-1 = I.
+    for row in 0..2 {
+        for column in 0..2 {
+            let value = (0..2).fold(H::zero(), |sum, n| {
+                sum + a[row * 2 + n] * inverse[n * 2 + column]
+            });
+
+            assert_eq!(value, if row == column { H::one() } else { H::zero() });
+        }
+    }
+
+    // And check A^-1 A = I as well. This is worth testing explicitly
+    // because over quaternions the distinction is observable.
+    for row in 0..2 {
+        for column in 0..2 {
+            let value = (0..2).fold(H::zero(), |sum, n| {
+                sum + inverse[row * 2 + n] * a[n * 2 + column]
+            });
+
+            assert_eq!(value, if row == column { H::one() } else { H::zero() });
+        }
     }
 }

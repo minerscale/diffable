@@ -1,5 +1,15 @@
 //! A reflected ontology of mathematical structure.
 //!
+//! This abstraction is simultaneously:
+//!   - A model of category theory.
+//!   - A model of model theory.
+//!   - A model of dependent types on stable Rust.
+//!   - A model of first-class traits in Rust.
+//!   - A hack approximating negative trait bounds on stable Rust.
+//!   - A place for additional information that can prevent overlapping impls.
+//!   - A system admitting interpretations from higher homotopy theory,
+//!     in particular as an ∞-groupoid.
+//!
 //! Rust traits are not first-class, so this module reifies selected mathematical
 //! traits as ordinary zero-sized types implementing [`Cat`].  [`Cat::C`] is the
 //! canonical [`Category`] signature of the reflected trait.

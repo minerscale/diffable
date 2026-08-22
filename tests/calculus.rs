@@ -3,9 +3,13 @@
 use diffable::{
     complex::Complex,
     coords::Coords,
+    epsilon_metric::R64,
     traits::{
-        Dual, Euclidean, Field, Form, Left, Normalize, Right, Sinister, Tensor, Vector,
-        calculus::{Contract, Here, OnLeft, Reassociate, Swap, TensorProduct, d},
+        BothSided, Cat, Dual, DualSinistered, Dualized, Euclidean, Field, Form, Left, Normalize,
+        NormalizeWith, Right, Sinister, Sinistered, Tensor, Undecorated, Vector,
+        calculus::{
+            Contract, Here, JetVector, OnLeft, Reassociate, Swap, TensorProduct, ThroughSinister, d,
+        },
     },
 };
 use num_traits::Zero;
@@ -291,4 +295,87 @@ fn jacobian_uses_output_by_input_orientation() {
     assert_eq!(jacobian[1], 3.0);
     assert_eq!(jacobian[2], 5.0);
     assert_eq!(jacobian[3], 7.0);
+}
+
+#[test]
+fn every_tensor_is_normalizable_without_rehanding() {
+    fn check<T>(x: T)
+    where
+        T: Tensor + Clone,
+    {
+        let _ = <T as NormalizeWith<Undecorated>>::normalize_with(x.clone());
+
+        let _ = <T as NormalizeWith<Dualized>>::normalize_with(x);
+    }
+
+    check(Coords::<f64, 2, 0>([1.0, 2.0]));
+}
+
+#[test]
+fn every_two_sided_tensor_is_normalizable_in_every_decoration() {
+    fn check<T>(x: T)
+    where
+        T: Tensor<Action = BothSided> + Clone,
+    {
+        let _ = <T as NormalizeWith<Undecorated>>::normalize_with(x.clone());
+
+        let _ = <T as NormalizeWith<Dualized>>::normalize_with(x.clone());
+
+        let _ = <T as NormalizeWith<Sinistered>>::normalize_with(x.clone());
+
+        let _ = <T as NormalizeWith<DualSinistered>>::normalize_with(x);
+    }
+
+    check(Coords::<f64, 2>([1.0, 2.0]));
+}
+
+fn arbitrary_tensor_product_can_swap<A, B>(x: TensorProduct<A, B>)
+where
+    A: Tensor<Action = BothSided, Hand = Right>,
+    B: Tensor<F = A::F, Action = BothSided, Hand = Left>,
+{
+    let _ = x.swap::<Here>();
+}
+
+#[test]
+fn swap_accepts_arbitrary_tensor_leaves() {
+    type V = Coords<R64, 2>;
+
+    let a = V::from_iter([1.0, 2.0].map(R64));
+    let b = V::from_iter([3.0, 4.0].map(R64));
+
+    arbitrary_tensor_product_can_swap(TensorProduct::pure(a, Sinister(b)));
+}
+
+#[allow(unused)]
+fn contraction_descends_through_sinister<V>(x: Sinister<TensorProduct<V, Dual<V>>>)
+where
+    V: Tensor<Hand = Right, Action = BothSided>,
+{
+    let _ = x.contract::<ThroughSinister<Here>>();
+}
+
+#[allow(unused)]
+fn swap_descends_through_sinister<V>(x: Sinister<TensorProduct<V, Sinister<V>>>)
+where
+    V: Tensor<Action = BothSided, Hand = Right>,
+{
+    let _ = x.swap::<ThroughSinister<Here>>();
+}
+
+#[allow(unused)]
+fn jetted_tensor_product_can_swap<C: Cat, V>()
+where
+    V: Tensor<Action = BothSided>,
+    JetVector<C, V>: Tensor<Action = BothSided, Hand = Right>,
+{
+    fn check<T>()
+    where
+        T: Tensor<Action = BothSided, Hand = Right>,
+        TensorProduct<T, Sinister<T>>: Tensor,
+    {
+        // compile witness
+    }
+
+    check::<JetVector<C, V>>();
 }

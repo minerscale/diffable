@@ -115,27 +115,33 @@ pub enum DualSinistered {}
 pub trait TensorDecoration {
     type ToggleDual: TensorDecoration;
     type ToggleSinister: TensorDecoration;
+
+    type Hand<H: Handedness>: Handedness;
 }
 impl TensorDecoration for Undecorated {
     type ToggleDual = Dualized;
     type ToggleSinister = Sinistered;
+    type Hand<H: Handedness> = H;
 }
 impl TensorDecoration for Dualized {
     type ToggleDual = Undecorated;
     type ToggleSinister = DualSinistered;
+    type Hand<H: Handedness> = H::Opposite;
 }
 impl TensorDecoration for Sinistered {
     type ToggleDual = DualSinistered;
     type ToggleSinister = Undecorated;
+    type Hand<H: Handedness> = H::Opposite;
 }
 impl TensorDecoration for DualSinistered {
     type ToggleDual = Sinistered;
     type ToggleSinister = Dualized;
+    type Hand<H: Handedness> = H;
 }
 
 #[doc(hidden)]
 pub trait ApplyTensorDecoration<V: Tensor>: TensorDecoration {
-    type Output: Tensor<F = V::F, Action = V::Action>;
+    type Output: Tensor<F = V::F, Action = V::Action, Hand = Self::Hand<V::Hand>>;
     fn apply(v: V) -> Self::Output;
 }
 impl<V: Tensor> ApplyTensorDecoration<V> for Undecorated {
@@ -165,7 +171,8 @@ impl<V: Tensor<Action = BothSided>> ApplyTensorDecoration<V> for DualSinistered 
 
 #[doc(hidden)]
 pub trait NormalizeWith<D: TensorDecoration>: Tensor {
-    type Normalized: Tensor<F = Self::F, Action = Self::Action>;
+    type Normalized: Tensor<F = Self::F, Action = Self::Action, Hand = D::Hand<Self::Hand>>;
+
     fn normalize_with(self) -> Self::Normalized;
 }
 
@@ -178,34 +185,40 @@ pub struct NormalizeDual;
 #[doc(hidden)]
 pub struct NormalizeSinister;
 
-#[doc(hidden)]
-pub trait TensorNormalization<T: Tensor, D: TensorDecoration> {
-    type Normalized: Tensor<F = T::F, Action = T::Action>;
-    fn normalize(tensor: T) -> Self::Normalized;
-}
+impl<T: Tensor> TensorNormalizer<T> for Atomic {
+    type Undecorated = T;
+    type Dualized = Dual<T>;
 
-impl<T, D> TensorNormalization<T, D> for Atomic
-where
-    T: Tensor,
-    D: TensorDecoration + ApplyTensorDecoration<T>,
-{
-    type Normalized = <D as ApplyTensorDecoration<T>>::Output;
+    type Sinistered
+        = Sinister<T>
+    where
+        T::Action: Rehandable;
 
-    fn normalize(tensor: T) -> Self::Normalized {
-        D::apply(tensor)
+    type DualSinistered
+        = Sinister<Dual<T>>
+    where
+        T::Action: Rehandable;
+
+    fn undecorated(tensor: T) -> Self::Undecorated {
+        tensor
     }
-}
 
-impl<T, D> NormalizeWith<D> for T
-where
-    T: Tensor,
-    D: TensorDecoration,
-    T::Normalization: TensorNormalization<T, D>,
-{
-    type Normalized = <T::Normalization as TensorNormalization<T, D>>::Normalized;
+    fn dualized(tensor: T) -> Self::Dualized {
+        Dual(tensor)
+    }
 
-    fn normalize_with(self) -> Self::Normalized {
-        <T::Normalization as TensorNormalization<T, D>>::normalize(self)
+    fn sinistered(tensor: T) -> Self::Sinistered
+    where
+        T::Action: Rehandable,
+    {
+        Sinister(tensor)
+    }
+
+    fn dual_sinistered(tensor: T) -> Self::DualSinistered
+    where
+        T::Action: Rehandable,
+    {
+        Sinister(Dual(tensor))
     }
 }
 
@@ -214,6 +227,7 @@ pub trait Normalize: Tensor + NormalizeWith<Undecorated> {
         <Self as NormalizeWith<Undecorated>>::normalize_with(self)
     }
 }
+
 impl<T: Tensor + NormalizeWith<Undecorated>> Normalize for T {}
 
 impl<V: Tensor> Dual<V> {
@@ -232,6 +246,44 @@ impl<V: Tensor> Dual<V> {
     }
 }
 
+impl<V: Tensor> TensorNormalizer<Dual<V>> for NormalizeDual {
+    type Undecorated = <V as NormalizeWith<Dualized>>::Normalized;
+
+    type Dualized = <V as NormalizeWith<Undecorated>>::Normalized;
+
+    type Sinistered
+        = <V as NormalizeWith<DualSinistered>>::Normalized
+    where
+        V::Action: Rehandable;
+
+    type DualSinistered
+        = <V as NormalizeWith<Sinistered>>::Normalized
+    where
+        V::Action: Rehandable;
+
+    fn undecorated(tensor: Dual<V>) -> Self::Undecorated {
+        <V as NormalizeWith<Dualized>>::normalize_with(tensor.0)
+    }
+
+    fn dualized(tensor: Dual<V>) -> Self::Dualized {
+        <V as NormalizeWith<Undecorated>>::normalize_with(tensor.0)
+    }
+
+    fn sinistered(tensor: Dual<V>) -> Self::Sinistered
+    where
+        V::Action: Rehandable,
+    {
+        <V as NormalizeWith<DualSinistered>>::normalize_with(tensor.0)
+    }
+
+    fn dual_sinistered(tensor: Dual<V>) -> Self::DualSinistered
+    where
+        V::Action: Rehandable,
+    {
+        <V as NormalizeWith<Sinistered>>::normalize_with(tensor.0)
+    }
+}
+
 impl<V: Tensor> Tensor for Dual<V> {
     type Normalization = NormalizeDual;
     type F = V::F;
@@ -242,18 +294,6 @@ impl<V: Tensor> Tensor for Dual<V> {
 
     fn from_fn(f: impl FnMut(usize) -> Self::F) -> Self {
         Self(V::from_fn(f))
-    }
-}
-
-impl<V, D> TensorNormalization<Dual<V>, D> for NormalizeDual
-where
-    V: Tensor + NormalizeWith<D::ToggleDual>,
-    D: TensorDecoration,
-{
-    type Normalized = <V as NormalizeWith<D::ToggleDual>>::Normalized;
-
-    fn normalize(tensor: Dual<V>) -> Self::Normalized {
-        <V as NormalizeWith<D::ToggleDual>>::normalize_with(tensor.0)
     }
 }
 
@@ -352,9 +392,77 @@ impl<V: Euclidean> Euclidean for Dual<V> {}
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Sinister<V: Tensor<Action = BothSided>>(pub V);
+pub struct Sinister<V: Tensor<Action: Rehandable>>(pub V);
 
-impl<V: Tensor<Action = BothSided>> Tensor for Sinister<V> {
+pub trait ApplicableTensorDecoration<T: Tensor>:
+    TensorDecoration + ApplyTensorDecoration<T>
+{
+}
+
+impl<T: Tensor> ApplicableTensorDecoration<T> for Undecorated {}
+impl<T: Tensor> ApplicableTensorDecoration<T> for Dualized {}
+
+impl<T: Tensor<Action = BothSided>> ApplicableTensorDecoration<T> for Sinistered {}
+
+impl<T: Tensor<Action = BothSided>> ApplicableTensorDecoration<T> for DualSinistered {}
+
+#[doc(hidden)]
+pub trait TensorNormalizer<T: Tensor> {
+    type Undecorated: Tensor<F = T::F, Action = T::Action, Hand = T::Hand>;
+
+    type Dualized: Tensor<F = T::F, Action = T::Action, Hand = <T::Hand as Handedness>::Opposite>;
+
+    type Sinistered: Tensor<F = T::F, Action = T::Action, Hand = <T::Hand as Handedness>::Opposite>
+    where
+        T::Action: Rehandable;
+
+    type DualSinistered: Tensor<F = T::F, Action = T::Action, Hand = T::Hand>
+    where
+        T::Action: Rehandable;
+
+    fn undecorated(tensor: T) -> Self::Undecorated;
+
+    fn dualized(tensor: T) -> Self::Dualized;
+
+    fn sinistered(tensor: T) -> Self::Sinistered
+    where
+        T::Action: Rehandable;
+
+    fn dual_sinistered(tensor: T) -> Self::DualSinistered
+    where
+        T::Action: Rehandable;
+}
+
+impl<V> TensorNormalizer<Sinister<V>> for NormalizeSinister
+where
+    V: Tensor<Action: Rehandable>,
+{
+    type Undecorated = <V as NormalizeWith<Sinistered>>::Normalized;
+
+    type Dualized = <V as NormalizeWith<DualSinistered>>::Normalized;
+
+    type Sinistered = <V as NormalizeWith<Undecorated>>::Normalized;
+
+    type DualSinistered = <V as NormalizeWith<Dualized>>::Normalized;
+
+    fn undecorated(tensor: Sinister<V>) -> Self::Undecorated {
+        <V as NormalizeWith<Sinistered>>::normalize_with(tensor.0)
+    }
+
+    fn dualized(tensor: Sinister<V>) -> Self::Dualized {
+        <V as NormalizeWith<DualSinistered>>::normalize_with(tensor.0)
+    }
+
+    fn sinistered(tensor: Sinister<V>) -> Self::Sinistered {
+        <V as NormalizeWith<Undecorated>>::normalize_with(tensor.0)
+    }
+
+    fn dual_sinistered(tensor: Sinister<V>) -> Self::DualSinistered {
+        <V as NormalizeWith<Dualized>>::normalize_with(tensor.0)
+    }
+}
+
+impl<V: Tensor<Action: Rehandable>> Tensor for Sinister<V> {
     type Normalization = NormalizeSinister;
     type F = V::F;
     type Hand = <V::Hand as Handedness>::Opposite;
@@ -367,27 +475,58 @@ impl<V: Tensor<Action = BothSided>> Tensor for Sinister<V> {
     }
 }
 
-impl<V, D> TensorNormalization<Sinister<V>, D> for NormalizeSinister
-where
-    V: Tensor<Action = BothSided> + NormalizeWith<D::ToggleSinister>,
-    D: TensorDecoration,
-{
-    type Normalized = <V as NormalizeWith<D::ToggleSinister>>::Normalized;
+impl<T: Tensor> NormalizeWith<Undecorated> for T {
+    type Normalized = <T::Normalization as TensorNormalizer<T>>::Undecorated;
 
-    fn normalize(tensor: Sinister<V>) -> Self::Normalized {
-        <V as NormalizeWith<D::ToggleSinister>>::normalize_with(tensor.0)
+    fn normalize_with(self) -> Self::Normalized {
+        <T::Normalization as TensorNormalizer<T>>::undecorated(self)
     }
 }
 
-impl_vector_ops!(Sinister<V>, V: Tensor<Action = BothSided>);
+impl<T: Tensor> NormalizeWith<Dualized> for T {
+    type Normalized = <T::Normalization as TensorNormalizer<T>>::Dualized;
 
-impl<V: Tensor<Action = BothSided>> AsRef<<Sinister<V> as Tensor>::Array<V::F>> for Sinister<V> {
+    fn normalize_with(self) -> Self::Normalized {
+        <T::Normalization as TensorNormalizer<T>>::dualized(self)
+    }
+}
+
+impl<T> NormalizeWith<Sinistered> for T
+where
+    T: Tensor,
+    T::Action: Rehandable,
+{
+    type Normalized = <T::Normalization as TensorNormalizer<T>>::Sinistered;
+
+    fn normalize_with(self) -> Self::Normalized {
+        <T::Normalization as TensorNormalizer<T>>::sinistered(self)
+    }
+}
+
+impl<T> NormalizeWith<DualSinistered> for T
+where
+    T: Tensor,
+    T::Action: Rehandable,
+{
+    type Normalized = <T::Normalization as TensorNormalizer<T>>::DualSinistered;
+
+    fn normalize_with(self) -> Self::Normalized {
+        <T::Normalization as TensorNormalizer<T>>::dual_sinistered(self)
+    }
+}
+
+impl_vector_ops!(
+    Sinister<V>,
+    V: Tensor<Action: Rehandable>
+);
+
+impl<V: Tensor<Action: Rehandable>> AsRef<<Sinister<V> as Tensor>::Array<V::F>> for Sinister<V> {
     fn as_ref(&self) -> &<Sinister<V> as Tensor>::Array<V::F> {
         self.0.as_ref()
     }
 }
 
-impl<V: Tensor<Action = BothSided>> AsMut<<Sinister<V> as Tensor>::Array<V::F>> for Sinister<V> {
+impl<V: Tensor<Action: Rehandable>> AsMut<<Sinister<V> as Tensor>::Array<V::F>> for Sinister<V> {
     fn as_mut(&mut self) -> &mut <Sinister<V> as Tensor>::Array<V::F> {
         self.0.as_mut()
     }
@@ -529,6 +668,12 @@ impl ActionExists for BothSided {
 
     type ProductOne = OneSided;
 }
+
+/// A sidedness for which the opposite scalar action exists, so the
+/// preferred hand may be reversed without inventing structure.
+pub trait Rehandable: ActionExists {}
+
+impl Rehandable for BothSided {}
 
 /// Computes the exterior action and preferred hand of a tensor product.
 ///
@@ -794,7 +939,7 @@ pub trait Tensor:
     /// Selects how this constructor participates in tensor normalization.
     /// Ordinary tensor spaces use [`Atomic`]; expression constructors provide
     /// their corresponding structural normalizer.
-    type Normalization;
+    type Normalization: TensorNormalizer<Self>;
 
     /// Builds a vector from a function of coordinate index. The canonical
     /// constructor — most other constructors reduce to this.
@@ -871,6 +1016,21 @@ pub trait Tensor:
         );
 
         out
+    }
+
+    fn flatten_index<const R: usize>(index: [usize; R]) -> usize {
+        let dimension = (1..=Self::N)
+            .find(|&i| i.pow(R as u32) == Self::N)
+            .expect("tensor component count is not an exact R-th power");
+    
+        index.into_iter().fold(0, |flat, i| {
+            assert!(
+                i < dimension,
+                "tensor component index {i} out of bounds for dimension {dimension}"
+            );
+    
+            flat * dimension + i
+        })
     }
 
     // Flat space has no singularities — to_local is always Some
@@ -1080,6 +1240,29 @@ macro_rules! impl_vector_ops {
         impl<$($generics)*> core::ops::IndexMut<usize> for $target {
             fn index_mut(&mut self, index: usize) -> &mut Self::Output {
                 &mut self.as_mut()[index]
+            }
+        }
+
+        impl<const R: usize, $($generics)*> core::ops::Index<[usize; R]> for $target
+        where
+            $target: $crate::traits::Tensor,
+        {
+            type Output = <$target as $crate::traits::Tensor>::F;
+        
+            fn index(&self, index: [usize; R]) -> &Self::Output {
+                &self[<$target as $crate::traits::Tensor>::flatten_index(index)]
+            }
+        }
+        
+        impl<const R: usize, $($generics)*> core::ops::IndexMut<[usize; R]> for $target
+        where
+            $target: $crate::traits::Tensor,
+        {
+            fn index_mut(&mut self, index: [usize; R]) -> &mut Self::Output {
+                let flat =
+                    <$target as $crate::traits::Tensor>::flatten_index(index);
+        
+                &mut self[flat]
             }
         }
     };

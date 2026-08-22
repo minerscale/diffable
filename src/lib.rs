@@ -212,7 +212,7 @@
 //! does not lift through the nested jets.
 //!
 //! This machinery is not restricted to flat coordinates. Implementing
-//! [`TangentLift`](traits::calculus::TangentLift) tells Diffable how a manifold's tangent
+//! [`Connection`](traits::calculus::Connection) tells Diffable how a manifold's tangent
 //! charts act on jets. [`FormLift`](traits::calculus::FormLift) and
 //! [`NondegenerateLift`](traits::calculus::NondegenerateLift) do the corresponding job for
 //! the lowering and raising maps, allowing generic Euclidean code to remain valid
@@ -469,7 +469,7 @@
 //! - [`Chart`](traits::Chart) provides coordinates; [`ExpMap`](traits::ExpMap)
 //!   says those coordinates are geodesic; [`TangentBundle`](traits::TangentBundle)
 //!   supplies such a chart at every point.
-//! - [`TangentLift`](traits::calculus::TangentLift) extends tangent charts through jet
+//! - [`Connection`](traits::calculus::Connection) extends tangent charts through jet
 //!   coordinates; [`FormLift`](traits::calculus::FormLift) and
 //!   [`NondegenerateLift`](traits::calculus::NondegenerateLift) extend the musical maps.
 //!
