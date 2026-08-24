@@ -14,8 +14,8 @@ use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 use crate::{
     coords::array_zip_map,
     traits::{
-        CField, DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Hand, Handedness, Interval,
-        Metric, NatZero, NonZero, Tensor,
+        BothSided, CField, DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Hand, Handedness,
+        Interval, Metric, NatZero, NonZero, Right, Tensor, Vector, calculus::TensorProduct,
     },
 };
 
@@ -643,6 +643,243 @@ pub fn nth_root_near_one<F: Field + Metric>(a: &F, n: usize) -> F {
     }
 
     panic!("didn't converge!");
+}
+
+pub(crate) fn endomorphism_exp<V>(a: TensorProduct<V, Dual<V>>) -> TensorProduct<V, Dual<V>>
+where
+    V: Vector<Hand = Right, Action = BothSided, F: FromReal>,
+{
+    type End<V> = TensorProduct<V, Dual<V>>;
+
+    /*
+     * Endomorphism composition.
+     *
+     * TensorProduct<V, Dual<V>> is represented outer-coordinate first,
+     * inner-coordinate second, so for right-handed V this is literally
+     *
+     *     (AB)^i_j = Σ_k A^i_k B^k_j.
+     */
+    let compose = |a: &End<V>, b: &End<V>| {
+        End::<V>::from_fn_ij(|i, j| {
+            (0..V::N).fold(V::F::zero(), |sum, k| sum + a[(i, k)] * b[(k, j)])
+        })
+    };
+
+    /*
+     * Scalars introduced from the real field are central, so ordinary
+     * Tensor::Mul is exactly the scaling operation wanted by the Padé
+     * polynomial.
+     */
+    let scale = |a: End<V>, r: <V::F as Interval>::R| a * V::F::from_real(r);
+
+    let identity = End::<V>::from_fn_ij(|i, j| if i == j { V::F::one() } else { V::F::zero() });
+
+    /*
+     * Pivoted solution of
+     *
+     *     A X = B.
+     *
+     * This is the tensor-coordinate equivalent of Matrix::solve_pivoted.
+     * We use |s²| for pivot ordering: all we need here is a genuine real
+     * ordering on the scalar magnitudes, not a metric on V itself.
+     */
+    let solve = |mut a: End<V>, mut b: End<V>| {
+        let zero = V::F::zero();
+
+        for column in 0..V::N {
+            let mut pivot_row = column;
+            let mut pivot_size = a[(column, column)].interval_squared(&zero).abs();
+
+            for row in (column + 1)..V::N {
+                let size = a[(row, column)].interval_squared(&zero).abs();
+
+                if pivot_size.exact_lt(size) {
+                    pivot_row = row;
+                    pivot_size = size;
+                }
+            }
+
+            if pivot_row != column {
+                for j in 0..V::N {
+                    let x = a[(column, j)];
+                    a[(column, j)] = a[(pivot_row, j)];
+                    a[(pivot_row, j)] = x;
+
+                    let x = b[(column, j)];
+                    b[(column, j)] = b[(pivot_row, j)];
+                    b[(pivot_row, j)] = x;
+                }
+            }
+
+            let pivot = a[(column, column)];
+
+            let pivot_inv = <V::F as DivRing>::Mul::inv(
+                NonZero::new(pivot)
+                    .expect("endomorphism exponential encountered a singular Padé denominator")
+                    .into(),
+            )
+            .into()
+            .0;
+
+            /*
+             * We are solving a right-handed matrix equation AX = B, so row
+             * operations act by left multiplication.
+             */
+            for j in 0..V::N {
+                a[(column, j)] = pivot_inv * a[(column, j)];
+
+                b[(column, j)] = pivot_inv * b[(column, j)];
+            }
+
+            for row in 0..V::N {
+                if row == column {
+                    continue;
+                }
+
+                let factor = a[(row, column)];
+
+                for j in 0..V::N {
+                    a[(row, j)] = a[(row, j)] - factor * a[(column, j)];
+
+                    b[(row, j)] = b[(row, j)] - factor * b[(column, j)];
+                }
+            }
+        }
+
+        b
+    };
+
+    /*
+     * Induced matrix one-norm:
+     *
+     *     ||A||₁ = max_j Σ_i |A^i_j|.
+     *
+     * `FromReal` gives us an Interval::R-valued magnitude for each scalar.
+     * Taking |s²| before sqrt means this remains useful even though Interval
+     * itself only promises a signed quadratic interval.
+     */
+    let one_norm = |a: &End<V>| {
+        let zero = V::F::zero();
+        let mut max = <V::F as Interval>::R::zero();
+
+        for j in 0..V::N {
+            let mut sum = <V::F as Interval>::R::zero();
+
+            for i in 0..V::N {
+                sum = sum + a[(i, j)].interval_squared(&zero).abs().sqrt();
+            }
+
+            if max.exact_lt(sum) {
+                max = sum;
+            }
+        }
+
+        max
+    };
+
+    /*
+     * Higham's θ₁₃ threshold for the [13/13] Padé approximant.
+     */
+    let theta = <<V::F as Interval>::R as NumCast>::from(5.371920351148152).unwrap();
+
+    let norm = one_norm(&a);
+
+    let s = if norm.exact_le(theta) {
+        0
+    } else {
+        <usize as NumCast>::from((norm / theta).log2().ceil()).unwrap()
+    };
+
+    /*
+     * Scale A by 2^-s.
+     */
+    let one = <V::F as Interval>::R::one();
+
+    let two = one + one;
+    let half = one / two;
+
+    let mut a = a;
+
+    for _ in 0..s {
+        a = scale(a, half);
+    }
+
+    /*
+     * [13/13] Padé coefficients.
+     *
+     * These are exactly the coefficients already used by MatrixExponential.
+     */
+    const B: [u64; 14] = [
+        64764752532480000,
+        32382376266240000,
+        7771770303897600,
+        1187353796428800,
+        129060195264000,
+        10559470521600,
+        670442572800,
+        33522128640,
+        1323241920,
+        40840800,
+        960960,
+        16380,
+        182,
+        1,
+    ];
+
+    let b = B.map(|n| <<V::F as Interval>::R as NumCast>::from(n).unwrap());
+
+    let a2 = compose(&a, &a);
+    let a4 = compose(&a2, &a2);
+    let a6 = compose(&a4, &a2);
+
+    /*
+     * U =
+     *
+     * A [
+     *   A⁶ (b₁₃ A⁶ + b₁₁ A⁴ + b₉ A²)
+     *   + b₇ A⁶ + b₅ A⁴ + b₃ A² + b₁ I
+     * ]
+     */
+    let u_inner_inner =
+        scale(a6.clone(), b[13]) + scale(a4.clone(), b[11]) + scale(a2.clone(), b[9]);
+
+    let u_inner = compose(&a6, &u_inner_inner)
+        + scale(a6.clone(), b[7])
+        + scale(a4.clone(), b[5])
+        + scale(a2.clone(), b[3])
+        + scale(identity.clone(), b[1]);
+
+    let u = compose(&a, &u_inner);
+
+    /*
+     * V =
+     *
+     * A⁶ (b₁₂ A⁶ + b₁₀ A⁴ + b₈ A²)
+     * + b₆ A⁶ + b₄ A⁴ + b₂ A² + b₀ I
+     */
+    let v_inner = scale(a6.clone(), b[12]) + scale(a4.clone(), b[10]) + scale(a2.clone(), b[8]);
+
+    let v = compose(&a6, &v_inner)
+        + scale(a6, b[6])
+        + scale(a4, b[4])
+        + scale(a2, b[2])
+        + scale(identity, b[0]);
+
+    /*
+     * r₁₃(A) = (V - U)^-1 (V + U).
+     */
+    let mut r = solve(v.clone() - u.clone(), v + u);
+
+    /*
+     * Undo scaling:
+     *
+     *     exp(A) = exp(A / 2^s)^(2^s).
+     */
+    for _ in 0..s {
+        r = compose(&r, &r);
+    }
+
+    r
 }
 
 impl<

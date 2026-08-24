@@ -27,18 +27,20 @@ use core::{
     ops::{Add, Deref, DerefMut, Div, Index, IndexMut, Mul, Neg, Rem, Sub},
 };
 
-use num_traits::{Euclid, Inv, Num, NumCast, One, ToPrimitive, Zero};
+use num_traits::{Euclid, Inv, Num, NumCast, One, ToPrimitive, Zero, real::Real as _};
 
 use crate::{
     coords::Coords,
     impl_vector_ops,
+    matrix::endomorphism_exp,
     traits::{
         Absent, ActionExists, Array, AssocName, Atomic, BindsReflected, BothSided, CField, Cat,
-        Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field, Form, Handedness,
-        Interval, Jetted, Left, Metric, NonZero, Nondegenerate, Normalize, NormalizeWith, OneSided,
-        Point, Real, Reflect, ReflectedContext, Rehandable, Right, Sesquilinear, Sidedness,
-        Sinister, TangentBundle, Tensor, TensorNormalizer, TensorOf, TensorProductAction,
-        Undecorated, Vector, jet, tensor_of, Ø, ː, ι, π, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐓𝐞𝐧𝐬, 𝒯,
+        Category, Chart, DivRing, Dual, Euclidean, ExactCmp, ExpMap, Field, Form, FromReal,
+        Handedness, Interval, Jetted, Left, Metric, NonZero, Nondegenerate, Normalize,
+        NormalizeWith, OneSided, Point, Real, Reflect, ReflectedContext, Rehandable, Right,
+        Sesquilinear, Sidedness, Sinister, TangentBundle, Tensor, TensorNormalizer, TensorOf,
+        TensorProductAction, Undecorated, Vector, jet, tensor_of, Ø, ː, ι, π, Ⱶ, 𝐅𝐥𝐝, 𝐅𝐨𝐫𝐦, 𝐑𝐞𝐚𝐥,
+        𝐓𝐞𝐧𝐬, 𝒯,
     },
 };
 
@@ -1701,12 +1703,8 @@ impl<P: Point, V: Tensor, T: Connection<P, V>, U: TangentBundle<Self, JetVector<
     }
 }
 
-impl<P, V, T, const N: usize> Connection<LiftedTM<P, V, T, N>, JetVector<𝐅𝐥𝐝::𝒞, V, N>>
-    for Prolongation<P, V, T, N>
-where
-    P: Point,
-    V: Tensor,
-    T: Connection<P, V>,
+impl<P: Point, V: Tensor, T: Connection<P, V>, const N: usize>
+    Connection<LiftedTM<P, V, T, N>, JetVector<𝐅𝐥𝐝::𝒞, V, N>> for Prolongation<P, V, T, N>
 {
     fn tangent_to_local<const M: usize>(
         base: Tangent<LiftedTM<P, V, T, N>, JetVector<𝐅𝐥𝐝::𝒞, V, N>, M>,
@@ -1756,6 +1754,8 @@ where
     }
 }
 
+pub type Christoffel<V> = TensorProduct<TensorProduct<V, Dual<V>>, Dual<V>>;
+
 /// Extends a tangent-bundle chart to jet-valued tangent coordinates.
 ///
 /// Implementing this trait is the admission point for differentiating through
@@ -1776,6 +1776,45 @@ pub trait Connection<P: Point, V: Tensor>: TangentBundle<P, V> {
         coordinate: JetVector<𝐅𝐥𝐝::𝒞, V, N>,
     ) -> (P, JetVector<𝐅𝐥𝐝::𝒞, V, N>);
 
+    fn christoffel_symbols(&self, p: P) -> Option<Christoffel<V>>
+    where
+        V: Vector<Hand = Right, Action = BothSided>,
+    {
+        let origin = TangentElement::new(
+            LiftedTM::<P, V, Self, 1>::new(p, Zero::zero()),
+            Zero::zero(),
+        );
+        let observer = TangentElement::new(
+            LiftedTM::<P, V, Self, 1>::new(self.base_point(), Zero::zero()),
+            Zero::zero(),
+        );
+
+        let failed = core::cell::Cell::new(false);
+
+        let transition = |v: JetVector<𝐅𝐥𝐝::𝒞, V, 1, Jet<𝐅𝐥𝐝::𝒞, <V as Tensor>::F, 1>>| -> _ {
+            let (point, tangent) = Prolongation::<P, V, Self, 1>::tangent_to_global::<1>(
+                origin.clone(),
+                TensorOver(v.0, PhantomData),
+            );
+
+            match Prolongation::<P, V, Self, 1>::tangent_to_local::<1>(
+                observer.clone(),
+                TangentElement::new(point, tangent),
+            ) {
+                Some(local) => TensorOver(local.0, PhantomData),
+
+                None => {
+                    failed.set(true);
+                    Zero::zero()
+                }
+            }
+        };
+
+        let christoffel = -evaluate_derivative_at(&d(d(transition)), V::zero()).0;
+
+        failed.get().then_some(christoffel)
+    }
+
     /// Returns the coordinate acceleration at `p` of the geodesic with
     /// initial tangent `v`, expressed in the fixed chart `self`.
     ///
@@ -1795,7 +1834,6 @@ pub trait Connection<P: Point, V: Tensor>: TangentBundle<P, V> {
     #[cfg(feature = "testing")]
     fn geodesic_acceleration(&self, p: P, v: V) -> Option<V>
     where
-        Self: Sized,
         V: Vector,
     {
         // Observe everything in the fixed chart `self`.
@@ -1913,6 +1951,798 @@ pub trait Connection<P: Point, V: Tensor>: TangentBundle<P, V> {
         // Degree-two homogeneity.
         a_av == a_v * (a * a)
     }
+
+    #[cfg(feature = "testing")]
+    fn check_tangent_to_local_agrees_with_chart(base: P, point: P) -> bool
+    where
+        V: PartialEq,
+        JetVector<𝐅𝐥𝐝::𝒞, V>: PartialEq,
+    {
+        let chart = Self::chart_at(&base);
+
+        let Some(local) = chart.to_local(&point) else {
+            return true;
+        };
+
+        let lifted_base = Tangent::new(base, JetVector::<𝐅𝐥𝐝::𝒞, V>::zero());
+
+        let lifted_point = Tangent::new(point, JetVector::<𝐅𝐥𝐝::𝒞, V>::zero());
+
+        let expected = constant_jet_vector(local);
+
+        Self::tangent_to_local(lifted_base, lifted_point).is_some_and(|actual| actual == expected)
+    }
+
+    #[cfg(feature = "testing")]
+    fn check_tangent_to_global_agrees_with_chart(base: P, local: V) -> bool
+    where
+        V: PartialEq,
+        JetVector<𝐅𝐥𝐝::𝒞, V>: PartialEq,
+    {
+        use crate::traits::OptionallyOption;
+
+        let chart = Self::chart_at(&base);
+
+        let expected = match chart.to_global(local.clone()).into_option() {
+            Some(point) => point,
+            None => return true,
+        };
+
+        let lifted_base = Tangent::new(base, JetVector::<𝐅𝐥𝐝::𝒞, V>::zero());
+
+        let coordinate = constant_jet_vector(local);
+
+        let (actual, tangent) = Self::tangent_to_global(lifted_base, coordinate);
+
+        tangent == JetVector::zero() && chart.to_local(&actual) == chart.to_local(&expected)
+    }
+}
+
+fn tangent_lerp<
+    P: Point,
+    V: Vector<Hand = Right, Action = BothSided, F: FromReal>,
+    T: Connection<P, V>,
+    const N: usize,
+>(
+    connection: &T,
+    target: V,
+    t: Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>,
+) -> Tangent<P, V, N> {
+    let t = Jet::<𝐅𝐥𝐝::𝒞, V::F, N>::from_parts(
+        V::F::from_real(t[0]),
+        core::array::from_fn(|i| V::F::from_real(t[i + 1])),
+    );
+
+    let radial = JetVector::<𝐅𝐥𝐝::𝒞, V, N>::from_fn(|i| {
+        Jet::<𝐅𝐥𝐝::𝒞, V::F, N>::from_parts(target[i], [Zero::zero(); N]) * t
+    });
+
+    let base = Tangent::<P, V, N>::new(connection.base_point(), JetVector::zero());
+
+    let (point, tangent) = T::tangent_to_global::<N>(base, radial);
+
+    TangentElement::new(point, tangent)
+}
+
+pub const TRANSPORT_ORDER: usize = 6;
+
+pub struct Ordered<
+    'a,
+    𝒞: Cat,
+    P: Point,
+    V: Vector<Hand = Right, Action = BothSided, F: FromReal>,
+    T: ParallelTransport<𝒞, P, V>,
+    const N: usize,
+> {
+    connection: &'a T,
+    _phantom: PhantomData<fn() -> (𝒞, P, V)>,
+}
+
+impl<
+    'a,
+    𝒞: Cat,
+    P: Point,
+    V: Vector<Hand = Right, Action = BothSided, F: FromReal>,
+    T: ParallelTransport<𝒞, P, V>,
+    const N: usize,
+> Ordered<'a, 𝒞, P, V, T, N>
+{
+    pub fn transport(
+        &self,
+        curve: impl Fn(
+            Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>,
+        ) -> Tangent<P, V, N>,
+        vector: V,
+        from: <V::F as Interval>::R,
+        to: <V::F as Interval>::R,
+    ) -> V {
+        self.connection.transport_with::<N>(curve, vector, from, to)
+    }
+
+    pub fn lower(&self, target: V, v: V) -> Dual<V>
+    where
+        V: Form,
+    {
+        self.connection.lower_with::<N>(target, v)
+    }
+
+    pub fn raise(&self, target: V, v: Dual<V>) -> V
+    where
+        V: Nondegenerate,
+    {
+        self.connection.raise_with::<N>(target, v)
+    }
+}
+
+pub trait ParallelTransport<
+    𝒞: Cat,
+    P: Point,
+    V: Vector<Hand = Right, Action = BothSided, F: FromReal>,
+>: Connection<P, V>
+{
+    fn transport_with<const N: usize>(
+        &self,
+        curve: impl Fn(Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>) -> Tangent<P, V, N>,
+        vector: V,
+        from: <V::F as Interval>::R,
+        to: <V::F as Interval>::R,
+    ) -> V;
+
+    fn order<'a, const N: usize>(&'a self) -> Ordered<'a, 𝒞, P, V, Self, N> {
+        Ordered { connection: self, _phantom: PhantomData }
+    }
+
+    // TODO: make transport return an endomorphism rather than just V for optimisation
+    fn transport(
+        &self,
+        curve: impl Fn(
+            Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, TRANSPORT_ORDER>,
+        ) -> Tangent<P, V, TRANSPORT_ORDER>,
+        vector: V,
+        from: <V::F as Interval>::R,
+        to: <V::F as Interval>::R,
+    ) -> V {
+        self.transport_with::<TRANSPORT_ORDER>(curve, vector, from, to)
+    }
+
+    fn lower_with<const N: usize>(&self, target: V, v: V) -> Dual<V>
+    where
+        V: Form,
+    {
+        const {
+            assert!(N > 0, "lowering requires a positive Taylor order");
+        }
+
+        let zero = <V::F as Interval>::R::zero();
+        let one = <V::F as Interval>::R::one();
+
+        // γ(t) = exp_base(t · target)
+        let curve = |t| tangent_lerp(self, target.clone(), t);
+
+        // Pull v from the target fibre back to the model fibre.
+        let v = self.transport_with::<N>(&curve, v, one, zero);
+
+        // The i-th component of the lowered covector at the target is
+        //
+        //     g_target(e_i, v)
+        //
+        // and form compatibility lets us evaluate this after pulling both
+        // arguments back to the model fibre.
+        Dual::<V>::from_fn(|i| {
+            let basis = V::from_fn(|j| if i == j { V::F::one() } else { V::F::zero() });
+
+            let basis = self.transport_with::<N>(&curve, basis, one, zero);
+
+            basis.dot(&v)
+        })
+    }
+
+    fn lower(&self, target: V, v: V) -> Dual<V>
+    where
+        V: Form,
+    {
+        self.lower_with::<TRANSPORT_ORDER>(target, v)
+    }
+
+    fn raise_with<const N: usize>(&self, target: V, v: Dual<V>) -> V
+    where
+        V: Nondegenerate,
+    {
+        const {
+            assert!(N > 0, "raising requires a positive Taylor order");
+        }
+
+        let zero = <V::F as Interval>::R::zero();
+        let one = <V::F as Interval>::R::one();
+
+        // γ(t) = exp_base(t · target)
+        let curve = |t| tangent_lerp(self, target.clone(), t);
+
+        // Pull the target covector back to the model fibre.
+        //
+        // If P : V_base -> V_target is parallel transport, then
+        //
+        //     (P* v)(e_i) = v(P e_i).
+        let v = Dual::<V>::from_fn(|i| {
+            let basis = V::from_fn(|j| if i == j { V::F::one() } else { V::F::zero() });
+
+            let basis = self.transport_with::<N>(&curve, basis, zero, one);
+
+            basis.pairing(&v)
+        });
+
+        // Raise in the model fibre, where the original musical isomorphism lives.
+        let v = V::sharp(v);
+
+        // Push the resulting vector out to the target fibre.
+        self.transport_with::<N>(curve, v, zero, one)
+    }
+
+    fn raise(&self, target: V, v: Dual<V>) -> V
+    where
+        V: Nondegenerate,
+    {
+        self.raise_with::<TRANSPORT_ORDER>(target, v)
+    }
+
+
+    #[cfg(feature = "testing")]
+    fn check_holonomy_preserves_form<const N: usize>(
+        &self,
+        target: V,
+        closed_curve: impl Fn(Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>) -> Tangent<P, V, N>,
+        u: V,
+        v: V,
+    ) -> bool
+    where
+        V: Form + PartialEq,
+    {
+        let base = self.order::<N>();
+        let before = u.pairing(&base.lower(target.clone(), v.clone()));
+
+        let u = base.transport(&closed_curve, u, Zero::zero(), One::one());
+        let v = base.transport(&closed_curve, v, Zero::zero(), One::one());
+
+        let after = u.pairing(&base.lower(target, v));
+
+        before == after
+    }
+}
+
+impl<𝒞, P, V, T> ParallelTransport<𝒞, P, V> for T
+where
+    𝒞: Cat,
+    P: Point,
+    V: Vector<Hand = Right, Action = BothSided, F: FromReal> + ι<C: TransportRegion<𝒞>>,
+    T: Connection<P, V>,
+{
+    fn transport_with<const N: usize>(
+        &self,
+        curve: impl Fn(Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>) -> Tangent<P, V, N>,
+        vector: V,
+        from: <V::F as Interval>::R,
+        to: <V::F as Interval>::R,
+    ) -> V {
+        <V as ι>::C::parallel_transport(self, curve, vector, from, to)
+    }
+}
+
+#[doc(hidden)]
+pub trait TransportRegion<𝒞: Cat>: Category {
+    fn parallel_transport<
+        P: Point,
+        V: Vector<Hand = Right, Action = BothSided, F: FromReal>,
+        T: Connection<P, V>,
+        F: Fn(Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>) -> Tangent<P, V, N>,
+        const N: usize,
+    >(
+        connection: &T,
+        curve: F,
+        vector: V,
+        from: <V::F as Interval>::R,
+        to: <V::F as Interval>::R,
+    ) -> V;
+}
+
+fn parallel_transport_taylor<
+    P: Point,
+    V: Vector<Hand = Right, Action = BothSided, F: FromReal>,
+    T: Connection<P, V>,
+    F: Fn(Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>) -> Tangent<P, V, N>,
+    const N: usize,
+>(
+    connection: &T,
+    curve: F,
+    vector: V,
+    from: <V::F as Interval>::R,
+    to: <V::F as Interval>::R,
+) -> V {
+    const {
+        assert!(N > 0, "parallel transport requires a positive Taylor order");
+    }
+
+    let mut t = from;
+    let mut vector = vector;
+    let mut h = to - from;
+
+    let step = |t: <V::F as Interval>::R, h: <V::F as Interval>::R, vector: V| -> Option<V> {
+        // Evaluate the N-jet of the curve about t.
+        let time = Jet::<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>::new(
+            t,
+            core::array::from_fn(|i| {
+                if i == 0 {
+                    <V::F as Interval>::R::one()
+                } else {
+                    <V::F as Interval>::R::zero()
+                }
+            }),
+        );
+
+        let path = curve(time);
+
+        // Regard the curve jet as a point of the prolonged tangent bundle.
+        let point = LiftedTM::<P, V, T, N>::new(path.0.clone(), path.1.clone());
+
+        let connection = Prolongation::<P, V, T, N>::new(
+            connection.base_point(),
+            JetVector::<𝐅𝐥𝐝::𝒞, V, N>::zero(),
+        );
+
+        // Differentiating the path jet gives its velocity jet.
+        let velocity = TensorOver(V::Array::from_fn(|i| path.1[i].derivative()), PhantomData);
+
+        // Γ itself is evaluated in the prolonged connection, so this is the
+        // complete N-jet of the transport generator rather than Γ frozen at t.
+        let christoffel = connection.christoffel_symbols(point)?;
+
+        let a = -TensorProduct::pure(christoffel, Sinister(velocity))
+            .reassociate::<Right>()
+            .contract::<OnRight<ThroughSinister<Here>>>();
+
+        // Solve
+        //
+        //     X' = A X,     X(0) = vector
+        //
+        // in the truncated Taylor algebra.  The recurrence is triangular:
+        // starting from the constant jet, N substitutions determine all
+        // coefficients through order N.
+        let mut x = TensorOver(
+            V::Array::from_fn(|i| {
+                Jet::from_parts(vector[i], core::array::from_fn(|_| V::F::zero()))
+            }),
+            PhantomData,
+        );
+
+        for _ in 0..N {
+            let derivative = TensorProduct::pure(a.clone(), Sinister(x))
+                .reassociate()
+                .contract();
+
+            x = TensorOver(
+                V::Array::from_fn(|i| Jet::integrate_from(vector[i], derivative[i])),
+                PhantomData,
+            );
+        }
+
+        // Evaluate the Taylor polynomial at the proposed real step h.
+        let h = V::F::from_real(h);
+
+        Some(V::from_fn(|i| {
+            let mut value = x[i][N];
+
+            for n in (0..N).rev() {
+                value = value * h + x[i][n];
+            }
+
+            value
+        }))
+    };
+
+    if from.exact_eq(to) {
+        return vector;
+    }
+
+    let two = <V::F as Interval>::R::one() + <V::F as Interval>::R::one();
+
+    loop {
+        // Do one full step and two half steps.  Apart from detecting local
+        // chart failure, their disagreement gives us an error estimate without
+        // requiring an N+1 jet.
+        let half_h = h / two;
+        let midpoint = t + half_h;
+        let next = midpoint + half_h;
+        let full_h = next - t;
+
+        let full = step(t, full_h, vector.clone());
+        let half =
+            step(t, half_h, vector.clone()).and_then(|vector| step(midpoint, half_h, vector));
+
+        let Some(half) = half else {
+            h = half_h;
+            continue;
+        };
+
+        let Some(full) = full else {
+            h = half_h;
+            continue;
+        };
+
+        let epsilon = <V::F as Interval>::R::epsilon();
+        let epsilon_squared = epsilon * epsilon;
+
+        let accurate = (0..V::N).all(|i| {
+            let error = full[i].interval_squared(&half[i]).abs();
+
+            let magnitude = half[i].interval_squared(&V::F::zero()).abs();
+
+            let one = <V::F as Interval>::R::one();
+
+            let scale = if magnitude.exact_lt(one) {
+                one
+            } else {
+                magnitude
+            };
+
+            error.exact_le(epsilon_squared * scale)
+        });
+
+        if !accurate {
+            h = half_h;
+            continue;
+        }
+
+        // The two-half-step result is the better approximation.
+        vector = half;
+
+        let progresses = (to - next).abs().exact_lt((to - t).abs());
+
+        if !progresses {
+            return vector;
+        }
+
+        t = next;
+
+        if t.exact_eq(to) {
+            return vector;
+        }
+
+        // Be optimistic after a successful step, but never walk past `to`.
+        let doubled = h * two;
+        let remaining = to - t;
+
+        h = if h.is_sign_negative() {
+            if remaining.exact_lt(doubled) {
+                doubled
+            } else {
+                remaining
+            }
+        } else if doubled.exact_lt(remaining) {
+            doubled
+        } else {
+            remaining
+        };
+    }
+}
+
+// Generic connection/vector-space region:
+// enough structure to do Taylor transport, but constructively no Form.
+impl<C> TransportRegion<𝐓𝐞𝐧𝐬::𝒞> for C
+where
+    C: Ⱶ<𝐓𝐞𝐧𝐬::𝒞> + Ⱶ<𝐅𝐨𝐫𝐦::𝒞, Absent>,
+{
+    fn parallel_transport<
+        P: Point,
+        V: Vector<Hand = Right, Action = BothSided, F: FromReal>,
+        T: Connection<P, V>,
+        F: Fn(Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>) -> Tangent<P, V, N>,
+        const N: usize,
+    >(
+        connection: &T,
+        curve: F,
+        vector: V,
+        from: <V::F as Interval>::R,
+        to: <V::F as Interval>::R,
+    ) -> V {
+        parallel_transport_taylor(connection, curve, vector, from, to)
+    }
+}
+
+// Form-bearing region:
+//
+// the transport generator lies in the infinitesimal isometry algebra, so solve
+// the Magnus equation for Ω and advance by exp(Ω).  Unlike the generic Taylor
+// branch, every accepted step therefore lands back in the form-preserving
+// transformation group.
+impl<C> TransportRegion<𝐅𝐨𝐫𝐦::𝒞> for C
+where
+    C: Ⱶ<𝐅𝐨𝐫𝐦::𝒞>,
+{
+    fn parallel_transport<
+        P: Point,
+        V: Vector<Hand = Right, Action = BothSided, F: FromReal>,
+        T: Connection<P, V>,
+        F: Fn(Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>) -> Tangent<P, V, N>,
+        const N: usize,
+    >(
+        connection: &T,
+        curve: F,
+        vector: V,
+        from: <V::F as Interval>::R,
+        to: <V::F as Interval>::R,
+    ) -> V {
+        const {
+            assert!(N > 0, "parallel transport requires a positive Taylor order");
+        }
+
+        let mut t = from;
+        let mut vector = vector;
+        let mut h = to - from;
+
+        let step = |t: <V::F as Interval>::R, h: <V::F as Interval>::R, vector: V| -> Option<V> {
+            // Evaluate the N-jet of the curve about t.
+            let time = Jet::<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>::new(
+                t,
+                core::array::from_fn(|i| {
+                    if i == 0 {
+                        <V::F as Interval>::R::one()
+                    } else {
+                        <V::F as Interval>::R::zero()
+                    }
+                }),
+            );
+
+            let path = curve(time);
+
+            // Regard the curve jet as a point of the prolonged tangent bundle.
+            let point = LiftedTM::<P, V, T, N>::new(path.0.clone(), path.1.clone());
+
+            let connection = Prolongation::<P, V, T, N>::new(
+                connection.base_point(),
+                JetVector::<𝐅𝐥𝐝::𝒞, V, N>::zero(),
+            );
+
+            // Differentiating the path jet gives its velocity jet.
+            let velocity = TensorOver(V::Array::from_fn(|i| path.1[i].derivative()), PhantomData);
+
+            // Γ is evaluated in the prolonged connection, hence A below is
+            // already the complete N-jet of the transport generator.
+            let christoffel = connection.christoffel_symbols(point)?;
+
+            let a = -TensorProduct::pure(christoffel, Sinister(velocity))
+                .reassociate::<Right>()
+                .contract::<OnRight<ThroughSinister<Here>>>();
+
+            // `a` is now
+            //
+            //     End(JetVector<V>)
+            //
+            // i.e. an endomorphism whose scalar coordinates are themselves
+            // N-jets.  Keep it in precisely that representation while solving
+            // the Magnus differential equation.
+            //
+            // For Ω(τ), with Ω(0) = 0,
+            //
+            //   Ω' = dexp⁻¹_Ω(A)
+            //
+            //      = Σₖ Bₖ/k! ad_Ω^k(A)
+            //
+            // where
+            //
+            //   ad_Ω(A) = [Ω, A] = ΩA - AΩ.
+            //
+            // Because Ω has zero constant term, this recurrence is triangular
+            // in jet order just like the ordinary Taylor transport solve.
+            let compose = |lhs: &TensorProduct<
+                JetVector<𝐅𝐥𝐝::𝒞, V, N>,
+                Dual<JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+            >,
+                           rhs: &TensorProduct<
+                JetVector<𝐅𝐥𝐝::𝒞, V, N>,
+                Dual<JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+            >| {
+                TensorProduct::<
+                    JetVector<𝐅𝐥𝐝::𝒞, V, N>,
+                    Dual<JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+                >::from_fn_ij(|i, j| {
+                    (0..V::N).fold(
+                        Jet::<𝐅𝐥𝐝::𝒞, V::F, N>::zero(),
+                        |sum, k| {
+                            sum
+                                + lhs[(i, k)].clone()
+                                    * rhs[(k, j)].clone()
+                        },
+                    )
+                })
+            };
+
+            // Coefficients cₙ = Bₙ/n! of
+            //
+            //             z
+            //         ───────── = Σ cₙ zⁿ.
+            //          exp(z)-1
+            //
+            // Rather than hard-code Bernoulli numbers, derive them from
+            //
+            //   c₀ = 1
+            //
+            //   cₙ = -Σₖ₌₁ⁿ cₙ₋ₖ/(k+1)!.
+            let mut bernoulli = [<V::F as Interval>::R::zero(); N];
+
+            bernoulli[0] = <V::F as Interval>::R::one();
+
+            for n in 1..N {
+                let mut sum = <V::F as Interval>::R::zero();
+
+                let mut factorial = <V::F as Interval>::R::one();
+
+                for k in 1..=n {
+                    factorial =
+                        factorial * <<V::F as Interval>::R as NumCast>::from(k + 1).unwrap();
+
+                    sum = sum + bernoulli[n - k] / factorial;
+                }
+
+                bernoulli[n] = -sum;
+            }
+
+            let mut omega = TensorProduct::<
+                    JetVector<𝐅𝐥𝐝::𝒞, V, N>,
+                    Dual<JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+                >::from_fn_ij(|_, _| {
+                    Jet::from_parts(V::F::zero(), core::array::from_fn(|_| V::F::zero()))
+                });
+
+            // Fixed-point solution of the Magnus ODE.
+            //
+            // N substitutions suffice because integration shifts every
+            // determined coefficient upward by one Taylor order.
+            for _ in 0..N {
+                let mut rhs = a.clone();
+                let mut ad = a.clone();
+
+                for k in 1..N {
+                    ad = compose(&omega, &ad) - compose(&ad, &omega);
+
+                    let coefficient = Jet::<𝐅𝐥𝐝::𝒞, V::F, N>::from_parts(
+                        V::F::from_real(bernoulli[k]),
+                        core::array::from_fn(|_| V::F::zero()),
+                    );
+
+                    rhs = rhs + ad.clone() * coefficient;
+                }
+
+                omega = TensorProduct::<
+                    JetVector<𝐅𝐥𝐝::𝒞, V, N>,
+                    Dual<JetVector<𝐅𝐥𝐝::𝒞, V, N>>,
+                >::from_fn_ij(|i, j| {
+                    Jet::integrate_from(
+                        V::F::zero(),
+                        rhs[(i, j)].clone(),
+                    )
+                });
+            }
+
+            // Evaluate Ω(h), dropping the jet presentation and returning to
+            //
+            //     End(V) = V ⊗ V*.
+            let h = V::F::from_real(h);
+
+            let omega = TensorProduct::<V, Dual<V>>::from_fn_ij(|i, j| {
+                let coefficient = &omega[(i, j)];
+
+                let mut value = coefficient[N];
+
+                for n in (0..N).rev() {
+                    value = value * h + coefficient[n];
+                }
+
+                value
+            });
+
+            let transport = endomorphism_exp(omega);
+
+            Some(V::from_fn(|i| {
+                (0..V::N).fold(V::F::zero(), |sum, j| sum + transport[(i, j)] * vector[j])
+            }))
+        };
+
+        if from.exact_eq(to) {
+            return vector;
+        }
+
+        let two = <V::F as Interval>::R::one() + <V::F as Interval>::R::one();
+
+        loop {
+            // One full step against two half steps.
+            //
+            // Construct `next` from the actual two-half-step arithmetic, then
+            // make the full solve target exactly that same representable point.
+            let half_h = h / two;
+            let midpoint = t + half_h;
+            let next = midpoint + half_h;
+            let full_h = next - t;
+
+            let full = step(t, full_h, vector.clone());
+
+            let half =
+                step(t, half_h, vector.clone()).and_then(|vector| step(midpoint, half_h, vector));
+
+            let Some(half) = half else {
+                h = half_h;
+                continue;
+            };
+
+            let Some(full) = full else {
+                h = half_h;
+                continue;
+            };
+
+            let epsilon = <V::F as Interval>::R::epsilon();
+
+            let epsilon_squared = epsilon * epsilon;
+
+            let accurate = (0..V::N).all(|i| {
+                let error = full[i].interval_squared(&half[i]).abs();
+
+                let magnitude = half[i].interval_squared(&V::F::zero()).abs();
+
+                let one = <V::F as Interval>::R::one();
+
+                let scale = if magnitude.exact_lt(one) {
+                    one
+                } else {
+                    magnitude
+                };
+
+                error.exact_le(epsilon_squared * scale)
+            });
+
+            if !accurate {
+                h = half_h;
+                continue;
+            }
+
+            // The two-half-step result is the better approximation.
+            vector = half;
+
+            // Progress is measured by strict decrease of the real parameter
+            // distance to the endpoint.  This catches both representational
+            // stagnation and floating-point cycles without storing history.
+            let progresses = (to - next).abs().exact_lt((to - t).abs());
+
+            if !progresses {
+                return vector;
+            }
+
+            t = next;
+
+            if t.exact_eq(to) {
+                return vector;
+            }
+
+            // Be optimistic after success, but never deliberately walk past
+            // the requested endpoint.
+            let doubled = h * two;
+            let remaining = to - t;
+
+            h = if h.is_sign_negative() {
+                if remaining.exact_lt(doubled) {
+                    doubled
+                } else {
+                    remaining
+                }
+            } else if doubled.exact_lt(remaining) {
+                doubled
+            } else {
+                remaining
+            };
+        }
+    }
+}
+
+#[cfg(feature = "testing")]
+fn constant_jet_vector<V: Tensor, const N: usize>(v: V) -> JetVector<𝐅𝐥𝐝::𝒞, V, N> {
+    JetVector::from_fn(|i| Jet::from_parts(v[i], [V::F::zero(); N]))
 }
 
 impl<P: Point, V: Tensor, T: Connection<P, V>, const N: usize>
@@ -2056,6 +2886,44 @@ pub trait EvaluableAt<𝒞: Cat, Point, Output> {
     fn evaluate_at(&self, point: Point) -> Output;
 }
 
+fn evaluate_derivative_at<𝒞, F, BT, FT>(
+    derivative: &d<F>,
+    point: BT,
+) -> TangentMap<BT, FT, FT, FT>
+where
+    𝒞: Cat,
+    F: JetMap<𝒞, BT, FT, 1, BT::F>,
+    BT: Tensor<Hand = Right, Action: ActionExists>,
+    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Jet<𝒞, BT::F>: Field,
+{
+    let columns: BT::Array<FT> = BT::Array::from_fn(|input_coordinate| {
+        let input = JetVector::<𝒞, BT>::from_fn(|coordinate| {
+            Jet::from_parts(
+                point[coordinate],
+                [if input_coordinate == coordinate {
+                    BT::F::one()
+                } else {
+                    BT::F::zero()
+                }],
+            )
+        });
+
+        let output = <F as JetMap<𝒞, BT, FT, 1, BT::F, Ø>>::jet_at(&derivative.0, input);
+
+        FT::from_fn(|output_coordinate| output[output_coordinate][1])
+    });
+
+    let rows: FT::Array<<Dual<BT> as Tensor>::Array<BT::F>> =
+        FT::Array::from_fn(|output_coordinate| {
+            <Dual<BT> as Tensor>::Array::from_fn(|input_coordinate| {
+                columns[input_coordinate][output_coordinate]
+            })
+        });
+
+    TangentMap::new(TensorProduct(TensorProductArray(rows, PhantomData)))
+}
+
 impl<
     𝒞: Cat,
     F: JetMap<𝒞, BT, FT, 1, BT::F>,
@@ -2066,31 +2934,7 @@ where
     Jet<𝒞, BT::F>: Field,
 {
     fn evaluate_at(&self, point: BT) -> TangentMap<BT, FT, FT, FT> {
-        let columns: BT::Array<FT> = BT::Array::from_fn(|input_coordinate| {
-            let input = JetVector::<𝒞, BT>::from_fn(|coordinate| {
-                Jet::new(
-                    point[coordinate],
-                    [if input_coordinate == coordinate {
-                        BT::F::one()
-                    } else {
-                        BT::F::zero()
-                    }],
-                )
-            });
-
-            let output = <F as JetMap<𝒞, BT, FT, 1, BT::F, Ø>>::jet_at(&self.0, input);
-
-            FT::from_fn(|output_coordinate| output[output_coordinate][1])
-        });
-
-        let rows: FT::Array<<Dual<BT> as Tensor>::Array<BT::F>> =
-            FT::Array::from_fn(|output_coordinate| {
-                <Dual<BT> as Tensor>::Array::from_fn(|input_coordinate| {
-                    columns[input_coordinate][output_coordinate]
-                })
-            });
-
-        TangentMap::new(TensorProduct(TensorProductArray(rows, PhantomData)))
+        evaluate_derivative_at::<𝒞, _, _, _>(self, point)
     }
 }
 

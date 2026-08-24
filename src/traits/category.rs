@@ -37,7 +37,8 @@
 use crate::{
     coords::Coords,
     traits::{
-        CField, Field, Manifold, Nat, NatCompare, NatZero, Real, Succ, Tensor, Topological, Vector,
+        CField, Field, Form, Manifold, Nat, NatCompare, NatZero, Real, Succ, Tensor, Topological,
+        Vector,
     },
 };
 use core::{
@@ -1531,6 +1532,7 @@ categories! {
     ];
     𝐓𝐞𝐧𝐬     => cat![(tensor::F: 𝐅𝐥𝐝), {𝐂𝐌𝐨𝐧}];
     𝐕𝐞𝐜𝐭     => cat!{𝐓𝐞𝐧𝐬, 𝐆𝐫𝐩};
+    𝐅𝐨𝐫𝐦     => cat!{𝐓𝐞𝐧𝐬};
     𝐌𝐚𝐧      => cat![(manifold::Tangent: 𝐓𝐞𝐧𝐬), {𝐓𝐨𝐩}];
 
     @𝐇𝐨𝐦<N> => cat!{𝐌𝐚𝐧};
@@ -1624,6 +1626,10 @@ impl<T: Tensor> Reflect<𝐓𝐞𝐧𝐬::𝒞> for T {
 
 impl<V: Vector> Reflect<𝐕𝐞𝐜𝐭::𝒞> for V {
     type Body = 𝒯<Ø, ː<BindsProperty<𝐓𝐞𝐧𝐬::𝒞, ReflectedContext<𝐓𝐞𝐧𝐬::𝒞, V>>, ː<𝐆𝐫𝐩::𝒞, Ø>>>;
+}
+
+impl<V: Form> Reflect<𝐅𝐨𝐫𝐦::𝒞> for V {
+    type Body = 𝒯<Ø, ː<BindsProperty<𝐓𝐞𝐧𝐬::𝒞, ReflectedContext<𝐓𝐞𝐧𝐬::𝒞, V>>, Ø>>;
 }
 
 impl<T: Topological> Reflect<𝐓𝐨𝐩::𝒞> for T {

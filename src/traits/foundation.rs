@@ -180,6 +180,10 @@ pub trait ExactCmp: Real {
     fn exact_le(self, other: Self) -> bool {
         !other.exact_lt(self)
     }
+
+    fn exact_eq(self, other: Self) -> bool {
+        !self.exact_lt(other) && !other.exact_lt(self)
+    }
 }
 
 impl<R: Real> ExactCmp for R {}

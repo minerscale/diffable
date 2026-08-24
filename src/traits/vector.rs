@@ -1022,13 +1022,13 @@ pub trait Tensor:
         let dimension = (1..=Self::N)
             .find(|&i| i.pow(R as u32) == Self::N)
             .expect("tensor component count is not an exact R-th power");
-    
+
         index.into_iter().fold(0, |flat, i| {
             assert!(
                 i < dimension,
                 "tensor component index {i} out of bounds for dimension {dimension}"
             );
-    
+
             flat * dimension + i
         })
     }
@@ -1248,12 +1248,12 @@ macro_rules! impl_vector_ops {
             $target: $crate::traits::Tensor,
         {
             type Output = <$target as $crate::traits::Tensor>::F;
-        
+
             fn index(&self, index: [usize; R]) -> &Self::Output {
                 &self[<$target as $crate::traits::Tensor>::flatten_index(index)]
             }
         }
-        
+
         impl<const R: usize, $($generics)*> core::ops::IndexMut<[usize; R]> for $target
         where
             $target: $crate::traits::Tensor,
@@ -1261,7 +1261,7 @@ macro_rules! impl_vector_ops {
             fn index_mut(&mut self, index: [usize; R]) -> &mut Self::Output {
                 let flat =
                     <$target as $crate::traits::Tensor>::flatten_index(index);
-        
+
                 &mut self[flat]
             }
         }
