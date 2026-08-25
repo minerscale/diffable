@@ -2049,9 +2049,7 @@ impl<
 {
     pub fn transport(
         &self,
-        curve: impl Fn(
-            Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>,
-        ) -> Tangent<P, V, N>,
+        curve: impl Fn(Jet<𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>) -> Tangent<P, V, N>,
         vector: V,
         from: <V::F as Interval>::R,
         to: <V::F as Interval>::R,
@@ -2089,7 +2087,10 @@ pub trait ParallelTransport<
     ) -> V;
 
     fn order<'a, const N: usize>(&'a self) -> Ordered<'a, 𝒞, P, V, Self, N> {
-        Ordered { connection: self, _phantom: PhantomData }
+        Ordered {
+            connection: self,
+            _phantom: PhantomData,
+        }
     }
 
     // TODO: make transport return an endomorphism rather than just V for optimisation
@@ -2184,7 +2185,6 @@ pub trait ParallelTransport<
     {
         self.raise_with::<TRANSPORT_ORDER>(target, v)
     }
-
 
     #[cfg(feature = "testing")]
     fn check_holonomy_preserves_form<const N: usize>(

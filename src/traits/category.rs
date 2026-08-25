@@ -37,8 +37,8 @@
 use crate::{
     coords::Coords,
     traits::{
-        CField, Field, Form, Manifold, Nat, NatCompare, NatZero, Real, Succ, Tensor, Topological,
-        Vector,
+        CField, Field, Form, Manifold, Nat, NatCompare, NatZero, Nondegenerate, Real, Succ, Tensor,
+        Topological, Vector,
     },
 };
 use core::{
@@ -1116,6 +1116,82 @@ impl<𝒞: Atom, C: Category + 'static> Compare<𝐈𝐝<C>> for 𝒞 {
     type Relation = Different;
 }
 
+/// The conjunction of two reflected theories.
+///
+/// `And<A, B>` introduces no structure of its own: an object inhabits it
+/// exactly when it carries both `A` and `B`.
+pub struct And<A: Cat, B: Cat>(PhantomData<fn() -> (A, B)>);
+
+impl<A: Cat, B: Cat> Copy for And<A, B> {}
+impl<A: Cat, B: Cat> Clone for And<A, B> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<A: Cat, B: Cat> Debug for And<A, B> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("And")
+    }
+}
+impl<A: Cat, B: Cat> Cat for And<A, B> {
+    type C = cat![(), {A, B}];
+}
+
+impl<𝒞: Atom, A: Cat, B: Cat> Compare<And<A, B>> for 𝒞 {
+    type Relation = Different;
+}
+
+impl<A: Cat, B: Cat, C: Category + 'static> Compare<𝐈𝐝<C>> for And<A, B> {
+    type Relation = Different;
+}
+
+/// A concrete context obtained by interpreting one Rust carrier in two
+/// independent reflected theories at once.
+///
+/// Unlike [`ReflectedContext`], this does not claim that `And<A, B>` itself is
+/// reflected by one Rust trait. It retains the two ordinary reflections as
+/// independent property edges under a synthetic conjunction root.
+#[doc(hidden)]
+pub struct ConjoinedContext<A: Cat, B: Cat, X>(PhantomData<fn() -> (A, B, X)>);
+
+impl<A, B, X> sealed::Category for ConjoinedContext<A, B, X>
+where
+    A: Cat,
+    B: Cat,
+    X: Reflect<A> + Reflect<B>,
+    ReflectedContext<A, X>: Category<Properties: ExpandProperties>,
+    ReflectedContext<B, X>: Category<Properties: ExpandProperties>,
+{
+}
+
+impl<A, B, X> Category for ConjoinedContext<A, B, X>
+where
+    A: Cat,
+    B: Cat,
+    X: Reflect<A> + Reflect<B>,
+    ReflectedContext<A, X>: Category<Properties: ExpandProperties>,
+    ReflectedContext<B, X>: Category<Properties: ExpandProperties>,
+{
+    type Structure = Ø;
+    type Properties = ː<
+        BindsProperty<A, ReflectedContext<A, X>>,
+        ː<BindsProperty<B, ReflectedContext<B, X>>, Ø>,
+    >;
+    type Equations = Ø;
+}
+
+impl<A, B, X> RootContext for ConjoinedContext<A, B, X>
+where
+    A: Cat,
+    B: Cat,
+    X: Reflect<A> + Reflect<B>,
+    ReflectedContext<A, X>: Category<Properties: ExpandProperties>,
+    ReflectedContext<B, X>: Category<Properties: ExpandProperties>,
+{
+    type 𝒞 = And<A, B>;
+    type X = X;
+}
+
 /// Refine `𝒞` with one associated object carrying functor-specific metadata.
 ///
 /// The original structural signature is retained verbatim; `Name` is simply
@@ -1361,7 +1437,7 @@ macro_rules! category_module {
 macro_rules! categories {
     (
         $(
-            $cat:ident => cat!$context:tt;
+            $cat:ident $(as $trait:ident)? => cat!$context:tt;
         )*
 
         $(
@@ -1371,6 +1447,15 @@ macro_rules! categories {
         $(
             category_module!($cat => $context);
         )*
+
+        #[doc(hidden)]
+        pub mod __category_from_trait {
+            $(
+                $(
+                    pub type $trait = super::$cat::𝒞;
+                )?
+            )*
+        }
 
         $(
             #[derive(Copy, Clone, Debug)]
@@ -1509,33 +1594,59 @@ macro_rules! categories {
 // introduces them.  `Tensor` owns `tensor::F`; `Vector` reaches that scalar field through
 // its `Tensor` property.  `Field` owns `field::Fixed` and `field::Characteristic`.
 categories! {
-    𝐒𝐞𝐭      => cat!{};
-    𝐓𝐨𝐩      => cat!{𝐒𝐞𝐭};
-    𝐌𝐨𝐧      => cat!{𝐓𝐨𝐩};
-    𝐂𝐌𝐨𝐧     => cat!{𝐌𝐨𝐧};
-    𝐆𝐫𝐩      => cat!{𝐌𝐨𝐧};
-    𝐀𝐛       => cat!{𝐆𝐫𝐩, 𝐂𝐌𝐨𝐧};
-    𝐑𝐢𝐧𝐠     => cat!{𝐂𝐌𝐨𝐧, 𝐆𝐫𝐩};
-    𝐍𝐚𝐭      => cat!{};
-    𝐂𝐅𝐥𝐝     => cat!{𝐅𝐥𝐝, 𝐀𝐛};
+    𝐒𝐞𝐭  as Point        => cat!{};
+    𝐓𝐨𝐩  as Topological  => cat!{𝐒𝐞𝐭};
+    𝐌𝐨𝐧  as Monoid       => cat!{𝐓𝐨𝐩};
+    𝐂𝐌𝐨𝐧 as CMonoid      => cat!{𝐌𝐨𝐧};
+    𝐆𝐫𝐩  as Group        => cat!{𝐌𝐨𝐧};
+    𝐀𝐛   as CGroup       => cat!{𝐆𝐫𝐩, 𝐂𝐌𝐨𝐧};
+    𝐑𝐢𝐧𝐠 as Ring         => cat!{𝐂𝐌𝐨𝐧, 𝐆𝐫𝐩};
+    𝐍𝐚𝐭  as Nat          => cat!{};
+    𝐂𝐅𝐥𝐝 as CField       => cat!{𝐅𝐥𝐝, 𝐀𝐛};
 
     // Order is independent structure on a set. `OrdFld` couples that order to
     // commutative field arithmetic; `Dedekind` adds order completeness.
-    𝐎𝐫𝐝      => cat!{𝐒𝐞𝐭};
-    𝐎𝐫𝐝𝐅𝐥𝐝   => cat!{𝐂𝐅𝐥𝐝, 𝐎𝐫𝐝};
-    𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝 => cat!{𝐎𝐫𝐝};
-    𝐑𝐞𝐚𝐥     => cat!{𝐎𝐫𝐝𝐅𝐥𝐝, 𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝};
-    𝐅𝐥𝐝      => cat![
+    𝐎𝐫𝐝             => cat!{𝐒𝐞𝐭};
+    𝐎𝐫𝐝𝐅𝐥𝐝          => cat!{𝐂𝐅𝐥𝐝, 𝐎𝐫𝐝};
+    𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝        => cat!{𝐎𝐫𝐝};
+    𝐑𝐞𝐚𝐥   as Real  => cat!{𝐎𝐫𝐝𝐅𝐥𝐝, 𝐃𝐞𝐝𝐞𝐤𝐢𝐧𝐝};
+    𝐅𝐥𝐝    as Field => cat![
         (field::Fixed: 𝐂𝐅𝐥𝐝, field::Characteristic: 𝐍𝐚𝐭),
         {𝐑𝐢𝐧𝐠, 𝐆𝐫𝐩},
         {Equal<Follow<At<field::Fixed>, field::Fixed>, At<field::Fixed>>}
     ];
-    𝐓𝐞𝐧𝐬     => cat![(tensor::F: 𝐅𝐥𝐝), {𝐂𝐌𝐨𝐧}];
-    𝐕𝐞𝐜𝐭     => cat!{𝐓𝐞𝐧𝐬, 𝐆𝐫𝐩};
-    𝐅𝐨𝐫𝐦     => cat!{𝐓𝐞𝐧𝐬};
-    𝐌𝐚𝐧      => cat![(manifold::Tangent: 𝐓𝐞𝐧𝐬), {𝐓𝐨𝐩}];
+    𝐓𝐞𝐧𝐬   as Tensor        => cat![(tensor::F: 𝐅𝐥𝐝), {𝐂𝐌𝐨𝐧}];
+    𝐕𝐞𝐜𝐭   as Vector        => cat!{𝐓𝐞𝐧𝐬, 𝐆𝐫𝐩};
+    𝐅𝐨𝐫𝐦   as Form          => cat!{𝐓𝐞𝐧𝐬};
+    𝐍𝐨𝐧𝐝𝐞𝐠 as Nondegenerate => cat!{𝐅𝐨𝐫𝐦};
+    𝐌𝐚𝐧    as Manifold      => cat![(manifold::Tangent: 𝐓𝐞𝐧𝐬), {𝐓𝐨𝐩}];
 
     @𝐇𝐨𝐦<N> => cat!{𝐌𝐚𝐧};
+}
+
+#[macro_export]
+macro_rules! include_as {
+    (
+        $ty:ty => $left:ident + $right:ident,
+        $($generics:tt)+
+    ) => {
+        impl<$($generics)+> $crate::traits::ι for $ty {
+            type C = $crate::traits::ConjoinedContext<
+                $crate::traits::__category_from_trait::$left,
+                $crate::traits::__category_from_trait::$right,
+                Self,
+            >;
+        }
+    };
+
+    ($ty:ty => $trait:ident, $($generics:tt)+) => {
+        impl<$($generics)+> $crate::traits::ι for $ty {
+            type C = $crate::traits::ReflectedContext<
+                $crate::traits::__category_from_trait::$trait,
+                Self,
+            >;
+        }
+    };
 }
 
 /// Diffeomorphisms are the first Hom level over smooth manifolds.
@@ -1630,6 +1741,10 @@ impl<V: Vector> Reflect<𝐕𝐞𝐜𝐭::𝒞> for V {
 
 impl<V: Form> Reflect<𝐅𝐨𝐫𝐦::𝒞> for V {
     type Body = 𝒯<Ø, ː<BindsProperty<𝐓𝐞𝐧𝐬::𝒞, ReflectedContext<𝐓𝐞𝐧𝐬::𝒞, V>>, Ø>>;
+}
+
+impl<V: Nondegenerate> Reflect<𝐍𝐨𝐧𝐝𝐞𝐠::𝒞> for V {
+    type Body = 𝒯<Ø, ː<BindsProperty<𝐅𝐨𝐫𝐦::𝒞, ReflectedContext<𝐅𝐨𝐫𝐦::𝒞, V>>, Ø>>;
 }
 
 impl<T: Topological> Reflect<𝐓𝐨𝐩::𝒞> for T {
@@ -2024,7 +2139,10 @@ fn test_this_whole_thing_baby() {
     // spelling. These two `Payload` roles therefore remain constructively distinct.
     assert_different_names::<jet::Payload, tensor_of::Payload>();
 
-    assert_same_type(PhantomData::<RootRole>, PhantomData::<𝐕𝐞𝐜𝐭::𝒞>);
+    assert_same_type(
+        PhantomData::<RootRole>,
+        PhantomData::<And<𝐍𝐨𝐧𝐝𝐞𝐠::𝒞, 𝐕𝐞𝐜𝐭::𝒞>>,
+    );
     assert_same_type(PhantomData::<RootC>, PhantomData::<ReflectedV>);
     assert_same_type(PhantomData::<Scalar>, PhantomData::<f64>);
 

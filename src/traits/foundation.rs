@@ -10,7 +10,7 @@ use num_traits::Zero;
 
 use crate::{
     complex::Complex,
-    traits::{CField, Field, FieldExp, NatZero, NonZero, ReflectedContext, ι, 𝐑𝐞𝐚𝐥},
+    traits::{CField, Field, FieldExp, NatZero, NonZero},
 };
 use num_traits::{Euclid, Inv, ToPrimitive, real::Real as _};
 
@@ -139,9 +139,7 @@ impl<R: RealNum + CField<Fixed = Self>> Real for R {}
 // Weaker models (for example as a field) are selected from this
 // closed graph rather than by reflecting the same Rust type under competing
 // category labels.
-impl<R: Real> ι for R {
-    type C = ReflectedContext<𝐑𝐞𝐚𝐥::𝒞, R>;
-}
+crate::include_as!(R => Real, R: Real);
 
 impl<R: Real> Metric for R {}
 
