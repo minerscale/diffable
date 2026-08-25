@@ -1429,6 +1429,30 @@ macro_rules! category_module {
     };
 }
 
+/// Choose how an explicit `include_as!` admission obtains its rooted context.
+///
+/// Most category aliases elaborate an existing Rust trait through `Reflect`.  A
+/// `feature` alias instead represents an explicitly admitted structural feature
+/// whose Rust implementation is relational (and therefore cannot support a
+/// blanket `Reflect<𝒞>` impl without unconstrained parameters).
+macro_rules! category_inclusion_alias {
+    ($cat:ident, $trait:ident) => {
+        #[allow(non_snake_case)]
+        pub mod $trait {
+            pub type 𝒞 = super::super::$cat::𝒞;
+            pub type C<X> = super::super::ReflectedContext<𝒞, X>;
+        }
+    };
+
+    ($cat:ident, $trait:ident, feature) => {
+        #[allow(non_snake_case)]
+        pub mod $trait {
+            pub type 𝒞 = super::super::$cat::𝒞;
+            pub type C<X> = super::super::Rooted<𝒞, X, <𝒞 as super::super::Cat>::C>;
+        }
+    };
+}
+
 /// Declare ordinary reflected theories plus Nat-indexed higher families.
 ///
 /// Every ordinary bold name is a namespace containing the nominal theory `𝒞`,
@@ -1437,7 +1461,7 @@ macro_rules! category_module {
 macro_rules! categories {
     (
         $(
-            $cat:ident $(as $trait:ident)? => cat!$context:tt;
+            $cat:ident $(as $trait:ident $($mode:ident)?)? => cat!$context:tt;
         )*
 
         $(
@@ -1452,7 +1476,7 @@ macro_rules! categories {
         pub mod __category_from_trait {
             $(
                 $(
-                    pub type $trait = super::$cat::𝒞;
+                    category_inclusion_alias!($cat, $trait $(, $mode)?);
                 )?
             )*
         }
@@ -1617,9 +1641,13 @@ categories! {
     ];
     𝐓𝐞𝐧𝐬   as Tensor        => cat![(tensor::F: 𝐅𝐥𝐝), {𝐂𝐌𝐨𝐧}];
     𝐕𝐞𝐜𝐭   as Vector        => cat!{𝐓𝐞𝐧𝐬, 𝐆𝐫𝐩};
-    𝐅𝐨𝐫𝐦   as Form          => cat!{𝐓𝐞𝐧𝐬};
+    𝐌𝐮𝐬                     => cat!{};
+    𝐅𝐨𝐫𝐦   as Form          => cat!{𝐓𝐞𝐧𝐬, 𝐌𝐮𝐬};
     𝐍𝐨𝐧𝐝𝐞𝐠 as Nondegenerate => cat!{𝐅𝐨𝐫𝐦};
     𝐌𝐚𝐧    as Manifold      => cat![(manifold::Tangent: 𝐓𝐞𝐧𝐬), {𝐓𝐨𝐩}];
+    𝐃𝐢𝐟𝐟   as Connection             => cat!{𝐌𝐚𝐧};
+    𝐆                                => cat!{};
+    𝐌𝐞𝐭    as MetricTensor feature   => cat!{𝐃𝐢𝐟𝐟, 𝐆};
 
     @𝐇𝐨𝐦<N> => cat!{𝐌𝐚𝐧};
 }
@@ -1632,8 +1660,8 @@ macro_rules! include_as {
     ) => {
         impl<$($generics)+> $crate::traits::ι for $ty {
             type C = $crate::traits::ConjoinedContext<
-                $crate::traits::__category_from_trait::$left,
-                $crate::traits::__category_from_trait::$right,
+                $crate::traits::__category_from_trait::$left::𝒞,
+                $crate::traits::__category_from_trait::$right::𝒞,
                 Self,
             >;
         }
@@ -1641,16 +1669,10 @@ macro_rules! include_as {
 
     ($ty:ty => $trait:ident, $($generics:tt)+) => {
         impl<$($generics)+> $crate::traits::ι for $ty {
-            type C = $crate::traits::ReflectedContext<
-                $crate::traits::__category_from_trait::$trait,
-                Self,
-            >;
+            type C = $crate::traits::__category_from_trait::$trait::C<Self>;
         }
     };
 }
-
-/// Diffeomorphisms are the first Hom level over smooth manifolds.
-pub type 𝐃𝐢𝐟𝐟 = 𝐇𝐨𝐦<NatZero>;
 
 // -----------------------------------------------------------------------------
 // Reflection of concrete Rust trait implementations
@@ -1740,7 +1762,7 @@ impl<V: Vector> Reflect<𝐕𝐞𝐜𝐭::𝒞> for V {
 }
 
 impl<V: Form> Reflect<𝐅𝐨𝐫𝐦::𝒞> for V {
-    type Body = 𝒯<Ø, ː<BindsProperty<𝐓𝐞𝐧𝐬::𝒞, ReflectedContext<𝐓𝐞𝐧𝐬::𝒞, V>>, Ø>>;
+    type Body = 𝒯<Ø, ː<BindsProperty<𝐓𝐞𝐧𝐬::𝒞, ReflectedContext<𝐓𝐞𝐧𝐬::𝒞, V>>, ː<𝐌𝐮𝐬::𝒞, Ø>>>;
 }
 
 impl<V: Nondegenerate> Reflect<𝐍𝐨𝐧𝐝𝐞𝐠::𝒞> for V {
@@ -1861,8 +1883,11 @@ impl<𝒞: Cat, 𝒟: Compare<𝒞, Relation = Same>, C: Ⱶ<𝒞>> RefineProper
     type Refinement = C;
 }
 
-impl<𝒞: Cat, 𝒟: Cat<C: Ⱶ<𝒞>> + Compare<𝒞, Relation = Same>> RefineProperty<𝒞> for 𝒟 {
-    type Refinement = <𝒟::C as Ⱶ<𝒞>>::C;
+impl<𝒞: Cat, 𝒟: Cat + Compare<𝒞, Relation = Same>> RefineProperty<𝒞> for 𝒟 {
+    // A bare edge carrying the exact requested nominal theory resolves by
+    // identity. Re-proving `𝒟::C: Ⱶ<𝒟>` would recursively reopen the canonical
+    // theory body and is neither necessary nor desirable.
+    type Refinement = 𝒟::C;
 }
 
 /// Resolve every required property in `Target`, retaining the graph found for each.
@@ -2145,6 +2170,15 @@ fn test_this_whole_thing_baby() {
     );
     assert_same_type(PhantomData::<RootC>, PhantomData::<ReflectedV>);
     assert_same_type(PhantomData::<Scalar>, PhantomData::<f64>);
+
+    // Form and Vector are sibling structural refinements of Tensor.  The musical
+    // discriminator keeps a bare Vector context constructively outside Form,
+    // while Coords reaches Form through its Nondegenerate branch.
+    type VectorOnly = ReflectedContext<𝐕𝐞𝐜𝐭::𝒞, Coords<f64, 2>>;
+    fn is_constructively_not_form<C: Ⱶ<𝐅𝐨𝐫𝐦::𝒞, Absent>>() {}
+    fn is_form<C: Ⱶ<𝐅𝐨𝐫𝐦::𝒞>>() {}
+    is_constructively_not_form::<VectorOnly>();
+    is_form::<V>();
 
     fn scalar_context_is_field<C: Ⱶ<𝐅𝐥𝐝::𝒞>>() {}
     scalar_context_is_field::<ScalarC>();

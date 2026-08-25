@@ -1,18 +1,21 @@
 #![cfg(feature = "testing")]
-
+#![allow(confusable_idents, uncommon_codepoints)]
 use diffable::{
     complex::Complex,
     coords::Coords,
     epsilon_metric::R64,
     traits::{
-        BothSided, Cat, Dual, DualSinistered, Dualized, Euclidean, Field, Form, Left, Normalize,
-        NormalizeWith, Right, Sinister, Sinistered, Tensor, Undecorated, Vector,
+        Atomic, BothSided, Cat, Chart, Dual, DualSinistered, Dualized, Euclidean, ExpMap, Field,
+        Form, Left, Normalize, NormalizeWith, Right, Sinister, Sinistered, TangentBundle, Tensor,
+        Undecorated, Vector,
         calculus::{
-            Contract, Here, JetVector, OnLeft, Reassociate, Swap, TensorProduct, ThroughSinister, d,
+            Connection, Contract, Here, JetVector, MetricTensor, OnLeft, ParallelTransport,
+            Reassociate, Swap, Tangent, TensorProduct, ThroughSinister, d,
         },
+        𝐅𝐥𝐝,
     },
 };
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 #[test]
 fn reassociation_is_selected_by_a_tree_path() {
@@ -378,4 +381,139 @@ where
     }
 
     check::<JetVector<C, V>>();
+}
+
+// -----------------------------------------------------------------------------
+// Metric-tensor dispatch integration
+// -----------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
+struct ExplicitMetric<V: Vector> {
+    base: V,
+    g_calls: std::rc::Rc<std::cell::Cell<usize>>,
+}
+
+impl<V: Vector> ExplicitMetric<V> {
+    fn new(base: V) -> Self {
+        Self {
+            base,
+            g_calls: std::rc::Rc::new(std::cell::Cell::new(0)),
+        }
+    }
+
+    fn g_calls(&self) -> usize {
+        self.g_calls.get()
+    }
+}
+
+impl<V: Vector> Chart<V, V> for ExplicitMetric<V> {
+    type Global = V;
+
+    fn to_local(&self, point: &V) -> Option<V> {
+        Some(point.clone() - self.base.clone())
+    }
+
+    fn to_global(&self, coordinate: V) -> V {
+        self.base.clone() + coordinate
+    }
+
+    fn chart_at(p: &V) -> Self {
+        Self::new(p.clone())
+    }
+}
+
+impl<V: Vector> ExpMap<V, V> for ExplicitMetric<V> {}
+impl<V: Vector> TangentBundle<V, V> for ExplicitMetric<V> {}
+
+impl<V: Vector> Connection<V, V> for ExplicitMetric<V> {
+    fn tangent_to_local<const N: usize>(
+        base: Tangent<V, V, N>,
+        local: Tangent<V, V, N>,
+    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V, N>> {
+        <V as Connection<V, V>>::tangent_to_local(base, local)
+    }
+
+    fn tangent_to_global<const N: usize>(
+        base: Tangent<V, V, N>,
+        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V, N>,
+    ) -> (V, JetVector<𝐅𝐥𝐝::𝒞, V, N>) {
+        <V as Connection<V, V>>::tangent_to_global(base, coordinate)
+    }
+}
+
+impl<V> MetricTensor<V, V> for ExplicitMetric<V>
+where
+    V: Vector<Hand = Right, Action = BothSided, Normalization = Atomic> + Form,
+{
+    fn g(&self, _target: V) -> TensorProduct<Sinister<Dual<V>>, Dual<V>> {
+        self.g_calls.set(self.g_calls.get() + 1);
+
+        TensorProduct::from_fn_ij(|i, j| {
+            let basis = V::from_fn(|k| if i == k { V::F::one() } else { V::F::zero() });
+            basis.flat()[j]
+        })
+    }
+}
+
+diffable::include_as!(
+    ExplicitMetric<V> => MetricTensor,
+    V: Vector<Hand = Right, Action = BothSided, Normalization = Atomic> + Form
+);
+
+#[test]
+fn explicit_metric_tensor_is_the_model_form_in_full_tensor_form() {
+    type V = Coords<R64, 4, 1>;
+
+    let connection = ExplicitMetric::new(V::zero());
+    let target = V::from([0.5, -1.0, 2.0, 3.0].map(R64));
+    let g = <ExplicitMetric<V> as MetricTensor<V, V>>::g(&connection, target);
+
+    assert!(
+        g.iter().copied().eq([
+            -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]
+        .map(R64))
+    );
+    assert_eq!(connection.g_calls(), 1);
+}
+
+#[test]
+fn supplied_and_transport_derived_musicals_agree_end_to_end() {
+    type V = Coords<R64, 4, 1>;
+
+    let explicit = ExplicitMetric::new(V::zero());
+    let derived = V::zero();
+    let target = V::from([R64(0.5), R64(-1.0), R64(2.0), R64(3.0)]);
+    let v = V::from([R64(1.0), R64(2.0), R64(-3.0), R64(4.0)]);
+
+    let supplied_lower = explicit.lower(target.clone(), v.clone());
+    let derived_lower = derived.lower(target.clone(), v.clone());
+
+    assert_eq!(supplied_lower, v.clone().flat());
+    assert_eq!(supplied_lower, derived_lower);
+    assert_eq!(explicit.g_calls(), 1);
+
+    let supplied_raise = explicit.raise(target.clone(), supplied_lower.clone());
+    let derived_raise = derived.raise(target.clone(), derived_lower);
+
+    assert_eq!(supplied_raise, v);
+    assert_eq!(supplied_raise, derived_raise);
+    assert_eq!(explicit.g_calls(), 2);
+}
+
+#[test]
+fn ordered_musicals_preserve_metric_dispatch() {
+    type V = Coords<R64, 4, 1>;
+
+    let explicit = ExplicitMetric::new(V::zero());
+    let target = V::from([R64(-0.25), R64(0.5), R64(1.0), R64(-2.0)]);
+    let v = V::from([R64(3.0), R64(-2.0), R64(1.5), R64(0.25)]);
+
+    let ordered = explicit.order::<3>();
+    let lowered = ordered.lower(target.clone(), v.clone());
+    assert_eq!(lowered, v.clone().flat());
+    assert_eq!(explicit.g_calls(), 1);
+
+    assert_eq!(ordered.raise(target, lowered), v);
+    assert_eq!(explicit.g_calls(), 2);
 }
