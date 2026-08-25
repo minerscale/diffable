@@ -9,9 +9,7 @@ use core::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 use num_traits::{Inv, One, Zero};
 
 use crate::{
-    coords::Coords,
-    impl_group_via_add,
-    traits::{
+    coords::Coords, impl_group_via_add, include_as, traits::{
         CField, Field, FieldExp, Interval, LieGroup, Metric, NatZero, NonZero, Real, Sesquilinear,
         Smooth,
     },
@@ -216,4 +214,4 @@ impl<R: Real> Field for Complex<R> {
 
 impl<R: Real> CField for Complex<R> {}
 
-crate::include_as!(Complex<R> => CField, R: Real);
+include_as!(Complex<R> => CField, R: Real);

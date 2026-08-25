@@ -1202,6 +1202,20 @@ impl<V: Tensor, S: Field> TensorOver<V, S> {
     }
 }
 
+impl<𝒞: Cat, V: Tensor, const N: usize> JetVector<𝒞, V, N> {
+    /// Truncates every scalar jet to order `M`.
+    ///
+    /// Requires `M <= N`.
+    fn truncate<const M: usize>(self) -> JetVector<𝒞, V, M>
+    where
+        Jet<𝒞, V::F, M>: Field,
+    {
+        const { assert!(M <= N) };
+
+        JetVector::<𝒞, V, M>::from_fn(|i| self.0[i].truncate::<M>())
+    }
+}
+
 /// A tensor whose scalar coordinates are jets.
 ///
 /// This is intentionally only notation for the concrete witness used internally.
@@ -1251,6 +1265,15 @@ impl<𝒞: Cat, F: Field, const N: usize> Jet<𝒞, F, N> {
             DirectSum(DirectSumArray([value], coefficients, PhantomData)),
             PhantomData,
         )
+    }
+
+    /// Truncates this jet to order `M`.
+    ///
+    /// Requires `M <= N`.
+    fn truncate<const M: usize>(self) -> Jet<𝒞, F, M> {
+        const { assert!(M <= N) };
+
+        Jet::<𝒞, F, M>::from_fn(|i| self[i])
     }
 
     /// Constructs all `N + 1` coefficients by index, beginning with the primal
@@ -1996,6 +2019,97 @@ pub trait Connection<P: Point, V: Tensor>: TangentBundle<P, V> {
 
         tangent == JetVector::zero() && chart.to_local(&actual) == chart.to_local(&expected)
     }
+
+    /// Certifies that the lifted tangent charts form a coherent tower under
+    /// truncation.
+    ///
+    /// Given `M <= N`, truncating an order-`N` tangent coordinate before
+    /// applying `tangent_to_global` must agree exactly with applying the
+    /// order-`N` map first and then truncating its jet component.
+    ///
+    /// Coherence of `tangent_to_local` follows from `check_tangent_isomorphism`.
+    #[cfg(feature = "testing")]
+    fn check_truncation_coherence<const M: usize, const N: usize>(
+        base: Tangent<P, V, N>,
+        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V, N>,
+    ) -> bool
+    where
+        P: PartialEq,
+        JetVector<𝐅𝐥𝐝::𝒞, V, M>: PartialEq,
+    {
+        const { assert!(M <= N) };
+
+        let (point_n, tangent_n) = Self::tangent_to_global::<N>(base.clone(), coordinate.clone());
+
+        let base_m = Tangent::new(base.0, base.1.truncate::<M>());
+
+        let coordinate_m = coordinate.truncate::<M>();
+
+        let (point_m, tangent_m) = Self::tangent_to_global::<M>(base_m, coordinate_m);
+
+        point_n == point_m && tangent_n.truncate::<M>() == tangent_m
+    }
+
+    /// Certifies that the lifted local and global tangent charts are mutual
+    /// inverses at jet order `N`.
+    ///
+    /// On the domain of `tangent_to_local`,
+    ///
+    /// ```text
+    /// tangent_to_global(base, tangent_to_local(base, point))
+    ///     == point,
+    /// ```
+    ///
+    /// while every lifted local coordinate must round-trip as
+    ///
+    /// ```text
+    /// tangent_to_local(base, tangent_to_global(base, coordinate))
+    ///     == Some(coordinate).
+    /// ```
+    ///
+    /// Thus `tangent_to_local::<N>` and `tangent_to_global::<N>` describe a
+    /// genuine lifted chart isomorphism rather than independent choices of
+    /// higher-order tangent data.
+    #[cfg(feature = "testing")]
+    fn check_tangent_isomorphism<const N: usize>(
+        base: Tangent<P, V, N>,
+        local: Tangent<P, V, N>,
+        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V, N>,
+    ) -> bool
+    where
+        V: PartialEq,
+        JetVector<𝐅𝐥𝐝::𝒞, V, N>: PartialEq,
+    {
+        // First check:
+        //
+        //     local -> coordinate -> global == local
+        //
+        // `tangent_to_local` is partial, so points outside this lifted chart
+        // impose no inversehood obligation.
+        if let Some(local_coordinate) = Self::tangent_to_local::<N>(base.clone(), local.clone()) {
+            let (point, tangent) = Self::tangent_to_global::<N>(base.clone(), local_coordinate);
+
+            // Since `P` need not implement PartialEq, compare the reconstructed
+            // point through the ordinary chart in which `local` was expressible.
+            let chart = Self::chart_at(&base.0);
+
+            if tangent != local.1 || chart.to_local(&point) != chart.to_local(&local.0) {
+                return false;
+            }
+        }
+
+        // Then check:
+        //
+        //     coordinate -> global -> local == coordinate
+        //
+        // `tangent_to_global` is total, so every local coordinate must land
+        // inside the corresponding lifted local chart.
+        let (point, tangent) = Self::tangent_to_global::<N>(base.clone(), coordinate.clone());
+
+        let reconstructed = Tangent::new(point, tangent);
+
+        Self::tangent_to_local::<N>(base, reconstructed).is_some_and(|actual| actual == coordinate)
+    }
 }
 
 /// A connection with an explicitly supplied metric tensor field.
@@ -2157,6 +2271,28 @@ pub trait ParallelTransport<
         self.raise_with::<TRANSPORT_ORDER>(target, v)
     }
 
+    /// Certifies that parallel transport around every sufficiently small closed
+    /// curve based at `target` preserves the form at that fibre.
+    ///
+    /// `closed_curve` is assumed by the test harness to satisfy
+    ///
+    /// ```text
+    /// closed_curve(0) = closed_curve(1) = target
+    /// ```
+    ///
+    /// in the corresponding tangent-bundle sense.
+    ///
+    /// For arbitrary `u, v ∈ T_target M`, this checks
+    ///
+    /// ```text
+    /// g(Pγ u, Pγ v) = g(u, v),
+    /// ```
+    ///
+    /// where `Pγ` is parallel transport around the closed curve `γ`.
+    ///
+    /// Since the manifold form is derived from the model-space form by parallel
+    /// transport, this is precisely the path-independence condition required for
+    /// that transported form to be well-defined.
     #[cfg(feature = "testing")]
     fn check_holonomy_preserves_form<const N: usize>(
         &self,
