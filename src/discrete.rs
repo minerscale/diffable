@@ -12,8 +12,12 @@ use core::{
 use num_traits::{One, Zero};
 
 use crate::{
+    coords::Coords,
     impl_group_via_add, impl_ring_via_grothendieck,
-    traits::{Euclidean, LieGroup},
+    traits::{
+        Euclidean, Group, LieGroup,
+        calculus::{JetVector, Tangent},
+    },
 };
 
 /// The natural numbers `ℕ` under addition — the free commutative monoid on one
@@ -94,12 +98,29 @@ impl<V: Euclidean> From<(N, N)> for Z<V> {
     }
 }
 
-impl<V: Euclidean> LieGroup<V> for Z<V> {
-    fn identity_exp(_: V) -> Self {
-        Self::zero()
+impl<V: Euclidean> LieGroup<Coords<V::F, 0>> for Z<V> {
+    fn compose_jet<const M: usize>(
+        lhs: Tangent<Self, Coords<V::F, 0>, M>,
+        rhs: Tangent<Self, Coords<V::F, 0>, M>,
+    ) -> Tangent<Self, Coords<V::F, 0>, M> {
+        Tangent::new(lhs.0.compose(&rhs.0), lhs.1.compose(&rhs.1))
     }
 
-    fn identity_log(p: &Self) -> Option<V> {
-        if p.is_zero() { Some(V::zero()) } else { None }
+    fn inverse_jet<const M: usize>(
+        value: Tangent<Self, Coords<V::F, 0>, M>,
+    ) -> Tangent<Self, Coords<V::F, 0>, M> {
+        Tangent::new(value.0.inverse(), value.1.inverse())
+    }
+
+    fn identity_exp<const M: usize>(
+        coordinate: JetVector<Coords<V::F, 0>, M>,
+    ) -> Tangent<Self, Coords<V::F, 0>, M> {
+        Tangent::new(Self::identity(), coordinate)
+    }
+
+    fn identity_log<const M: usize>(
+        point: Tangent<Self, Coords<V::F, 0>, M>,
+    ) -> Option<JetVector<Coords<V::F, 0>, M>> {
+        point.0.is_zero().then_some(point.1)
     }
 }

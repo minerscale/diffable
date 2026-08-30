@@ -11,7 +11,12 @@ use crate::{
     complex::Complex,
     impl_group_via_mul, impl_lie_group_via_quotient,
     quaternion::Quaternion,
-    traits::{Chart, Euclidean, Interval, LieGroup, Metric, Quotient, Real, RootOfUnity, Smooth},
+    traits::{
+        Chart, Euclidean, Group, Interval, LieGroup, Metric, Quotient, Real, RootOfUnity,
+        Sesquilinear, Smooth, Tensor,
+        calculus::{Jet, JetVector, JetVectorIn, Tangent},
+        𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥,
+    },
 };
 
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
@@ -146,39 +151,101 @@ impl<V: Euclidean> Sphere<V> {
         let sin_d = (w_real * w_real + w_imag.norm_squared()).sqrt();
         V::F::atan2(sin_d, cos_d) // θ, stable through the antipode
     }
-}
 
-impl<V: Euclidean> Smooth<V> for Sphere<V> {
-    type Global = Self;
-
-    fn exp(&self, v: V) -> Self {
+    fn exp_coordinate(&self, v: V) -> Self {
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
 
-        // identity-frame exp, centred at +e0: (cos α, v · sinc α)
+        // Identity-frame exp, centred at +e0:
+        //
+        //     (cos α, v · sinc α)
         let alpha = v.norm();
 
         let (sin_a, cos_a) = alpha.sin_cos();
         let sinc = sinc_from(alpha, sin_a, eps);
 
-        // transport the identity-frame point to self's frame
+        // Transport the identity-frame point to self's frame.
         self.transport_from_identity(cos_a, v * sinc)
     }
 
-    fn log(&self, other: &Self) -> Option<V> {
+    fn log_coordinate(&self, other: &Self) -> Option<V> {
         let one = V::F::one();
         let eps = <V::F as NumCast>::from(EPSILON).unwrap();
 
-        // transport `other` into the +e0 identity frame
+        // Transport other into the +e0 identity frame.
         let p = self.transport_to_identity(other.real, other.imag.clone());
 
-        // identity-frame log: invert (cos α, v · sinc α)
+        // Invert (cos α, v · sinc α).
         if (p.real + one).abs() < eps {
-            return None; // antipodal to self: cut locus
+            return None;
         }
+
         let alpha = V::F::atan2(p.imag.norm(), p.real);
 
         let sinc_recip = sinc_recip(alpha, eps);
+
         Some(p.imag * sinc_recip)
+    }
+}
+
+#[allow(type_alias_bounds)]
+type SphereJet<V: Euclidean, const N: usize> = Sphere<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>;
+
+fn sphere_constant_jet<V: Euclidean, const N: usize>(value: Sphere<V>) -> SphereJet<V, N> {
+    Sphere {
+        real: Jet::<𝐑𝐞𝐚𝐥::𝒞, V::F, N>::from_parts(value.real, [Zero::zero(); N]),
+        imag: JetVectorIn::<𝐑𝐞𝐚𝐥::𝒞, V, N>::constant(value.imag),
+    }
+}
+
+// Reassemble the split tangent presentation as the sphere-valued curve
+// t ↦ exp_value.0(value.1(t)).
+fn sphere_assemble_jet<V: Euclidean, const N: usize>(
+    value: Tangent<Sphere<V>, V, N>,
+) -> SphereJet<V, N> {
+    sphere_constant_jet(value.0).exp_coordinate(value.1.retag::<𝐑𝐞𝐚𝐥::𝒞>())
+}
+
+// Split a sphere-valued curve into its value at zero and exponential-chart
+// coordinates about that value. The logarithm cannot encounter the cut locus:
+// both curves have the same coefficient-zero point by construction.
+fn sphere_split_jet<V: Euclidean, const N: usize>(
+    value: SphereJet<V, N>,
+) -> Tangent<Sphere<V>, V, N> {
+    let point = Sphere {
+        real: value.real[0],
+        imag: V::from_iter(value.imag.iter().map(|coordinate| coordinate[0])),
+    };
+
+    let coordinate = sphere_constant_jet(point.clone())
+        .log_coordinate(&value)
+        .unwrap()
+        .retag::<𝐅𝐥𝐝::𝒞>();
+
+    Tangent::new(point, coordinate)
+}
+
+impl<V: Euclidean> Smooth<V> for Sphere<V> {
+    type Global<const N: usize> = Tangent<Self, V, N>;
+
+    fn exp<const N: usize>(
+        base: Tangent<Self, V, N>,
+        coordinate: JetVector<V, N>,
+    ) -> Self::Global<N> {
+        let base = sphere_assemble_jet(base);
+        let coordinate = coordinate.retag::<𝐑𝐞𝐚𝐥::𝒞>();
+
+        sphere_split_jet(base.exp_coordinate(coordinate))
+    }
+
+    fn log<const N: usize>(
+        base: Tangent<Self, V, N>,
+        point: Tangent<Self, V, N>,
+    ) -> Option<JetVector<V, N>> {
+        let base = sphere_assemble_jet(base);
+        let point = sphere_assemble_jet(point);
+
+        base.log_coordinate(&point)
+            .map(|coordinate| coordinate.retag::<𝐅𝐥𝐝::𝒞>())
     }
 }
 
@@ -333,6 +400,128 @@ impl<V: Euclidean> UnitComplex<V> {
     }
 }
 
+fn sphere_exp_factors<R: Real, const N: usize>(
+    norm_squared: Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>,
+) -> (Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>, Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>) {
+    let eps = <R as NumCast>::from(EPSILON).unwrap();
+
+    if norm_squared[0] >= eps * eps {
+        let alpha = norm_squared.sqrt();
+        let (sin, cos) = alpha.sin_cos();
+
+        return (cos, sin / alpha);
+    }
+
+    // cos(sqrt(q))
+    //     = 1 - q/2! + q²/4! - q³/6! + ...
+    //
+    // sinc(sqrt(q))
+    //     = 1 - q/3! + q²/5! - q³/7! + ...
+    let mut cos = Jet::zero();
+    let mut sinc = Jet::zero();
+    let mut power = Jet::one();
+
+    let mut cos_coefficient = R::one();
+    let mut sinc_coefficient = R::one();
+
+    for k in 0..=(N + 8) {
+        cos = cos + power * Jet::from_parts(cos_coefficient, [R::zero(); N]);
+
+        sinc = sinc + power * Jet::from_parts(sinc_coefficient, [R::zero(); N]);
+
+        let cos_denominator = <R as NumCast>::from((2 * k + 1) * (2 * k + 2)).unwrap();
+
+        let sinc_denominator = <R as NumCast>::from((2 * k + 2) * (2 * k + 3)).unwrap();
+
+        cos_coefficient = -cos_coefficient / cos_denominator;
+
+        sinc_coefficient = -sinc_coefficient / sinc_denominator;
+
+        power = power * norm_squared;
+    }
+
+    (cos, sinc)
+}
+
+fn sphere_log_factor<R: Real, const N: usize>(
+    norm_squared: Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>,
+    real: Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>,
+) -> Jet<𝐑𝐞𝐚𝐥::𝒞, R, N> {
+    let eps = <R as NumCast>::from(EPSILON).unwrap();
+
+    if norm_squared[0] >= eps * eps || real[0] <= R::zero() {
+        let norm = norm_squared.sqrt();
+
+        return norm.atan2(real) / norm;
+    }
+
+    // Near the identity, the sphere constraint gives
+    //
+    //     atan2(sqrt(q), real) = asin(sqrt(q)).
+    //
+    // Therefore the required factor is
+    //
+    //     asin(sqrt(q)) / sqrt(q)
+    //         = 1 + q/6 + 3q²/40 + 5q³/112 + ...
+    let mut result = Jet::zero();
+    let mut power = Jet::one();
+    let mut coefficient = R::one();
+
+    for k in 0..=(N + 8) {
+        result = result + power * Jet::from_parts(coefficient, [R::zero(); N]);
+
+        let numerator = <R as NumCast>::from((2 * k + 1) * (2 * k + 1)).unwrap();
+
+        let denominator = <R as NumCast>::from(2 * (k + 1) * (2 * k + 3)).unwrap();
+
+        coefficient = coefficient * numerator / denominator;
+
+        power = power * norm_squared;
+    }
+
+    result
+}
+
+fn sphere_identity_exp_jet<V: Euclidean, const N: usize>(
+    coordinate: JetVector<V, N>,
+) -> Sphere<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>> {
+    let coordinate = coordinate.retag::<𝐑𝐞𝐚𝐥::𝒞>();
+
+    // exp(v) = (cos ‖v‖, v sinc ‖v‖).
+    //
+    // Evaluate both radial functions through q = ‖v‖² so that the
+    // derivatives remain well-defined at v = 0.
+    let (cos, sinc) = sphere_exp_factors(coordinate.norm_squared());
+
+    Sphere::new(cos, coordinate * sinc)
+}
+
+fn sphere_identity_log_jet<V: Euclidean, const N: usize>(
+    point: &Sphere<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>,
+) -> Option<JetVector<V, N>> {
+    let eps = <V::F as NumCast>::from(EPSILON).unwrap();
+
+    // The antipode -1 is the cut locus of the identity.
+    if (point.real[0] + V::F::one()).abs() < eps {
+        return None;
+    }
+
+    // log(a, w) = w · atan2(‖w‖, a) / ‖w‖.
+    //
+    // Again, evaluate the scalar factor as an analytic function of
+    // q = ‖w‖² to avoid differentiating sqrt at the identity.
+    let factor = sphere_log_factor(point.imag.norm_squared(), point.real);
+
+    Some((point.imag.clone() * factor).retag::<𝐅𝐥𝐝::𝒞>())
+}
+
+fn sphere_jet_primal<V: Euclidean, const N: usize>(value: &SphereJet<V, N>) -> Sphere<V> {
+    Sphere {
+        real: value.real[0],
+        imag: V::from_iter(value.imag.iter().map(|coordinate| coordinate[0])),
+    }
+}
+
 impl<V: Euclidean> S3<V> {
     /// Wraps a sphere point with unit-quaternion multiplication.
     pub fn new(s: Sphere<V>) -> Self {
@@ -362,6 +551,32 @@ impl<V: Euclidean> S3<V> {
     pub fn from_quaternion(quaternion: Quaternion<V::F>) -> Self {
         let [real, i, j, k] = quaternion.into();
         Self::new(Sphere::new(real, V::from_iter([i, j, k])))
+    }
+
+    fn assemble_jet<const N: usize>(
+        value: Tangent<Self, V, N>,
+    ) -> S3<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>> {
+        const { assert!(V::N == 3) }
+
+        // G(t) = g₀ exp(A(t)), where A(0) = 0.
+        S3(sphere_constant_jet(value.0.0)) * S3(sphere_identity_exp_jet(value.1))
+    }
+
+    fn split_jet<const N: usize>(
+        value: S3<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>
+    ) -> Tangent<Self, V, N> {
+        const { assert!(V::N == 3) }
+
+        // g₀ = G(0).
+        let point = S3(sphere_jet_primal(&value.0));
+
+        // A(t) = log(g₀⁻¹G(t)).
+        //
+        // The primal coefficient of g₀⁻¹G(t) is exactly the identity,
+        // so the logarithm cannot encounter its cut locus.
+        let local = S3(sphere_constant_jet(point.0.clone())).inverse() * value;
+
+        Tangent::new(point, sphere_identity_log_jet(&local.0).unwrap())
     }
 }
 
@@ -410,16 +625,31 @@ impl<V: Euclidean> Inv for S0<V> {
 }
 
 impl<V: Euclidean> LieGroup<V> for S0<V> {
-    fn identity_exp(_: V) -> Self {
-        Self::one()
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, V, N>,
+        rhs: Tangent<Self, V, N>,
+    ) -> Tangent<Self, V, N> {
+        const { assert!(V::N == 0) }
+
+        Tangent::new(lhs.0.compose(&rhs.0), lhs.1.compose(&rhs.1))
     }
 
-    fn identity_log(p: &Self) -> Option<V> {
-        if p.0.real > V::F::zero() {
-            Some(V::zero())
-        } else {
-            None
-        }
+    fn inverse_jet<const N: usize>(value: Tangent<Self, V, N>) -> Tangent<Self, V, N> {
+        const { assert!(V::N == 0) }
+
+        Tangent::new(value.0.inverse(), value.1.inverse())
+    }
+
+    fn identity_exp<const N: usize>(coordinate: JetVector<V, N>) -> Tangent<Self, V, N> {
+        const { assert!(V::N == 0) }
+
+        Tangent::new(Self::identity(), coordinate)
+    }
+
+    fn identity_log<const N: usize>(point: Tangent<Self, V, N>) -> Option<JetVector<V, N>> {
+        const { assert!(V::N == 0) }
+
+        (point.0.0.real() > V::F::zero()).then_some(point.1)
     }
 }
 
@@ -456,14 +686,42 @@ impl<V: Euclidean> Inv for UnitComplex<V> {
 }
 
 impl<V: Euclidean> LieGroup<V> for UnitComplex<V> {
-    fn identity_exp(v: V) -> Self {
-        let alpha = v[0];
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, V, N>,
+        rhs: Tangent<Self, V, N>,
+    ) -> Tangent<Self, V, N> {
+        const { assert!(V::N == 1) }
 
-        Self::new(Sphere::new(alpha.cos(), V::from_iter([alpha.sin()])))
+        Tangent::new(lhs.0.compose(&rhs.0), lhs.1.compose(&rhs.1))
     }
 
-    fn identity_log(p: &Self) -> Option<V> {
-        Some(V::from_iter([V::F::atan2(p.0.imag[0], p.0.real)]))
+    fn inverse_jet<const N: usize>(value: Tangent<Self, V, N>) -> Tangent<Self, V, N> {
+        const { assert!(V::N == 1) }
+
+        Tangent::new(value.0.inverse(), value.1.inverse())
+    }
+
+    fn identity_exp<const N: usize>(coordinate: JetVector<V, N>) -> Tangent<Self, V, N> {
+        const { assert!(V::N == 1) }
+
+        coordinate.into_tangent(|coordinate| {
+            let alpha = coordinate[0];
+            let (sin, cos) = alpha.sin_cos();
+
+            Self::new(Sphere::new(cos, V::from_iter([sin])))
+        })
+    }
+
+    fn identity_log<const N: usize>(point: Tangent<Self, V, N>) -> Option<JetVector<V, N>> {
+        const { assert!(V::N == 1) }
+
+        let eps = <V::F as NumCast>::from(EPSILON).unwrap();
+
+        if (point.0.0.real + V::F::one()).abs() < eps {
+            return None;
+        }
+
+        Some(point.into_jet(|point| V::from_iter([point.0.imag[0].atan2(point.0.real)])))
     }
 }
 
@@ -511,28 +769,25 @@ impl<V: Euclidean> Inv for S3<V> {
 }
 
 impl<V: Euclidean> LieGroup<V> for S3<V> {
-    fn identity_exp(v: V) -> Self {
-        let alpha = V::F::sqrt(v.iter().fold(V::F::zero(), |acc, &x| acc + x * x));
-        let (sin, cos) = alpha.sin_cos();
-
-        let sinc = sinc_from(alpha, sin, <V::F as NumCast>::from(EPSILON).unwrap());
-        Self::new(Sphere::new(cos, v * sinc))
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, V, N>,
+        rhs: Tangent<Self, V, N>,
+    ) -> Tangent<Self, V, N> {
+        Self::split_jet(Self::assemble_jet(lhs) * Self::assemble_jet(rhs))
     }
 
-    fn identity_log(p: &Self) -> Option<V> {
-        let eps = <V::F as NumCast>::from(EPSILON).unwrap();
-        if (p.0.real + V::F::one()).abs() < eps {
-            return None; // antipode singularity
-        }
-        // use atan2 instead of acos for numerical stability
-        let imag_norm = p.0.imag.norm();
-        let alpha = V::F::atan2(imag_norm, p.0.real);
+    fn inverse_jet<const N: usize>(value: Tangent<Self, V, N>) -> Tangent<Self, V, N> {
+        Self::split_jet(Self::assemble_jet(value).inverse())
+    }
 
-        let sinc_recip = sinc_recip(alpha, eps);
-        Some(p.0.imag.clone() * sinc_recip)
+    fn identity_exp<const N: usize>(coordinate: JetVector<V, N>) -> Tangent<Self, V, N> {
+        Self::split_jet(S3(sphere_identity_exp_jet(coordinate)))
+    }
+
+    fn identity_log<const N: usize>(point: Tangent<Self, V, N>) -> Option<JetVector<V, N>> {
+        sphere_identity_log_jet(&Self::assemble_jet(point).0)
     }
 }
-
 impl<V: Euclidean> Interval for Sphere<V> {
     type R = V::F;
 

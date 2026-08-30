@@ -11,7 +11,10 @@ use crate::traits::Form;
 #[cfg(feature = "testing")]
 use num_traits::Zero;
 
-use crate::traits::{Bilinear, Euclidean, Field, Interval, Real, Tensor};
+use crate::traits::{
+    Bilinear, Euclidean, Field, Interval, Real, Tensor,
+    calculus::{Connection, Jet, JetVector, Tangent},
+};
 
 use super::Point;
 
@@ -34,6 +37,19 @@ mod sealed {
 /// which selected `T` or `Option<T>`. [`Chart::Global`] uses it to distinguish
 /// complete coordinate domains from genuinely partial ones.
 pub trait OptionallyOption<T>: sealed::Sealed<T> {
+    type Mapped<U>: OptionallyOption<U>;
+
+    fn map_option<U>(self, f: impl FnOnce(T) -> U) -> Self::Mapped<U>;
+
+    fn cast_option<X, U: OptionallyOption<X>>(self, f: impl FnOnce(T) -> X) -> U
+    where
+        Self: Sized,
+    {
+        U::from_option(self.into_option().map(f))
+    }
+
+    fn from_option(x: Option<T>) -> Self;
+
     /// Converts either permitted representation into `Option<T>`.
     ///
     /// A statically present `T` becomes `Some(T)`, while an `Option<T>` is
@@ -44,14 +60,34 @@ pub trait OptionallyOption<T>: sealed::Sealed<T> {
 }
 
 impl<T> OptionallyOption<T> for T {
+    type Mapped<U> = U;
+
+    fn map_option<U>(self, f: impl FnOnce(T) -> U) -> U {
+        f(self)
+    }
+
     fn into_option(self) -> Option<T> {
         Some(self)
+    }
+
+    fn from_option(value: Option<T>) -> T {
+        value.unwrap()
     }
 }
 
 impl<T> OptionallyOption<T> for Option<T> {
+    type Mapped<U> = Option<U>;
+
+    fn map_option<U>(self, f: impl FnOnce(T) -> U) -> Option<U> {
+        Option::map(self, f)
+    }
+
     fn into_option(self) -> Option<T> {
         self
+    }
+
+    fn from_option(value: Option<T>) -> Option<T> {
+        value
     }
 }
 
@@ -295,28 +331,43 @@ pub trait Smooth<V: Tensor>: Point {
     /// for both geodesically complete and potentially incomplete manifolds.
     /// Code which requires completeness can state that requirement explicitly
     /// with `Global = Self`.
-    type Global: OptionallyOption<Self>;
+    type Global<const N: usize>: OptionallyOption<Tangent<Self, V, N>>;
 
     /// The exponential map at `self`: sends a tangent vector `v` to the
     /// point reached by following the geodesic from `self` in direction
     /// `v` for unit time.
-    fn exp(&self, v: V) -> Self::Global;
+    fn exp<const N: usize>(
+        base: Tangent<Self, V, N>,
+        coordinate: JetVector<V, N>,
+    ) -> Self::Global<N>;
 
     /// The logarithmic map at `self`: recovers the tangent vector whose
     /// geodesic reaches `other`, or `None` at the cut locus (e.g. the
     /// antipode on a sphere).
-    fn log(&self, other: &Self) -> Option<V>;
+    fn log<const N: usize>(
+        base: Tangent<Self, V, N>,
+        point: Tangent<Self, V, N>,
+    ) -> Option<JetVector<V, N>>;
 }
 
 impl<V: Tensor, S: Smooth<V>> Chart<Self, V> for S {
-    type Global = S::Global;
+    type Global = <S::Global<0> as OptionallyOption<Tangent<S, V, 0>>>::Mapped<S>;
 
     fn to_local(&self, point: &Self) -> Option<V> {
-        self.log(point)
+        S::log::<0>(
+            Tangent::new(self.clone(), Zero::zero()),
+            Tangent::new(point.clone(), Zero::zero()),
+        )
+        .map(|x| V::from_iter(x.iter().map(|x| x[0])))
     }
 
-    fn to_global(&self, coord: V) -> S::Global {
-        self.exp(coord)
+    fn to_global(&self, coordinate: V) -> Self::Global {
+        let global = S::exp::<0>(
+            Tangent::new(self.clone(), Zero::zero()),
+            JetVector::new(coordinate, |x| Jet::from_parts(x, [])),
+        );
+
+        global.map_option(|tangent| tangent.0)
     }
 
     fn chart_at(p: &Self) -> Self {
@@ -324,11 +375,27 @@ impl<V: Tensor, S: Smooth<V>> Chart<Self, V> for S {
     }
 }
 
-impl<V: Tensor, L: Smooth<V>> ExpMap<Self, V> for L {
+impl<V: Tensor, S: Smooth<V>> ExpMap<Self, V> for S {
     // optimisation
     fn base_point(&self) -> Self {
         self.clone()
     }
 }
 
-impl<V: Tensor, L: Smooth<V>> TangentBundle<Self, V> for L {}
+impl<V: Tensor, S: Smooth<V>> TangentBundle<Self, V> for S {}
+
+impl<V: Tensor, S: Smooth<V>> Connection<Self, V> for S {
+    fn tangent_to_local<const N: usize>(
+        base: Tangent<Self, V, N>,
+        local: Tangent<Self, V, N>,
+    ) -> Option<JetVector<V, N>> {
+        S::log(base, local)
+    }
+
+    fn tangent_to_global<const N: usize>(
+        base: Tangent<Self, V, N>,
+        coordinate: JetVector<V, N>,
+    ) -> <Self::Global as OptionallyOption<Self>>::Mapped<(Self, JetVector<V, N>)> {
+        S::exp(base, coordinate).cast_option(|x| (x.0, x.1))
+    }
+}

@@ -6,12 +6,16 @@
 
 use core::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
-use num_traits::{Inv, One, Zero};
+use num_traits::{Inv, One, Zero, real::Real as _};
 
 use crate::{
-    coords::Coords, impl_group_via_add, include_as, traits::{
-        CField, Field, FieldExp, Interval, LieGroup, Metric, NatZero, NonZero, Real, Sesquilinear,
-        Smooth,
+    coords::Coords,
+    impl_group_via_add, include_as,
+    traits::{
+        CField, Chart, Field, FieldExp, Group, Interval, LieGroup, Metric, NatZero, NonZero, Real,
+        Sesquilinear, Tensor,
+        calculus::{JetVector, JetVectorIn, Tangent},
+        𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥,
     },
 };
 
@@ -143,14 +147,31 @@ impl<R: Real> IndexMut<usize> for Complex<R> {
 impl_group_via_add!(Complex<R>, R: Real);
 
 impl<R: Real> LieGroup<Coords<R, 2>> for Complex<R> {
-    // e^z
-    fn identity_exp(v: Coords<R, 2>) -> Self {
-        v.into()
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, Coords<R, 2>, N>,
+        rhs: Tangent<Self, Coords<R, 2>, N>,
+    ) -> Tangent<Self, Coords<R, 2>, N> {
+        Tangent::new(lhs.0.compose(&rhs.0), lhs.1.compose(&rhs.1))
     }
 
-    // Log(p)
-    fn identity_log(p: &Self) -> Option<Coords<R, 2>> {
-        Some(p.0)
+    fn inverse_jet<const N: usize>(
+        value: Tangent<Self, Coords<R, 2>, N>,
+    ) -> Tangent<Self, Coords<R, 2>, N> {
+        Tangent::new(value.0.inverse(), value.1.inverse())
+    }
+
+    // The identity map Coords<R, 2> -> Complex<R>.
+    fn identity_exp<const N: usize>(
+        coordinate: JetVector<Coords<R, 2>, N>,
+    ) -> Tangent<Self, Coords<R, 2>, N> {
+        coordinate.into_tangent(Complex::from)
+    }
+
+    // The inverse identification Complex<R> -> Coords<R, 2>.
+    fn identity_log<const N: usize>(
+        point: Tangent<Self, Coords<R, 2>, N>,
+    ) -> Option<JetVector<Coords<R, 2>, N>> {
+        Some(point.into_jet(|x| x.0))
     }
 }
 
@@ -165,22 +186,74 @@ impl<R: Real> Inv for NonZero<Complex<R>> {
 }
 
 impl<R: Real> LieGroup<Coords<R, 2>> for NonZero<Complex<R>> {
-    // e^z
-    fn identity_exp(v: Coords<R, 2>) -> Self {
-        let [a, b] = v.into();
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, Coords<R, 2>, N>,
+        rhs: Tangent<Self, Coords<R, 2>, N>,
+    ) -> Tangent<Self, Coords<R, 2>, N> {
+        let lhs = lhs.into_jet(|p| p.0.0);
+        let rhs = rhs.into_jet(|p| p.0.0);
 
-        let (sin, cos) = b.sin_cos();
-        Self(Complex::from([cos, sin]) * a.exp())
+        JetVector::from_fn(|i| {
+            if i == 0 {
+                lhs[0] * rhs[0] - lhs[1] * rhs[1]
+            } else {
+                lhs[0] * rhs[1] + lhs[1] * rhs[0]
+            }
+        })
+        .into_tangent(|coordinate| NonZero(Complex::from(coordinate)))
     }
 
-    // Log(p)
-    fn identity_log(p: &Self) -> Option<Coords<R, 2>> {
-        let [a, b] = p.0.into();
-        let r = p.0.norm_squared().sqrt();
+    fn inverse_jet<const N: usize>(
+        value: Tangent<Self, Coords<R, 2>, N>,
+    ) -> Tangent<Self, Coords<R, 2>, N> {
+        let value = value.into_jet(|p| p.0.0).retag::<𝐑𝐞𝐚𝐥::𝒞>();
 
+        let norm_squared = value[0] * value[0] + value[1] * value[1];
+
+        JetVectorIn::<𝐑𝐞𝐚𝐥::𝒞, Coords<R, 2>, N>::from_fn(|i| {
+            if i == 0 {
+                value[0] / norm_squared
+            } else {
+                -value[1] / norm_squared
+            }
+        })
+        .retag::<𝐅𝐥𝐝::𝒞>()
+        .into_tangent(|coordinate| NonZero(Complex::from(coordinate)))
+    }
+
+    // e^(a + bi) = e^a(cos(b) + i sin(b))
+    fn identity_exp<const N: usize>(
+        coordinate: JetVector<Coords<R, 2>, N>,
+    ) -> Tangent<Self, Coords<R, 2>, N> {
+        let coordinate = coordinate.retag::<𝐑𝐞𝐚𝐥::𝒞>();
+
+        let [a, b] = [coordinate[0], coordinate[1]];
+        let (sin, cos) = b.sin_cos();
+        let radius = a.exp();
+
+        JetVectorIn::<𝐑𝐞𝐚𝐥::𝒞, Coords<R, 2>, N>::from_fn(|i| {
+            if i == 0 { radius * cos } else { radius * sin }
+        })
+        .retag::<𝐅𝐥𝐝::𝒞>()
+        .into_tangent(|coordinate| NonZero(Complex::from(coordinate)))
+    }
+
+    // Log(a + bi) = ln(sqrt(a² + b²)) + i atan2(b, a)
+    fn identity_log<const N: usize>(
+        point: Tangent<Self, Coords<R, 2>, N>,
+    ) -> Option<JetVector<Coords<R, 2>, N>> {
+        let point = point.into_jet(|p| p.0.0).retag::<𝐑𝐞𝐚𝐥::𝒞>();
+
+        let [a, b] = [point[0], point[1]];
+        let radius = (a * a + b * b).sqrt();
         let theta = b.atan2(a);
 
-        Some([r.ln(), theta].into())
+        Some(
+            JetVectorIn::<𝐑𝐞𝐚𝐥::𝒞, Coords<R, 2>, N>::from_fn(|i| {
+                if i == 0 { radius.ln() } else { theta }
+            })
+            .retag::<𝐅𝐥𝐝::𝒞>(),
+        )
     }
 }
 
@@ -188,7 +261,7 @@ impl<R: Real> Interval for NonZero<Complex<R>> {
     type R = R;
 
     fn interval_squared(&self, other: &Self) -> R {
-        self.log(other).unwrap().norm_squared()
+        self.to_local(other).unwrap().norm_squared()
     }
 }
 

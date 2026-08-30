@@ -9,10 +9,9 @@ use diffable::{
         Form, Left, Normalize, NormalizeWith, Right, Sinister, Sinistered, TangentBundle, Tensor,
         Undecorated, Vector,
         calculus::{
-            Connection, Contract, Here, JetVector, MetricTensor, OnLeft, ParallelTransport,
-            Reassociate, Swap, Tangent, TensorProduct, ThroughSinister, d,
+            Connection, Contract, Here, JetVector, JetVectorIn, MetricTensor, OnLeft,
+            ParallelTransport, Reassociate, Swap, Tangent, TensorProduct, ThroughSinister, d,
         },
-        𝐅𝐥𝐝,
     },
 };
 use num_traits::{One, Zero};
@@ -370,7 +369,7 @@ where
 fn jetted_tensor_product_can_swap<C: Cat, V>()
 where
     V: Tensor<Action = BothSided>,
-    JetVector<C, V>: Tensor<Action = BothSided, Hand = Right>,
+    JetVectorIn<C, V>: Tensor<Action = BothSided, Hand = Right>,
 {
     fn check<T>()
     where
@@ -380,7 +379,7 @@ where
         // compile witness
     }
 
-    check::<JetVector<C, V>>();
+    check::<JetVectorIn<C, V>>();
 }
 
 // -----------------------------------------------------------------------------
@@ -429,14 +428,14 @@ impl<V: Vector> Connection<V, V> for ExplicitMetric<V> {
     fn tangent_to_local<const N: usize>(
         base: Tangent<V, V, N>,
         local: Tangent<V, V, N>,
-    ) -> Option<JetVector<𝐅𝐥𝐝::𝒞, V, N>> {
+    ) -> Option<JetVector<V, N>> {
         <V as Connection<V, V>>::tangent_to_local(base, local)
     }
 
     fn tangent_to_global<const N: usize>(
         base: Tangent<V, V, N>,
-        coordinate: JetVector<𝐅𝐥𝐝::𝒞, V, N>,
-    ) -> (V, JetVector<𝐅𝐥𝐝::𝒞, V, N>) {
+        coordinate: JetVector<V, N>,
+    ) -> (V, JetVector<V, N>) {
         <V as Connection<V, V>>::tangent_to_global(base, coordinate)
     }
 }

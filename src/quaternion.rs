@@ -12,7 +12,10 @@ use crate::{
     complex::Complex,
     coords::Coords,
     impl_group_via_add,
-    traits::{Field, FieldExp, LieGroup, Metric, NatZero, NonZero, Real},
+    traits::{
+        Field, FieldExp, Group, LieGroup, Metric, NatZero, NonZero, Real,
+        calculus::{JetVector, Tangent},
+    },
 };
 
 /// The quaternion skew field `H`, with coordinates `a + bi + cj + dk`.
@@ -159,12 +162,29 @@ impl<R: Real> IndexMut<usize> for Quaternion<R> {
 impl_group_via_add!(Quaternion<R>, R: Real);
 
 impl<R: Real> LieGroup<Coords<R, 4>> for Quaternion<R> {
-    fn identity_exp(v: Coords<R, 4>) -> Self {
-        v.into()
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, Coords<R, 4>, N>,
+        rhs: Tangent<Self, Coords<R, 4>, N>,
+    ) -> Tangent<Self, Coords<R, 4>, N> {
+        Tangent::new(lhs.0.compose(&rhs.0), lhs.1.compose(&rhs.1))
     }
 
-    fn identity_log(p: &Self) -> Option<Coords<R, 4>> {
-        Some(p.0)
+    fn inverse_jet<const N: usize>(
+        value: Tangent<Self, Coords<R, 4>, N>,
+    ) -> Tangent<Self, Coords<R, 4>, N> {
+        Tangent::new(value.0.inverse(), value.1.inverse())
+    }
+
+    fn identity_exp<const N: usize>(
+        coordinate: JetVector<Coords<R, 4>, N>,
+    ) -> Tangent<Self, Coords<R, 4>, N> {
+        coordinate.into_tangent(Quaternion::from)
+    }
+
+    fn identity_log<const N: usize>(
+        point: Tangent<Self, Coords<R, 4>, N>,
+    ) -> Option<JetVector<Coords<R, 4>, N>> {
+        Some(point.into_jet(|point| point.0))
     }
 }
 

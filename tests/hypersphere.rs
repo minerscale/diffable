@@ -11,7 +11,7 @@ use diffable::{
     hypersphere::{S0, S3, So3, Sphere, Stereographic, UnitComplex},
     test_chart, test_group, test_metric, test_pseudo_riemannian, test_quotient,
     test_tangent_bundle,
-    traits::{Chart, Group, InnerProduct, LieGroup, Quotient},
+    traits::{Chart, Group, InnerProduct, Quotient},
 };
 
 use num_traits::{One, Zero};
@@ -183,7 +183,7 @@ fn so3_equator_equality() {
     // and a 180° rotation about an arbitrary-ish axis
     let axis: Coords<R64, 3> = [R64(1.0), R64(2.0), R64(-0.5)].into();
     let axis = axis * (R64(1.0) / axis.norm());
-    let half_turn = S3::identity_exp(axis * R64(std::f64::consts::PI));
+    let half_turn = S3::identity().to_global(axis * R64(std::f64::consts::PI));
     let neg = S3::new(Sphere::new(
         -half_turn.inner().real(),
         -half_turn.inner().imag(),
@@ -201,7 +201,7 @@ fn dirac_belt_trick() {
     let full_period = R64(std::f64::consts::TAU);
 
     // Half period: back to SO(3) identity, but NOT SU(2) identity
-    let half_su2 = S3::identity_exp(axis * half_period);
+    let half_su2 = S3::identity().to_global(axis * half_period);
     assert!(
         So3::new(half_su2.clone()) == so3_identity,
         "360° rotation should be identity in SO(3)"
@@ -212,7 +212,7 @@ fn dirac_belt_trick() {
     );
 
     // Full period: back to SU(2) identity
-    let full_su2 = S3::identity_exp(axis * full_period);
+    let full_su2 = S3::identity().to_global(axis * full_period);
     assert!(
         full_su2 == su2_identity,
         "720° rotation should be identity in SU(2)"

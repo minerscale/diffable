@@ -15,8 +15,10 @@ use crate::{
     impl_group_via_mul, impl_lie_group_via_quotient, impl_vector_ops,
     matrix::{Matrix, MatrixExponential},
     traits::{
-        Atomic, BothSided, CField, Dual, Form, LieGroup, NatZero, Nondegenerate, Point, Quotient,
-        Real, Right, RootOfUnity, Sesquilinear, Tensor,
+        Atomic, BothSided, CField, Dual, FieldExp, Form, FromReal, Group, LieGroup, Metric,
+        NatZero, Nondegenerate, Point, Quotient, Real, Right, RootOfUnity, Sesquilinear, Tensor,
+        calculus::{Jet, JetVector, Tangent},
+        𝐅𝐥𝐝,
     },
 };
 
@@ -171,16 +173,109 @@ impl<V: Tensor<F: CField>, const N: usize> Inv for Sl<V, N> {
 
 impl_group_via_mul!(Sl<V, N>, V: Tensor<F: CField>, const N: usize);
 
-impl<F: CField<Characteristic = NatZero>> LieGroup<SlAlgebra<F, 2, 3>> for Sl<Coords<F, 2>, 2>
+type Sl2Matrix<F> = Matrix<Coords<F, 2>, 2>;
+type Sl2Jetted<F, const M: usize> = Matrix<JetVector<Coords<F, 2>, M>, 2>;
+
+fn sl2_assemble_group_jet<F, const M: usize>(
+    value: Tangent<Sl<Coords<F, 2>, 2>, SlAlgebra<F, 2, 3>, M>,
+) -> Sl2Jetted<F, M>
 where
-    Matrix<Coords<F, 2>, 2>: MatrixExponential,
+    F: CField<Characteristic = NatZero, Fixed: FromReal + Metric> + Metric + FromReal + FieldExp,
 {
-    fn identity_exp(v: SlAlgebra<F, 2, 3>) -> Self {
-        Self(Matrix::exp(&v.matrix()))
+    Sl2Matrix::<F>::constant_jet::<M>(value.0.0)
+        * Sl2Matrix::<F>::exp_jet::<M>(SlAlgebra::matrix_jet(value.1))
+}
+
+fn sl2_split_group_jet<F, const M: usize>(
+    value: Sl2Jetted<F, M>,
+) -> Tangent<Sl<Coords<F, 2>, 2>, SlAlgebra<F, 2, 3>, M>
+where
+    F: CField<Characteristic = NatZero, Fixed: FromReal + Metric> + Metric + FromReal + FieldExp,
+{
+    let point = Sl(Sl2Matrix::<F>::primal::<M>(&value));
+
+    let local_group = Sl2Matrix::<F>::constant_jet::<M>(point.clone().inverse().0) * value;
+
+    let local = Sl2Matrix::<F>::log_jet::<M>(local_group).unwrap();
+
+    Tangent::new(point, SlAlgebra::from_matrix_jet(local))
+}
+
+impl<F: CField<Characteristic = NatZero>> SlAlgebra<F, 2, 3> {
+    fn matrix_jet<const M: usize>(value: JetVector<Self, M>) -> Sl2Jetted<F, M> {
+        let matrix = SlAlgebra::<Jet<𝐅𝐥𝐝::𝒞, F, M>, 2, 3>::from_fn(|i| value[i]).matrix();
+
+        Matrix::new(core::array::from_fn(|i| {
+            core::array::from_fn(|j| matrix[(i, j)])
+        }))
     }
 
-    fn identity_log(p: &Self) -> Option<SlAlgebra<F, 2, 3>> {
-        Matrix::log(&p.0).map(|x| SlAlgebra::from_matrix(x))
+    fn from_matrix_jet<const M: usize>(value: Sl2Jetted<F, M>) -> JetVector<Self, M> {
+        let matrix =
+            Matrix::<Coords<Jet<𝐅𝐥𝐝::𝒞, F, M>, 2>, 2>::new(core::array::from_fn(|i| {
+                core::array::from_fn(|j| value[(i, j)])
+            }));
+
+        let algebra = SlAlgebra::<Jet<𝐅𝐥𝐝::𝒞, F, M>, 2, 3>::from_matrix(matrix);
+
+        JetVector::from_fn(|i| algebra[i])
+    }
+}
+
+impl<F> LieGroup<SlAlgebra<F, 2, 3>> for Sl<Coords<F, 2>, 2>
+where
+    F: CField<Characteristic = NatZero, Fixed: FromReal + Metric> + Metric + FromReal + FieldExp,
+{
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, SlAlgebra<F, 2, 3>, N>,
+        rhs: Tangent<Self, SlAlgebra<F, 2, 3>, N>,
+    ) -> Tangent<Self, SlAlgebra<F, 2, 3>, N> {
+        if N == 0 {
+            return Tangent::new(lhs.0.compose(&rhs.0), lhs.1.compose(&rhs.1));
+        }
+
+        sl2_split_group_jet(sl2_assemble_group_jet(lhs) * sl2_assemble_group_jet(rhs))
+    }
+
+    fn inverse_jet<const N: usize>(
+        value: Tangent<Self, SlAlgebra<F, 2, 3>, N>,
+    ) -> Tangent<Self, SlAlgebra<F, 2, 3>, N> {
+        if N == 0 {
+            return Tangent::new(value.0.inverse(), value.1.inverse());
+        }
+
+        let value = Sl(sl2_assemble_group_jet(value));
+
+        sl2_split_group_jet(value.inverse().0)
+    }
+
+    fn identity_exp<const N: usize>(
+        coordinate: JetVector<SlAlgebra<F, 2, 3>, N>,
+    ) -> Tangent<Self, SlAlgebra<F, 2, 3>, N> {
+        if N == 0 {
+            return coordinate.into_tangent(|coordinate| Self(Matrix::exp(&coordinate.matrix())));
+        }
+
+        sl2_split_group_jet(Sl2Matrix::<F>::exp_jet::<N>(SlAlgebra::matrix_jet(
+            coordinate,
+        )))
+    }
+
+    fn identity_log<const N: usize>(
+        point: Tangent<Self, SlAlgebra<F, 2, 3>, N>,
+    ) -> Option<JetVector<SlAlgebra<F, 2, 3>, N>> {
+        if N == 0 {
+            let coordinate: SlAlgebra<_, _, 3> =
+                Matrix::log(&point.0.0).map(SlAlgebra::from_matrix)?;
+
+            return Some(JetVector::from_iter(
+                coordinate
+                    .iter()
+                    .map(|&x| Jet::from_parts(x, [Zero::zero(); N])),
+            ));
+        }
+
+        Sl2Matrix::<F>::log_jet::<N>(sl2_assemble_group_jet(point)).map(SlAlgebra::from_matrix_jet)
     }
 }
 

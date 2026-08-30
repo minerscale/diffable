@@ -11,7 +11,7 @@ use diffable::{
     epsilon_metric::R64,
     spacetime::{Lorentz, Minkowski, Sl, Sl2c, SlAlgebra},
     test_group, test_quotient, test_tangent_bundle, test_vector,
-    traits::{LieGroup, Quotient},
+    traits::{Chart, Group, Quotient},
 };
 
 use proptest::prelude::*;
@@ -28,7 +28,7 @@ prop_compose! {
 }
 
 pub fn arb_sl2c() -> impl Strategy<Value = Sl2c<R64>> {
-    arb_sl_algebra_2c().prop_map(Sl::identity_exp)
+    arb_sl_algebra_2c().prop_map(|x| Sl::identity().to_global(x))
 }
 
 test_vector!(

@@ -15,7 +15,10 @@ use super::Chart;
 use super::{Field, LieGroup, Metric, Real, calculus::NondegenerateLift};
 use crate::{
     impl_group_via_add, impl_vector_ops,
-    traits::{Interval, Point},
+    traits::{
+        Group, Interval, Point,
+        calculus::{JetVector, Tangent},
+    },
 };
 
 /// A finite-dimensional Euclidean space.
@@ -1330,12 +1333,23 @@ pub trait Nondegenerate: Form {
 impl_group_via_add!(V, V: Tensor);
 
 impl<V: Tensor> LieGroup<V> for V {
-    fn identity_exp(v: V) -> Self {
-        v
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, V, N>,
+        rhs: Tangent<Self, V, N>,
+    ) -> Tangent<Self, V, N> {
+        Tangent::new(lhs.0.compose(&rhs.0), lhs.1.compose(&rhs.1))
     }
 
-    fn identity_log(p: &Self) -> Option<V> {
-        Some(p.clone())
+    fn inverse_jet<const N: usize>(value: Tangent<Self, V, N>) -> Tangent<Self, V, N> {
+        Tangent::new(value.0.inverse(), value.1.inverse())
+    }
+
+    fn identity_exp<const N: usize>(coordinate: JetVector<V, N>) -> Tangent<Self, V, N> {
+        coordinate.into_tangent(|x| x)
+    }
+
+    fn identity_log<const N: usize>(point: Tangent<Self, V, N>) -> Option<JetVector<V, N>> {
+        Some(point.into_jet(|x| x))
     }
 }
 

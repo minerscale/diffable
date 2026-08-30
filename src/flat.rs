@@ -11,7 +11,10 @@
 use crate::{
     discrete::Z,
     impl_lie_group_via_quotient,
-    traits::{Interval, Tensor},
+    traits::{
+        Interval, Tensor,
+        calculus::{Jet, JetVector, Tangent},
+    },
 };
 use core::marker::PhantomData;
 
@@ -101,17 +104,28 @@ impl<I: ICompatible<V>, V: VCompatible<I>> Group for Torus<I, V> {
 }
 
 impl<I: ICompatible<V>, V: VCompatible<I>> LieGroup<V> for Torus<I, V> {
-    fn identity_exp(v: V) -> Self {
-        let v0 = [v[0]].into();
-        let v1 = [v[1]].into();
-        Self::new(S1::identity_exp(v0), S1::identity_exp(v1))
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, V, N>,
+        rhs: Tangent<Self, V, N>,
+    ) -> Tangent<Self, V, N> {
+        Tangent::new(lhs.0.compose(&rhs.0), lhs.1.compose(&rhs.1))
     }
 
-    fn identity_log(p: &Self) -> Option<V> {
-        let a = S1::identity_log(&p.0)?;
-        let b = S1::identity_log(&p.1)?;
+    fn inverse_jet<const N: usize>(value: Tangent<Self, V, N>) -> Tangent<Self, V, N> {
+        Tangent::new(value.0.inverse(), value.1.inverse())
+    }
 
-        Some([a[0], b[0]].into())
+    fn identity_exp<const N: usize>(coordinate: JetVector<V, N>) -> Tangent<Self, V, N> {
+        coordinate.into_tangent(|coordinate| {
+            let a: I = [coordinate[0]].into();
+            let b: I = [coordinate[1]].into();
+
+            Self::new(S1::new(a), S1::new(b))
+        })
+    }
+
+    fn identity_log<const N: usize>(point: Tangent<Self, V, N>) -> Option<JetVector<V, N>> {
+        Some(point.into_jet(|point| [point.0.lift()[0], point.1.lift()[0]].into()))
     }
 }
 
@@ -159,76 +173,101 @@ impl<I: ICompatible<V>, V: VCompatible<I>> KleinBottle<I, V> {
 }
 
 impl<I: ICompatible<V>, V: VCompatible<I>> Smooth<V> for KleinBottle<I, V> {
-    type Global = Self;
+    type Global<const N: usize> = Tangent<Self, V, N>;
 
-    fn exp(&self, v: V) -> Self {
-        let (x, y) = self.coords();
-        let vx: I::F = v[0].into();
-        let vy: I::F = v[1].into();
-        Self::from_cover(x + vx, y + vy)
-    }
+    fn exp<const N: usize>(
+        base: Tangent<Self, V, N>,
+        coordinate: JetVector<V, N>,
+    ) -> Self::Global<N> {
+        let (x, y) = base.0.coords();
+        let cover: V = [x, y].into();
 
-    fn log(&self, other: &Self) -> Option<V> {
+        let mut x = Jet::from_parts(cover[0], [V::F::zero(); N]) + base.1[0] + coordinate[0];
+        let mut y = Jet::from_parts(cover[1], [V::F::zero(); N]) + base.1[1] + coordinate[1];
+
+        let primal_x: I::F = x[0].into();
+        let primal_y: I::F = y[0].into();
+
         let one = I::F::one();
         let two = one + one;
-        let (sx, sy) = self.coords();
-        let (ox, oy) = other.coords();
-        let mut best: Option<(I::F, I::F)> = None;
+
+        let ky = primal_y.round();
+        let y_red = primal_y - ky;
+
+        let reflected = ky.rem_euclid(&two) != I::F::zero();
+        let x_oriented = if reflected { -primal_x } else { primal_x };
+
+        let point = Self(
+            S1::new([x_oriented].into()),
+            S1::new([y_red].into()),
+            PhantomData,
+        );
+
+        // The primal coefficients are now represented by `point`.
+        x[0] = V::F::zero();
+        y[0] = V::F::zero();
+
+        // Differentiate the selected deck transformation.
+        if reflected {
+            x = -x;
+        }
+
+        Tangent::new(point, JetVector::from_iter([x, y]))
+    }
+
+    fn log<const N: usize>(
+        base: Tangent<Self, V, N>,
+        point: Tangent<Self, V, N>,
+    ) -> Option<JetVector<V, N>> {
+        let one = I::F::one();
+        let two = one + one;
+
+        let (sx, sy) = base.0.coords();
+        let (ox, oy) = point.0.coords();
+
+        // Keep whether the winning representative reverses x orientation.
+        let mut best: Option<(I::F, I::F, bool)> = None;
         let mut best_sq = I::F::zero();
 
         for n in [-one, I::F::zero(), one] {
-            let n_odd = n.rem_euclid(&two) != I::F::zero();
-            // Reflection formula in the (-1/2,1/2]-centered
-            // convention is `-ox`, not `1 - ox` — reflecting about
-            // 0 (the domain's center), not about 1/2 (which was
-            // only the reflection point under the old [0,1)
-            // convention).
-            let base_ox = if n_odd { -ox } else { ox };
+            let flipped = n.rem_euclid(&two) != I::F::zero();
+            let base_ox = if flipped { -ox } else { ox };
+
             for m in [-one, I::F::zero(), one] {
                 let cx = base_ox + m;
                 let cy = oy + n;
                 let dx = cx - sx;
                 let dy = cy - sy;
                 let sq = dx * dx + dy * dy;
+
                 if best.is_none() || sq < best_sq {
-                    best = Some((dx, dy));
+                    best = Some((dx, dy, flipped));
                     best_sq = sq;
                 }
             }
         }
-        best.map(|(dx, dy)| [dx, dy].into())
+
+        best.map(|(dx, dy, flipped)| {
+            let displacement: V = [dx, dy].into();
+
+            JetVector::from_fn(|i| {
+                // Move the point jet into the particular covering
+                // representative selected above.
+                let point_jet = if i == 0 && flipped {
+                    -point.1[i]
+                } else {
+                    point.1[i]
+                };
+
+                let constant = Jet::from_parts(displacement[i], [V::F::zero(); N]);
+
+                constant + point_jet - base.1[i]
+            })
+        })
     }
 }
 
 impl<I: ICompatible<V>, V: VCompatible<I>> KleinBottle<I, V> {
-    /// Reduce a cover point (x, y) ∈ ℝ² to the fundamental domain via
-    /// Γ = ⟨A, B⟩, A: (x,y) ↦ (x+1, y), B: (x,y) ↦ (−x, y+1).
-    ///
-    /// Uses the SAME (-1/2, 1/2]-centered convention as `S1::lift`
-    /// throughout: seam-crossing count is `y.round()` (nearest
-    /// integer), not `y.floor()`, since the fundamental domain is
-    /// centered at 0 rather than starting at 0. Parity of that
-    /// rounded count decides the flip, exactly as before — only the
-    /// rounding function and the reflection formula's center point
-    /// (0, not 1/2) changed.
-    fn from_cover(x: I::F, y: I::F) -> Self {
-        let one = I::F::one();
-        let two = one + one;
-        let ky = y.round(); // nearest-centered seam count
-        let y_red = y - ky; // in (-1/2, 1/2]
-
-        let ky_parity_odd = ky.rem_euclid(&two) != I::F::zero();
-        let x_oriented = if ky_parity_odd { -x } else { x };
-
-        // S1::new performs the (-1/2,1/2] reduction itself now, so
-        // x_oriented can be handed to it directly, unreduced.
-        Self(
-            S1::new([x_oriented].into()),
-            S1::new([y_red].into()),
-            PhantomData,
-        )
-    }
-
     fn coords(&self) -> (I::F, I::F) {
         (self.0.lift()[0], self.1.lift()[0])
     }

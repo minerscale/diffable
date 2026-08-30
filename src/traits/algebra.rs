@@ -8,7 +8,10 @@
 
 use crate::{
     impl_group_via_mul,
-    traits::{Different, ExactCmp, FromReal, Interval, Metric, Real, Same, Tensor},
+    traits::{
+        Different, ExactCmp, FromReal, Interval, Metric, Real, Same, Tensor,
+        calculus::{JetVector, Tangent},
+    },
 };
 use core::ops::{Add, Mul, Neg, Sub};
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
@@ -1032,14 +1035,44 @@ impl<F: Field, const N: usize> Inv for RootOfUnity<F, N> {
 
 impl_group_via_mul!(RootOfUnity<F, N>, F: Field, const N: usize);
 
-impl<V: Tensor, const N: usize> LieGroup<V> for RootOfUnity<V::F, N> {
-    fn identity_exp(_: V) -> Self {
-        const { assert!(N != 0) }
-        Self::one()
+impl<V: Tensor, const K: usize> LieGroup<V> for RootOfUnity<V::F, K> {
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, V, N>,
+        rhs: Tangent<Self, V, N>,
+    ) -> Tangent<Self, V, N> {
+        const {
+            assert!(K != 0);
+            assert!(V::N == 0);
+        }
+
+        Tangent::new(lhs.0.compose(&rhs.0), Zero::zero())
     }
 
-    fn identity_log(p: &Self) -> Option<V> {
-        p.is_one().then(|| V::zero())
+    fn inverse_jet<const N: usize>(value: Tangent<Self, V, N>) -> Tangent<Self, V, N> {
+        const {
+            assert!(K != 0);
+            assert!(V::N == 0);
+        }
+
+        Tangent::new(value.0.inverse(), Zero::zero())
+    }
+
+    fn identity_exp<const N: usize>(_: JetVector<V, N>) -> Tangent<Self, V, N> {
+        const {
+            assert!(K != 0);
+            assert!(V::N == 0);
+        }
+
+        Tangent::new(Self::one(), Zero::zero())
+    }
+
+    fn identity_log<const N: usize>(point: Tangent<Self, V, N>) -> Option<JetVector<V, N>> {
+        const {
+            assert!(K != 0);
+            assert!(V::N == 0);
+        }
+
+        point.0.is_one().then(Zero::zero)
     }
 }
 
@@ -1238,22 +1271,34 @@ pub trait Group: Point {
 /// [`ExpMap`]: crate::traits::ExpMap
 /// [`TangentBundle`]: crate::traits::TangentBundle
 pub trait LieGroup<V: Tensor>: Group {
-    fn identity_exp(v: V) -> Self;
-    fn identity_log(p: &Self) -> Option<V>;
+    fn compose_jet<const N: usize>(
+        lhs: Tangent<Self, V, N>,
+        rhs: Tangent<Self, V, N>,
+    ) -> Tangent<Self, V, N>;
+
+    fn inverse_jet<const N: usize>(value: Tangent<Self, V, N>) -> Tangent<Self, V, N>;
+
+    fn identity_exp<const N: usize>(coordinate: JetVector<V, N>) -> Tangent<Self, V, N>;
+
+    fn identity_log<const N: usize>(point: Tangent<Self, V, N>) -> Option<JetVector<V, N>>;
 }
 
 // left translation
 impl<V: Tensor, L: LieGroup<V>> Smooth<V> for L {
-    type Global = Self;
+    type Global<const N: usize> = Tangent<Self, V, N>;
 
-    fn exp(&self, coord: V) -> Self {
-        let translated = Self::identity_exp(coord);
-        self.compose(&translated)
+    fn exp<const N: usize>(
+        base: Tangent<Self, V, N>,
+        coordinate: JetVector<V, N>,
+    ) -> Self::Global<N> {
+        L::compose_jet(base, L::identity_exp(coordinate))
     }
 
-    fn log(&self, point: &Self) -> Option<V> {
-        let translated = self.clone().inverse().compose(point);
-        Self::identity_log(&translated)
+    fn log<const N: usize>(
+        base: Tangent<Self, V, N>,
+        point: Tangent<Self, V, N>,
+    ) -> Option<JetVector<V, N>> {
+        L::identity_log(L::compose_jet(L::inverse_jet(base), point))
     }
 }
 
@@ -1308,7 +1353,7 @@ impl<V: Tensor, L: LieGroup<V>> Smooth<V> for L {
 /// because `-1` commutes with everything (it is, after all, just a scalar
 /// multiple of the identity), which is what makes `S³/{±1} → SO(3)` and
 /// `(R\{0}, ×)/{±1} → (R⁺, ×)` both legitimate instances of this trait.
-pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Tensor>: Point {
+pub trait Quotient<G: LieGroup<V>, H: Group, V: Tensor>: Point {
     /// Maps `g` to the `Quotient` value representing its coset `gH`.
     fn new(g: G) -> Self;
 
@@ -1345,12 +1390,36 @@ pub trait Quotient<G: LieGroup<V>, H: LieGroup<V>, V: Tensor>: Point {
         Self::new(self.lift().inverse())
     }
 
-    fn quotient_identity_exp(v: V) -> Self {
-        Self::new(G::identity_exp(v))
+    fn lift_tangent<const N: usize>(value: Tangent<Self, V, N>) -> Tangent<G, V, N> {
+        Tangent::new(value.0.lift(), value.1)
     }
 
-    fn quotient_identity_log(p: &Self) -> Option<V> {
-        G::identity_log(&p.lift())
+    fn quotient_tangent<const N: usize>(value: Tangent<G, V, N>) -> Tangent<Self, V, N> {
+        Tangent::new(Self::new(value.0), value.1)
+    }
+
+    fn quotient_compose_jet<const N: usize>(
+        lhs: Tangent<Self, V, N>,
+        rhs: Tangent<Self, V, N>,
+    ) -> Tangent<Self, V, N> {
+        Self::quotient_tangent(G::compose_jet(
+            Self::lift_tangent(lhs),
+            Self::lift_tangent(rhs),
+        ))
+    }
+
+    fn quotient_inverse_jet<const N: usize>(value: Tangent<Self, V, N>) -> Tangent<Self, V, N> {
+        Self::quotient_tangent(G::inverse_jet(Self::lift_tangent(value)))
+    }
+
+    fn quotient_identity_exp<const N: usize>(coordinate: JetVector<V, N>) -> Tangent<Self, V, N> {
+        Self::quotient_tangent(G::identity_exp(coordinate))
+    }
+
+    fn quotient_identity_log<const N: usize>(
+        point: Tangent<Self, V, N>,
+    ) -> Option<JetVector<V, N>> {
+        G::identity_log(Self::lift_tangent(point))
     }
 
     /// The sole independent Quotient axiom: new must not
@@ -1397,12 +1466,34 @@ macro_rules! impl_lie_group_via_quotient {
         }
 
         impl<$($generics)*> $crate::traits::LieGroup<$v> for $type {
-            fn identity_exp(v: $v) -> Self {
-                <Self as $crate::traits::Quotient<$g, $h, $v>>::quotient_identity_exp(v)
-            }
-            fn identity_log(p: &Self) -> Option<$v> {
-                <Self as $crate::traits::Quotient<$g, $h, $v>>::quotient_identity_log(p)
-            }
-        }
+    fn compose_jet<const N: usize>(
+        lhs: $crate::traits::calculus::Tangent<Self, $v, N>,
+        rhs: $crate::traits::calculus::Tangent<Self, $v, N>,
+    ) -> $crate::traits::calculus::Tangent<Self, $v, N> {
+        <Self as $crate::traits::Quotient<$g, $h, $v>>
+            ::quotient_compose_jet(lhs, rhs)
+    }
+
+    fn inverse_jet<const N: usize>(
+        value: $crate::traits::calculus::Tangent<Self, $v, N>,
+    ) -> $crate::traits::calculus::Tangent<Self, $v, N> {
+        <Self as $crate::traits::Quotient<$g, $h, $v>>
+            ::quotient_inverse_jet(value)
+    }
+
+    fn identity_exp<const N: usize>(
+        coordinate: $crate::traits::calculus::JetVector<$v, N>,
+    ) -> $crate::traits::calculus::Tangent<Self, $v, N> {
+        <Self as $crate::traits::Quotient<$g, $h, $v>>
+            ::quotient_identity_exp(coordinate)
+    }
+
+    fn identity_log<const N: usize>(
+        point: $crate::traits::calculus::Tangent<Self, $v, N>,
+    ) -> Option<$crate::traits::calculus::JetVector<$v, N>> {
+        <Self as $crate::traits::Quotient<$g, $h, $v>>
+            ::quotient_identity_log(point)
+    }
+}
     };
 }

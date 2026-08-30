@@ -15,7 +15,9 @@ use crate::{
     coords::array_zip_map,
     traits::{
         BothSided, CField, DivRing, Dual, ExactCmp, Field, FieldExp, FromReal, Hand, Handedness,
-        Interval, Metric, NatZero, NonZero, Right, Tensor, Vector, calculus::TensorProduct,
+        Interval, Metric, NatZero, NonZero, Right, Tensor, Vector,
+        calculus::{Jet, JetVectorIn, TensorProduct},
+        𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥,
     },
 };
 
@@ -269,6 +271,98 @@ impl<F: Field, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
         Self::new(out)
     }
 
+    fn solve_pivoted_by<K: Copy + PartialOrd>(
+        &self,
+        rhs: Self,
+        magnitude: impl Fn(F) -> K,
+    ) -> Self {
+        let get = |matrix: &[[V::F; N]; N], i: usize, j: usize| match V::Hand::H {
+            Hand::Right => matrix[i][j],
+            Hand::Left => matrix[j][i],
+        };
+
+        let set = |matrix: &mut [[V::F; N]; N], i: usize, j: usize, value: V::F| match V::Hand::H {
+            Hand::Right => matrix[i][j] = value,
+            Hand::Left => matrix[j][i] = value,
+        };
+
+        let mul = |lhs: V::F, rhs: V::F| match V::Hand::H {
+            Hand::Right => lhs * rhs,
+            Hand::Left => rhs * lhs,
+        };
+
+        let swap_rows = |matrix: &mut [[V::F; N]; N], lhs: usize, rhs: usize| {
+            match V::Hand::H {
+                Hand::Right => matrix.swap(lhs, rhs),
+
+                // Virtual rows are physical columns.
+                Hand::Left => {
+                    for row in matrix {
+                        row.swap(lhs, rhs);
+                    }
+                }
+            }
+        };
+
+        let mut mat = self.0;
+        let mut out = rhs.0;
+
+        for i in 0..N {
+            let mut pivot_index = i;
+            let mut pivot_norm = magnitude(get(&mat, i, i));
+
+            for k in (i + 1)..N {
+                let norm = magnitude(get(&mat, k, i));
+
+                if norm > pivot_norm {
+                    pivot_index = k;
+                    pivot_norm = norm;
+                }
+            }
+
+            assert!(
+                !get(&mat, pivot_index, i).is_zero(),
+                "Matrix is singular during Gauss-Jordan elimination."
+            );
+
+            swap_rows(&mut mat, i, pivot_index);
+            swap_rows(&mut out, i, pivot_index);
+
+            let pivot = get(&mat, i, i);
+
+            let pivot_inv = <V::F as DivRing>::Mul::inv(NonZero::new(pivot).unwrap().into())
+                .into()
+                .0;
+
+            for j in 0..N {
+                let mat_value = mul(pivot_inv, get(&mat, i, j));
+                let out_value = mul(pivot_inv, get(&out, i, j));
+
+                set(&mut mat, i, j, mat_value);
+                set(&mut out, i, j, out_value);
+            }
+
+            for k in 0..N {
+                if k == i {
+                    continue;
+                }
+
+                let factor = get(&mat, k, i);
+
+                for j in 0..N {
+                    let mat_value = get(&mat, k, j) - mul(factor, get(&mat, i, j));
+
+                    let out_value = get(&out, k, j) - mul(factor, get(&out, i, j));
+
+                    set(&mut mat, k, j, mat_value);
+                    set(&mut out, k, j, out_value);
+                }
+            }
+        }
+
+        Self::new(out)
+    }
+
     /// Inverts the matrix by pivoted Gauss–Jordan elimination.
     ///
     /// Assumes invertibility and panics if the matrix is singular. For an
@@ -330,91 +424,7 @@ impl<F: Field + Metric, V: Tensor<F = F>, const N: usize> Matrix<V, N> {
     ///
     /// Assumes A is invertible.
     pub fn solve_pivoted(&self, rhs: Self) -> Self {
-        let get = |matrix: &[[V::F; N]; N], i: usize, j: usize| match V::Hand::H {
-            Hand::Right => matrix[i][j],
-            Hand::Left => matrix[j][i],
-        };
-
-        let set = |matrix: &mut [[V::F; N]; N], i: usize, j: usize, value: V::F| match V::Hand::H {
-            Hand::Right => matrix[i][j] = value,
-            Hand::Left => matrix[j][i] = value,
-        };
-
-        let mul = |lhs: V::F, rhs: V::F| match V::Hand::H {
-            Hand::Right => lhs * rhs,
-            Hand::Left => rhs * lhs,
-        };
-
-        let swap_rows = |matrix: &mut [[V::F; N]; N], lhs: usize, rhs: usize| {
-            match V::Hand::H {
-                Hand::Right => matrix.swap(lhs, rhs),
-
-                // Virtual rows are physical columns.
-                Hand::Left => {
-                    for row in matrix {
-                        row.swap(lhs, rhs);
-                    }
-                }
-            }
-        };
-
-        let mut mat = self.0;
-        let mut out = rhs.0;
-
-        for i in 0..N {
-            let mut pivot_index = i;
-            let mut pivot_norm = get(&mat, i, i).interval_squared(&V::F::zero());
-
-            for k in (i + 1)..N {
-                let norm = get(&mat, k, i).interval_squared(&V::F::zero());
-
-                if norm > pivot_norm {
-                    pivot_index = k;
-                    pivot_norm = norm;
-                }
-            }
-
-            assert!(
-                !get(&mat, pivot_index, i).is_zero(),
-                "Matrix is singular during Gauss-Jordan elimination."
-            );
-
-            swap_rows(&mut mat, i, pivot_index);
-            swap_rows(&mut out, i, pivot_index);
-
-            let pivot = get(&mat, i, i);
-
-            let pivot_inv = <V::F as DivRing>::Mul::inv(NonZero::new(pivot).unwrap().into())
-                .into()
-                .0;
-
-            for j in 0..N {
-                let mat_value = mul(pivot_inv, get(&mat, i, j));
-                let out_value = mul(pivot_inv, get(&out, i, j));
-
-                set(&mut mat, i, j, mat_value);
-                set(&mut out, i, j, out_value);
-            }
-
-            for k in 0..N {
-                if k == i {
-                    continue;
-                }
-
-                let factor = get(&mat, k, i);
-
-                for j in 0..N {
-                    let mat_value = get(&mat, k, j) - mul(factor, get(&mat, i, j));
-
-                    let out_value = get(&out, k, j) - mul(factor, get(&out, i, j));
-
-                    set(&mut mat, k, j, mat_value);
-                    set(&mut out, k, j, out_value);
-                }
-            }
-        }
-
-        Self::new(out)
+        self.solve_pivoted_by(rhs, |value| value.interval_squared(&F::zero()))
     }
 
     /// Computes the inverse using partial pivoting.
@@ -592,6 +602,8 @@ impl<F: CField, V: Tensor<F = F>, const N: usize> Div<F> for Matrix<V, N> {
 /// Because the series needs `1/k!`, this is only implemented for scalar fields
 /// of characteristic zero with a real metric — see the impl's bounds.
 pub trait MatrixExponential: Sized {
+    type Jetted<const N: usize>;
+
     /// Computes the matrix exponential using scaling and squaring with a
     /// degree-13 Padé approximant.
     ///
@@ -604,6 +616,14 @@ pub trait MatrixExponential: Sized {
     /// Returns `None` when the input lies outside the convergence neighbourhood
     /// elected by the implementation.
     fn log(&self) -> Option<Self>;
+
+    fn constant_jet<const M: usize>(value: Self) -> Self::Jetted<M>;
+
+    fn primal<const M: usize>(value: &Self::Jetted<M>) -> Self;
+
+    fn exp_jet<const N: usize>(value: Self::Jetted<N>) -> Self::Jetted<N>;
+
+    fn log_jet<const N: usize>(value: Self::Jetted<N>) -> Option<Self::Jetted<N>>;
 }
 
 /// Approximates the `n`-th root of a field element near one.
@@ -831,6 +851,8 @@ impl<
     V: Tensor<F = F>,
 > MatrixExponential for Matrix<V, N>
 {
+    type Jetted<const M: usize> = Matrix<JetVectorIn<𝐅𝐥𝐝::𝒞, V, M>, N>;
+
     fn exp(&self) -> Self {
         let theta = <F::R as NumCast>::from(5.371920351148152).unwrap();
 
@@ -947,6 +969,160 @@ impl<
         }
 
         None
+    }
+
+    fn constant_jet<const M: usize>(value: Self) -> Self::Jetted<M> {
+        Matrix::new(core::array::from_fn(|i| {
+            core::array::from_fn(|j| Jet::from_parts(value[(i, j)], [F::zero(); M]))
+        }))
+    }
+
+    fn primal<const M: usize>(value: &Self::Jetted<M>) -> Self {
+        Matrix::new(core::array::from_fn(|i| {
+            core::array::from_fn(|j| value[(i, j)][0])
+        }))
+    }
+
+    fn exp_jet<const M: usize>(value: Self::Jetted<M>) -> Self::Jetted<M> {
+        let primal = |value: &Self::Jetted<M>| -> Self {
+            Matrix::new(core::array::from_fn(|i| {
+                core::array::from_fn(|j| value[(i, j)][0])
+            }))
+        };
+
+        let fixed = |value: F::Fixed| {
+            Jet::<𝐑𝐞𝐚𝐥::𝒞, F::Fixed, M>::from_parts(value, [Zero::zero(); M]).retag::<𝐅𝐥𝐝::𝒞>()
+        };
+
+        let theta = <F::R as NumCast>::from(5.371920351148152).unwrap();
+
+        const B: [u64; 14] = [
+            64764752532480000,
+            32382376266240000,
+            7771770303897600,
+            1187353796428800,
+            129060195264000,
+            10559470521600,
+            670442572800,
+            33522128640,
+            1323241920,
+            40840800,
+            960960,
+            16380,
+            182,
+            1,
+        ];
+
+        let b = B.map(|value| {
+            fixed(F::Fixed::from_real(
+                <<F::Fixed as Interval>::R as NumCast>::from(value).unwrap(),
+            ))
+        });
+
+        // Scaling is chosen using coefficient zero.
+        let norm = primal(&value).one_norm();
+
+        let s = if norm.exact_le(theta) {
+            0
+        } else {
+            <usize as NumCast>::from((norm / theta).log2().ceil()).unwrap()
+        };
+
+        let one = F::Fixed::one();
+        let half = fixed(one.div(one + one));
+
+        let mut a = value;
+
+        for _ in 0..s {
+            a = a.scale_fixed(half);
+        }
+
+        let a2 = a.clone() * a.clone();
+        let a4 = a2.clone() * a2.clone();
+        let a6 = a4.clone() * a2.clone();
+
+        let i = Self::Jetted::<M>::one();
+
+        let u = a
+            * (a6.clone()
+                * (a6.clone().scale_fixed(b[13])
+                    + a4.clone().scale_fixed(b[11])
+                    + a2.clone().scale_fixed(b[9]))
+                + a6.clone().scale_fixed(b[7])
+                + a4.clone().scale_fixed(b[5])
+                + a2.clone().scale_fixed(b[3])
+                + i.clone().scale_fixed(b[1]));
+
+        let v = a6.clone()
+            * (a6.clone().scale_fixed(b[12])
+                + a4.clone().scale_fixed(b[10])
+                + a2.clone().scale_fixed(b[8]))
+            + a6.scale_fixed(b[6])
+            + a4.scale_fixed(b[4])
+            + a2.scale_fixed(b[2])
+            + i.scale_fixed(b[0]);
+
+        let mut result = (v.clone() - u.clone())
+            .solve_pivoted_by(v + u, |value| value[0].interval_squared(&F::zero()));
+
+        for _ in 0..s {
+            result = result.clone() * result;
+        }
+
+        result
+    }
+
+    fn log_jet<const M: usize>(value: Self::Jetted<M>) -> Option<Self::Jetted<M>> {
+        let primal = |value: &Self::Jetted<M>| -> Self {
+            Matrix::new(core::array::from_fn(|i| {
+                core::array::from_fn(|j| value[(i, j)][0])
+            }))
+        };
+
+        let fixed = |value: F::Fixed| {
+            Jet::<𝐑𝐞𝐚𝐥::𝒞, F::Fixed, M>::from_parts(value, [Zero::zero(); M]).retag::<𝐅𝐥𝐝::𝒞>()
+        };
+
+        let x = value - Self::Jetted::<M>::one();
+
+        let log_radius = <F::R as NumCast>::from(1.0).unwrap();
+
+        // Domain selection is likewise based on coefficient zero.
+        if primal(&x).frobenius_norm() >= log_radius {
+            return None;
+        }
+
+        let epsilon = F::R::epsilon();
+
+        let mut result = x.clone();
+        let mut term = x.clone();
+
+        let one = F::Fixed::one();
+        let mut k_as_f = one + one;
+
+        for k in 2.. {
+            term = term * x.clone();
+
+            let coefficient = (if k % 2 == 0 { -one } else { one }).div(k_as_f);
+
+            let next = term.clone().scale_fixed(fixed(coefficient));
+
+            k_as_f = k_as_f + one;
+            result = result + next.clone();
+
+            let next_norm = primal(&next).frobenius_norm();
+            let result_norm = primal(&result).frobenius_norm();
+
+            if next_norm.exact_le(epsilon * result_norm) {
+                return Some(result);
+            }
+
+            if k > 256 {
+                panic!("log failed to converge");
+            }
+        }
+
+        unreachable!()
     }
 }
 
