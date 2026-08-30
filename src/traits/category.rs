@@ -1674,6 +1674,30 @@ macro_rules! include_as {
     };
 }
 
+#[macro_export]
+macro_rules! include_point {
+    (
+        $ty:ty,
+        $($generics:tt)+
+    ) => {
+        impl<$($generics)+>
+            $crate::traits::Reflect<
+                $crate::traits::𝐒𝐞𝐭::𝒞,
+            > for $ty
+        {
+            type Body = $crate::traits::𝒯<
+                $crate::traits::Ø,
+                $crate::traits::Ø,
+            >;
+        }
+
+        $crate::include_as!(
+            $ty => Point,
+            $($generics)+
+        );
+    };
+}
+
 // -----------------------------------------------------------------------------
 // Reflection of concrete Rust trait implementations
 // -----------------------------------------------------------------------------
@@ -2104,17 +2128,20 @@ where
         <C as RefinementRoute<Required, <P::Expansion as PropertyPresence<Required>>::Relation>>::C;
 }
 
-/// Constructive negative refinement for theories whose canonical signature has
-/// no associated requirements or equations.
+/// Constructive negative refinement from a missing required property.
 ///
-/// This is deliberately a constructive proof, not negation-as-trait-failure:
-/// at least one property required by `Required` is known to be absent from the
-/// source's closed transitive property graph.
+/// If the closed transitive property graph of `C` lacks at least one property
+/// required by `Required`, then `C` cannot refine `Required`, regardless of
+/// whether `Required` additionally contains associated requirements or
+/// equations.
+///
+/// This does not derive negative evidence solely from missing associated
+/// bindings or unsatisfied equations. A theory with no required properties
+/// therefore cannot be proved absent through this implementation.
 impl<Required: Cat, C, P> Ⱶ<Required, Absent> for C
 where
     C: Category<Properties = P>,
     P: ExpandProperties,
-    <Required as Cat>::C: Category<Structure = Ø, Equations = Ø>,
     P::Expansion:
         CoversProperties<<<Required as Cat>::C as Category>::Properties, Relation = Absent>,
 {

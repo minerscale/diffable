@@ -13,7 +13,8 @@ use crate::{
     impl_lie_group_via_quotient,
     traits::{
         Interval, Tensor,
-        calculus::{Jet, JetVector, Tangent},
+        calculus::{Jet, JetVector, JetVectorIn, Tangent},
+        𝐑𝐞𝐚𝐥,
     },
 };
 use core::marker::PhantomData;
@@ -61,7 +62,17 @@ impl<V: Euclidean<F: Real> + From<[<V as Tensor>::F; 1]>> Quotient<V, Z<V>, V> f
     }
 }
 
-impl_lie_group_via_quotient!(S1<V>, V, Z<V>, V, V: Euclidean + From<[<V as Tensor>::F; 1]>);
+impl_lie_group_via_quotient!(
+    S1<V>, V, Z<V>, V,
+    [V: Euclidean + From<[<V as Tensor>::F; 1]>];
+
+    commutes_jet<const N: usize> {
+        quotient = S1<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>,
+        cover = JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>,
+        subgroup = Z<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>,
+        model = JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>,
+    }
+);
 
 /// The 2-torus `T² = S¹ × S¹`.
 #[derive(Debug, Copy, Clone, PartialEq)]

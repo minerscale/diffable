@@ -1452,6 +1452,44 @@ pub trait Quotient<G: LieGroup<V>, H: Group, V: Tensor>: Point {
 /// [`TangentBundle`]: crate::traits::TangentBundle
 #[macro_export]
 macro_rules! impl_lie_group_via_quotient {
+    (
+        $type:ty,
+        $g:ty,
+        $h:ty,
+        $v:ty,
+        [$($generics:tt)*];
+
+        commutes_jet<const $order:ident: usize> {
+            quotient = $jetted_type:ty,
+            cover = $jetted_g:ty,
+            subgroup = $jetted_h:ty,
+            model = $jetted_v:ty $(,)?
+        }
+    ) => {
+        $crate::impl_lie_group_via_quotient!(
+            $type,
+            $g,
+            $h,
+            $v,
+            $($generics)*
+        );
+
+        $crate::impl_commutes_jet_via_quotient!(
+            $type,
+            $g,
+            $h,
+            $v,
+
+            $jetted_type,
+            $jetted_g,
+            $jetted_h,
+            $jetted_v,
+
+            [$($generics)*],
+            const $order
+        );
+    };
+
     ($type:ty, $g:ty, $h:ty, $v:ty, $($generics:tt)*) => {
         impl<$($generics)*> $crate::traits::Group for $type {
             fn identity() -> Self {
@@ -1466,34 +1504,134 @@ macro_rules! impl_lie_group_via_quotient {
         }
 
         impl<$($generics)*> $crate::traits::LieGroup<$v> for $type {
-    fn compose_jet<const N: usize>(
-        lhs: $crate::traits::calculus::Tangent<Self, $v, N>,
-        rhs: $crate::traits::calculus::Tangent<Self, $v, N>,
-    ) -> $crate::traits::calculus::Tangent<Self, $v, N> {
-        <Self as $crate::traits::Quotient<$g, $h, $v>>
-            ::quotient_compose_jet(lhs, rhs)
-    }
+            fn compose_jet<const N: usize>(
+                lhs: $crate::traits::calculus::Tangent<Self, $v, N>,
+                rhs: $crate::traits::calculus::Tangent<Self, $v, N>,
+            ) -> $crate::traits::calculus::Tangent<Self, $v, N> {
+                <Self as $crate::traits::Quotient<$g, $h, $v>>
+                    ::quotient_compose_jet(lhs, rhs)
+            }
 
-    fn inverse_jet<const N: usize>(
-        value: $crate::traits::calculus::Tangent<Self, $v, N>,
-    ) -> $crate::traits::calculus::Tangent<Self, $v, N> {
-        <Self as $crate::traits::Quotient<$g, $h, $v>>
-            ::quotient_inverse_jet(value)
-    }
+            fn inverse_jet<const N: usize>(
+                value: $crate::traits::calculus::Tangent<Self, $v, N>,
+            ) -> $crate::traits::calculus::Tangent<Self, $v, N> {
+                <Self as $crate::traits::Quotient<$g, $h, $v>>
+                    ::quotient_inverse_jet(value)
+            }
 
-    fn identity_exp<const N: usize>(
-        coordinate: $crate::traits::calculus::JetVector<$v, N>,
-    ) -> $crate::traits::calculus::Tangent<Self, $v, N> {
-        <Self as $crate::traits::Quotient<$g, $h, $v>>
-            ::quotient_identity_exp(coordinate)
-    }
+            fn identity_exp<const N: usize>(
+                coordinate: $crate::traits::calculus::JetVector<$v, N>,
+            ) -> $crate::traits::calculus::Tangent<Self, $v, N> {
+                <Self as $crate::traits::Quotient<$g, $h, $v>>
+                    ::quotient_identity_exp(coordinate)
+            }
 
-    fn identity_log<const N: usize>(
-        point: $crate::traits::calculus::Tangent<Self, $v, N>,
-    ) -> Option<$crate::traits::calculus::JetVector<$v, N>> {
-        <Self as $crate::traits::Quotient<$g, $h, $v>>
-            ::quotient_identity_log(point)
-    }
+            fn identity_log<const N: usize>(
+                point: $crate::traits::calculus::Tangent<Self, $v, N>,
+            ) -> Option<$crate::traits::calculus::JetVector<$v, N>> {
+                <Self as $crate::traits::Quotient<$g, $h, $v>>
+                    ::quotient_identity_log(point)
+            }
+        }
+    };
 }
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! impl_commutes_jet_via_quotient {
+    (
+        $type:ty,
+        $g:ty,
+        $h:ty,
+        $v:ty,
+
+        $jetted_type:ty,
+        $jetted_g:ty,
+        $jetted_h:ty,
+        $jetted_v:ty,
+
+        [$($generics:tt)*],
+        const $order:ident
+    ) => {
+        impl<$($generics)*, const $order: usize>
+            $crate::traits::calculus::CommutesJet<
+                $type,
+                $v,
+                $order,
+            > for $jetted_type
+        where
+            $jetted_g:
+                $crate::traits::calculus::CommutesJet<
+                    $g,
+                    $v,
+                    $order,
+                >,
+        {
+            fn commute_jet(
+                value: $crate::traits::calculus::Tangent<
+                    $type,
+                    $v,
+                    $order,
+                >,
+            ) -> Self {
+                let lifted =
+                    $crate::traits::calculus::Tangent::new(
+                        <$type as $crate::traits::Quotient<
+                            $g,
+                            $h,
+                            $v,
+                        >>::lift(&value.0),
+                        value.1,
+                    );
+
+                let lifted =
+                    <$jetted_g as
+                        $crate::traits::calculus::CommutesJet<
+                            $g,
+                            $v,
+                            $order,
+                        >
+                    >::commute_jet(lifted);
+
+                <$jetted_type as $crate::traits::Quotient<
+                    $jetted_g,
+                    $jetted_h,
+                    $jetted_v,
+                >>::new(lifted)
+            }
+
+            fn uncommute_jet(
+                value: Self,
+            ) -> $crate::traits::calculus::Tangent<
+                $type,
+                $v,
+                $order,
+            > {
+                let lifted =
+                    <$jetted_type as $crate::traits::Quotient<
+                        $jetted_g,
+                        $jetted_h,
+                        $jetted_v,
+                    >>::lift(&value);
+
+                let split =
+                    <$jetted_g as
+                        $crate::traits::calculus::CommutesJet<
+                            $g,
+                            $v,
+                            $order,
+                        >
+                    >::uncommute_jet(lifted);
+
+                $crate::traits::calculus::Tangent::new(
+                    <$type as $crate::traits::Quotient<
+                        $g,
+                        $h,
+                        $v,
+                    >>::new(split.0),
+                    split.1,
+                )
+            }
+        }
     };
 }

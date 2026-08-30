@@ -9,12 +9,12 @@ use core::{marker::PhantomData, ops::Mul};
 
 use crate::{
     complex::Complex,
-    impl_group_via_mul, impl_lie_group_via_quotient,
+    impl_group_via_mul, impl_lie_group_via_quotient, include_point,
     quaternion::Quaternion,
     traits::{
         Chart, Euclidean, Group, Interval, LieGroup, Metric, Quotient, Real, RootOfUnity,
         Sesquilinear, Smooth, Tensor,
-        calculus::{Jet, JetVector, JetVectorIn, Tangent},
+        calculus::{CommutesJet, Jet, JetVector, JetVectorIn, Tangent},
         𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥,
     },
 };
@@ -33,6 +33,11 @@ pub struct Sphere<V: Euclidean> {
     real: V::F,
     imag: V,
 }
+
+include_point!(
+    Sphere<V>,
+    V: Euclidean
+);
 
 /// A [`Chart`] on the [`Sphere`] by stereographic projection from a chosen pole.
 ///
@@ -185,6 +190,26 @@ impl<V: Euclidean> Sphere<V> {
 
         Some(p.imag * sinc_recip)
     }
+}
+
+/// The hopf map. See https://en.wikipedia.org/wiki/Hopf_fibration for more
+pub fn hopf<U: Euclidean, V: Euclidean<F = U::F>>(q: Sphere<U>) -> Sphere<V> {
+    const {
+        assert!(U::N == 3);
+        assert!(V::N == 2);
+    }
+
+    let a = q.real();
+    let imag = q.imag();
+
+    let [b, c, d] = [imag[0], imag[1], imag[2]];
+
+    let two = U::F::one() + U::F::one();
+
+    Sphere::new(
+        a * a + b * b - c * c - d * d,
+        V::from_iter([two * (b * c + a * d), two * (b * d - a * c)]),
+    )
 }
 
 #[allow(type_alias_bounds)]
@@ -443,6 +468,56 @@ fn sphere_exp_factors<R: Real, const N: usize>(
     (cos, sinc)
 }
 
+impl<V: Euclidean, const N: usize> CommutesJet<Sphere<V>, V, N>
+    for Sphere<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>
+{
+    fn commute_jet(value: Tangent<Sphere<V>, V, N>) -> Self {
+        sphere_assemble_jet(value)
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<Sphere<V>, V, N> {
+        sphere_split_jet(value)
+    }
+}
+
+impl<V: Euclidean, const N: usize> CommutesJet<S0<V>, V, N> for S0<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>> {
+    fn commute_jet(value: Tangent<S0<V>, V, N>) -> Self {
+        S0(sphere_assemble_jet(Tangent::new(value.0.0, value.1)))
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<S0<V>, V, N> {
+        let split = sphere_split_jet(value.0);
+        Tangent::new(S0(split.0), split.1)
+    }
+}
+
+impl<V: Euclidean, const N: usize> CommutesJet<UnitComplex<V>, V, N>
+    for UnitComplex<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>
+{
+    fn commute_jet(value: Tangent<UnitComplex<V>, V, N>) -> Self {
+        UnitComplex(sphere_assemble_jet(Tangent::new(value.0.0, value.1)))
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<UnitComplex<V>, V, N> {
+        let split = sphere_split_jet(value.0);
+        Tangent::new(UnitComplex(split.0), split.1)
+    }
+}
+
+impl<V: Euclidean, const N: usize> CommutesJet<S3<V>, V, N> for S3<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>> {
+    fn commute_jet(value: Tangent<S3<V>, V, N>) -> Self {
+        S3(sphere_constant_jet(value.0.0)) * S3(sphere_identity_exp_jet(value.1))
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<S3<V>, V, N> {
+        let point = S3(sphere_jet_primal(&value.0));
+
+        let local = S3(sphere_constant_jet(point.0.clone())).inverse() * value;
+
+        Tangent::new(point, sphere_identity_log_jet(&local.0).unwrap())
+    }
+}
+
 fn sphere_log_factor<R: Real, const N: usize>(
     norm_squared: Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>,
     real: Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>,
@@ -558,8 +633,7 @@ impl<V: Euclidean> S3<V> {
     ) -> S3<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>> {
         const { assert!(V::N == 3) }
 
-        // G(t) = g₀ exp(A(t)), where A(0) = 0.
-        S3(sphere_constant_jet(value.0.0)) * S3(sphere_identity_exp_jet(value.1))
+        S3::<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>::commute_jet(value)
     }
 
     fn split_jet<const N: usize>(
@@ -567,16 +641,7 @@ impl<V: Euclidean> S3<V> {
     ) -> Tangent<Self, V, N> {
         const { assert!(V::N == 3) }
 
-        // g₀ = G(0).
-        let point = S3(sphere_jet_primal(&value.0));
-
-        // A(t) = log(g₀⁻¹G(t)).
-        //
-        // The primal coefficient of g₀⁻¹G(t) is exactly the identity,
-        // so the logarithm cannot encounter its cut locus.
-        let local = S3(sphere_constant_jet(point.0.clone())).inverse() * value;
-
-        Tangent::new(point, sphere_identity_log_jet(&local.0).unwrap())
+        S3::<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>::uncommute_jet(value)
     }
 }
 
@@ -830,7 +895,17 @@ impl<V: Euclidean> Quotient<S3<V>, RootOfUnity<V::F, 2>, V> for So3<V> {
     }
 }
 
-impl_lie_group_via_quotient!(So3<V>, S3<V>, RootOfUnity<V::F, 2>, V, V: Euclidean);
+impl_lie_group_via_quotient!(
+    So3<V>, S3<V>, RootOfUnity<V::F, 2>, V,
+    [V: Euclidean];
+
+    commutes_jet<const N: usize> {
+        quotient = So3<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>,
+        cover = S3<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>,
+        subgroup = RootOfUnity<Jet<𝐑𝐞𝐚𝐥::𝒞, V::F, N>, 2>,
+        model = JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>,
+    }
+);
 
 #[cfg(feature = "simplicial")]
 mod simplicial {

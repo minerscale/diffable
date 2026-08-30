@@ -996,7 +996,7 @@ pub struct TangentMap<
     BT: Tensor<Hand = Right, Action: ActionExists>,
     FP: Point,
     FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
-    Fiber: TangentBundle<FP, FT>,
+    Fiber: TangentBundle<FP, FT> = FP,
 >(HomOf<BT, FT>, PhantomData<fn() -> (FP, Fiber)>);
 
 impl<
@@ -1165,6 +1165,24 @@ impl<V: Tensor, S: Point> AsRef<V::Array<S>> for TensorOver<V, S> {
 impl<V: Tensor, S: Point> AsMut<V::Array<S>> for TensorOver<V, S> {
     fn as_mut(&mut self) -> &mut V::Array<S> {
         &mut self.0
+    }
+}
+
+impl<𝒞: Cat, U: Tensor + From<[F; K]>, F: Field, const N: usize, const K: usize>
+    From<[Jet<𝒞, F, N>; K]> for JetVectorIn<𝒞, U, N>
+where
+    Jet<𝒞, U::F, N>: Field,
+{
+    fn from(value: [Jet<𝒞, F, N>; K]) -> Self {
+        Self::from_fn(|coordinate| {
+            let primal = U::from(core::array::from_fn(|i| value[i][0]));
+
+            let coefficients = core::array::from_fn(|order| {
+                U::from(core::array::from_fn(|i| value[i][order + 1]))[coordinate]
+            });
+
+            Jet::from_parts(primal[coordinate], coefficients)
+        })
     }
 }
 
@@ -2998,25 +3016,16 @@ pub struct Along<F, V> {
 }
 
 impl<F> d<F> {
-    /// Evaluates the full derivative at `point`.
-    ///
-    /// For `f: BT → FT`, the result is represented as `FT ⊗ BT*`, with
-    /// output coordinates outermost and input coordinates innermost.
-    pub fn at<
-        𝒞: Cat,
-        BT: Tensor<Hand = Right, Action: ActionExists>,
-        FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
-    >(
+    pub fn at<𝒞: Cat, Point: DifferentialRegion<𝒞, F, Output, Route>, Output, Route>(
         &self,
-        point: BT,
-    ) -> TangentMap<BT, FT, FT, FT>
+        point: Point,
+    ) -> Output
     where
-        Self: EvaluableAt<𝒞, BT, TangentMap<BT, FT, FT, FT>>,
+        Self: EvaluableAt<𝒞, Point, Output, Route>,
     {
-        <Self as EvaluableAt<𝒞, BT, TangentMap<BT, FT, FT, FT>>>::evaluate_at(self, point)
+        <Self as EvaluableAt<𝒞, Point, Output, Route>>::evaluate_at(self, point)
     }
 
-    /// Contracts the next derivative slot with `direction`.
     pub fn along<V>(self, direction: V) -> Along<F, V> {
         Along {
             f: self.0,
@@ -3048,7 +3057,7 @@ impl<F, BT> Along<F, BT> {
 /// Keeping their large proof obligations behind this trait replaces a wall of
 /// nested associated-type failures with one explanation of why a differential
 /// program is not evaluable at a particular point type.
-pub trait EvaluableAt<𝒞: Cat, Point, Output> {
+pub trait EvaluableAt<𝒞: Cat, Point, Output, Route = Ø> {
     fn evaluate_at(&self, point: Point) -> Output;
 }
 
@@ -3148,6 +3157,300 @@ impl<
 {
     fn jet_at(&self, input: JetVectorIn<𝒞, BT, N, S>) -> JetVectorIn<𝒞, FT, N, S> {
         self(input)
+    }
+}
+
+fn evaluate_manifold_derivative_at<F, P, V, Q, W, Route>(
+    derivative: &d<F>,
+    point: P,
+) -> TangentMap<V, Q, W, Q>
+where
+    P: Connection<P, V>,
+    V: Tensor<Hand = Right, Action: ActionExists>,
+    Q: Connection<Q, W>,
+    W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
+    F: ManifoldJetMap<P, V, Q, W, 1, Route>,
+{
+    let columns: V::Array<W> = V::Array::from_fn(|input_coordinate| {
+        let tangent = JetVector::from_fn(|coordinate| {
+            Jet::from_parts(
+                V::F::zero(),
+                [if input_coordinate == coordinate {
+                    V::F::one()
+                } else {
+                    V::F::zero()
+                }],
+            )
+        });
+
+        let output = <F as ManifoldJetMap<P, V, Q, W, 1, Route>>::jet_at(
+            &derivative.0,
+            Tangent::new(point.clone(), tangent),
+        );
+
+        W::from_fn(|output_coordinate| output.1[output_coordinate][1])
+    });
+
+    let rows: W::Array<<Dual<V> as Tensor>::Array<V::F>> = W::Array::from_fn(|output_coordinate| {
+        <Dual<V> as Tensor>::Array::from_fn(|input_coordinate| {
+            columns[input_coordinate][output_coordinate]
+        })
+    });
+
+    TangentMap::new(TensorProduct(TensorProductArray(rows, PhantomData)))
+}
+
+/// A manifold-valued map evaluated by commuting intrinsic tangent jets through
+/// the source and target Rust representations.
+pub trait ManifoldJetMap<P: Point, V: Tensor, Q: Point, W: Tensor<F = V::F>, const N: usize, Route>
+{
+    fn jet_at(&self, input: Tangent<P, V, N>) -> Tangent<Q, W, N>;
+}
+
+/// Selects the differential evaluator from the canonical category of the
+/// point supplied to `d::at`.
+#[doc(hidden)]
+pub trait DifferentialRegion<𝒞: Cat, F, Output, Route>: Point {}
+
+impl<𝒞, F, BT, FT> DifferentialRegion<𝒞, F, TangentMap<BT, FT, FT, FT>, Ø> for BT
+where
+    𝒞: Cat,
+    F: JetMap<𝒞, BT, FT, 1, BT::F>,
+    BT: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
+    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Jet<𝒞, BT::F>: Field,
+{
+}
+
+impl<𝒞, F, P, V, Q, W, JP, JQ>
+    DifferentialRegion<𝒞, F, TangentMap<V, Q, W, Q>, ManifoldRoute<JP, JQ>> for P
+where
+    𝒞: Cat,
+    P: Point + ι + Connection<P, V>,
+    P::C: Ⱶ<𝐓𝐞𝐧𝐬::𝒞, Absent>,
+    V: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
+    Q: Connection<Q, W>,
+    W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
+    JP: Point,
+    JQ: Point,
+    F: ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<JP, JQ>>,
+{
+}
+
+#[doc(hidden)]
+pub struct ManifoldRoute<JP: Point, JQ: Point>(PhantomData<fn(JP) -> JQ>);
+
+#[doc(hidden)]
+pub struct DifferentiatedManifoldRoute<
+    𝒞: Cat,
+    JP: Point,
+    JV: Tensor,
+    JQ: Point,
+    JW: Tensor,
+    InnerRoute,
+>(PhantomData<fn(𝒞, JP, JV, InnerRoute) -> (JQ, JW)>);
+
+impl<𝒞, F, P, V, Q, W, JP, JV, JQ, JW, InnerRoute, const N: usize>
+    ManifoldJetMap<
+        P,
+        V,
+        TangentMap<V, Q, W>,
+        TangentMap<V, Q, W>,
+        N,
+        DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
+    > for d<F>
+where
+    𝒞: Cat,
+    P: Connection<P, V>,
+    V: Tensor<Hand = Right, Action: ActionExists>,
+    Q: Connection<Q, W>,
+    W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
+    JP: Point + Connection<JP, JV> + CommutesJet<P, V, N>,
+    JV: Tensor<F = Jet<𝒞, V::F, N>, Hand = Right, Action: ActionExists>,
+    JQ: Point + Connection<JQ, JW> + CommutesJet<Q, W, N>,
+    JW: Tensor<F = Jet<𝒞, V::F, N>, Hand = Right, Action: TensorProductAction<JV::Action>>,
+    F: ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>,
+    Jet<𝒞, V::F, N>: Field,
+    Jet<𝐅𝐥𝐝::𝒞, V::F, N>: Field,
+    TangentMap<V, Q, W>: Tensor<F = V::F, Hand = Right>,
+{
+    fn jet_at(
+        &self,
+        input: Tangent<P, V, N>,
+    ) -> Tangent<TangentMap<V, Q, W>, TangentMap<V, Q, W>, N> {
+        const {
+            assert!(JV::N == V::N);
+            assert!(JW::N == W::N);
+        }
+
+        let outer_point = <JP as CommutesJet<P, V, N>>::commute_jet(input);
+
+        let columns: V::Array<JetVectorIn<𝒞, W, N>> = V::Array::from_fn(|input_coordinate| {
+            let inner_tangent: JetVector<JV, 1> = TensorOver::from_fn(|coordinate| {
+                Jet::<𝐅𝐥𝐝::𝒞, Jet<𝒞, V::F, N>, 1>::from_parts(
+                    Jet::<𝒞, V::F, N>::zero(),
+                    [if coordinate == input_coordinate {
+                        Jet::<𝒞, V::F, N>::one()
+                    } else {
+                        Jet::<𝒞, V::F, N>::zero()
+                    }],
+                )
+            });
+
+            let inner_input: Tangent<JP, JV, 1> =
+                Tangent::<JP, JV, 1>::new(outer_point.clone(), inner_tangent);
+
+            let output =
+                <F as ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>>::jet_at(&self.0, inner_input);
+
+            JetVectorIn::<𝒞, W, N>::from_fn(|output_coordinate| {
+                output.1[output_coordinate][1].clone()
+            })
+        });
+
+        let derivative = JetVectorIn::<𝒞, TangentMap<V, Q, W>, N>::from_fn(|index| {
+            let output_coordinate = index / V::N;
+            let input_coordinate = index % V::N;
+
+            columns[input_coordinate][output_coordinate].clone()
+        });
+
+        derivative.retag::<𝐅𝐥𝐝::𝒞>().into_tangent(|value| value)
+    }
+}
+
+impl<𝒞, F, P, V, Q, W, JP, JV, JQ, JW, InnerRoute>
+    DifferentialRegion<
+        𝒞,
+        d<F>,
+        TangentMap<V, TangentMap<V, Q, W>, TangentMap<V, Q, W>>,
+        DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
+    > for P
+where
+    𝒞: Cat,
+    P: Point + ι + Connection<P, V>,
+    P::C: Ⱶ<𝐓𝐞𝐧𝐬::𝒞, Absent>,
+    V: Tensor<Hand = Right, Action: ActionExists>,
+    Q: Connection<Q, W>,
+    W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
+    JP: Point + Connection<JP, JV> + CommutesJet<P, V, 1>,
+    JV: Tensor<F = Jet<𝒞, V::F, 1>, Hand = Right, Action: ActionExists>,
+    JQ: Point + Connection<JQ, JW> + CommutesJet<Q, W, 1>,
+    JW: Tensor<F = Jet<𝒞, V::F, 1>, Hand = Right, Action: TensorProductAction<JV::Action>>,
+    F: ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>,
+    Jet<𝒞, V::F, 1>: Field,
+    Jet<𝐅𝐥𝐝::𝒞, V::F, 1>: Field,
+    TangentMap<V, Q, W>: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
+    d<F>: ManifoldJetMap<
+            P,
+            V,
+            TangentMap<V, Q, W>,
+            TangentMap<V, Q, W>,
+            1,
+            DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
+        >,
+{
+}
+
+impl<𝒞, F, P, V, Q, W, JP, JV, JQ, JW, InnerRoute>
+    EvaluableAt<
+        𝒞,
+        P,
+        TangentMap<V, TangentMap<V, Q, W>, TangentMap<V, Q, W>>,
+        DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
+    > for d<d<F>>
+where
+    𝒞: Cat,
+    P: Connection<P, V>,
+    V: Tensor<Hand = Right, Action: ActionExists>,
+    Q: Connection<Q, W>,
+    W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
+    JP: Point + Connection<JP, JV> + CommutesJet<P, V, 1>,
+    JV: Tensor<F = Jet<𝒞, V::F, 1>, Hand = Right, Action: ActionExists>,
+    JQ: Point + Connection<JQ, JW> + CommutesJet<Q, W, 1>,
+    JW: Tensor<F = Jet<𝒞, V::F, 1>, Hand = Right, Action: TensorProductAction<JV::Action>>,
+    F: ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>,
+    Jet<𝒞, V::F, 1>: Field,
+    Jet<𝐅𝐥𝐝::𝒞, V::F, 1>: Field,
+    TangentMap<V, Q, W>: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>
+        + Connection<TangentMap<V, Q, W>, TangentMap<V, Q, W>>,
+    d<F>: ManifoldJetMap<
+            P,
+            V,
+            TangentMap<V, Q, W>,
+            TangentMap<V, Q, W>,
+            1,
+            DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
+        >,
+{
+    fn evaluate_at(&self, point: P) -> TangentMap<V, TangentMap<V, Q, W>, TangentMap<V, Q, W>> {
+        evaluate_manifold_derivative_at::<
+            d<F>,
+            P,
+            V,
+            TangentMap<V, Q, W>,
+            TangentMap<V, Q, W>,
+            DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
+        >(self, point)
+    }
+}
+
+impl<𝒞, F, P, V, Q, W, JP, JQ> EvaluableAt<𝒞, P, TangentMap<V, Q, W, Q>, ManifoldRoute<JP, JQ>>
+    for d<F>
+where
+    𝒞: Cat,
+    P: Connection<P, V>,
+    V: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
+    Q: Connection<Q, W>,
+    W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
+    JP: Point,
+    JQ: Point,
+    F: ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<JP, JQ>>,
+{
+    fn evaluate_at(&self, point: P) -> TangentMap<V, Q, W, Q> {
+        evaluate_manifold_derivative_at::<F, P, V, Q, W, ManifoldRoute<JP, JQ>>(self, point)
+    }
+}
+
+impl<P, V, Q, W, F, const N: usize, JP, JQ> ManifoldJetMap<P, V, Q, W, N, ManifoldRoute<JP, JQ>>
+    for F
+where
+    P: Connection<P, V>,
+    V: Tensor,
+    Q: Connection<Q, W>,
+    W: Tensor<F = V::F>,
+    JP: CommutesJet<P, V, N>,
+    JQ: CommutesJet<Q, W, N>,
+    F: Fn(JP) -> JQ,
+{
+    fn jet_at(&self, input: Tangent<P, V, N>) -> Tangent<Q, W, N> {
+        JQ::uncommute_jet(self(JP::commute_jet(input)))
+    }
+}
+
+/// An isomorphism between a connection's intrinsic split jet and one concrete
+/// Rust presentation obtained by commuting jettification through a nominal
+/// type constructor.
+pub trait CommutesJet<P: Point, V: Tensor, const N: usize>: Point
+where
+    P: Connection<P, V>,
+{
+    fn commute_jet(value: Tangent<P, V, N>) -> Self;
+
+    fn uncommute_jet(value: Self) -> Tangent<P, V, N>;
+}
+
+impl<P, V, const N: usize> CommutesJet<P, V, N> for Tangent<P, V, N>
+where
+    P: Connection<P, V>,
+    V: Tensor,
+{
+    fn commute_jet(value: Tangent<P, V, N>) -> Self {
+        value
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<P, V, N> {
+        value
     }
 }
 

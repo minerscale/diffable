@@ -16,7 +16,8 @@ use crate::{
     impl_group_via_add, impl_ring_via_grothendieck,
     traits::{
         Euclidean, Group, LieGroup,
-        calculus::{JetVector, Tangent},
+        calculus::{CommutesJet, JetVector, JetVectorIn, Tangent},
+        𝐑𝐞𝐚𝐥,
     },
 };
 
@@ -122,5 +123,18 @@ impl<V: Euclidean> LieGroup<Coords<V::F, 0>> for Z<V> {
         point: Tangent<Self, Coords<V::F, 0>, M>,
     ) -> Option<JetVector<Coords<V::F, 0>, M>> {
         point.0.is_zero().then_some(point.1)
+    }
+}
+
+#[allow(type_alias_bounds)]
+type ZJet<V: Euclidean, const M: usize> = Z<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, M>>;
+
+impl<V: Euclidean, const M: usize> CommutesJet<Z<V>, Coords<V::F, 0>, M> for ZJet<V, M> {
+    fn commute_jet(value: Tangent<Z<V>, Coords<V::F, 0>, M>) -> Self {
+        Z::new(value.0.0)
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<Z<V>, Coords<V::F, 0>, M> {
+        Tangent::new(Z::new(value.0), JetVector::zero())
     }
 }

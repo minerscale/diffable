@@ -17,8 +17,8 @@ use crate::{
     traits::{
         Atomic, BothSided, CField, Dual, FieldExp, Form, FromReal, Group, LieGroup, Metric,
         NatZero, Nondegenerate, Point, Quotient, Real, Right, RootOfUnity, Sesquilinear, Tensor,
-        calculus::{Jet, JetVector, Tangent},
-        𝐅𝐥𝐝,
+        calculus::{CommutesJet, Jet, JetVector, Tangent},
+        𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥,
     },
 };
 
@@ -124,7 +124,70 @@ impl<R: Real> Quotient<Sl2c<R>, RootOfUnity<Complex<R>, 2>, SlAlgebra<Complex<R>
     }
 }
 
-impl_lie_group_via_quotient!(Lorentz<R>, Sl2c<R>, RootOfUnity<Complex<R>,2>, SlAlgebra<Complex<R>, 2, 3>, R: Real);
+#[allow(type_alias_bounds)]
+type RealJet<R: Real, const N: usize> = Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>;
+
+#[allow(type_alias_bounds)]
+type NominalSl2cJet<R: Real, const N: usize> = Sl2c<RealJet<R, N>>;
+
+fn complex_jet_to_jetted_complex<R: Real, const N: usize>(
+    value: Jet<𝐅𝐥𝐝::𝒞, Complex<R>, N>,
+) -> Complex<RealJet<R, N>> {
+    let real = Jet::from_parts(value[0][0], core::array::from_fn(|i| value[i + 1][0]));
+
+    let imag = Jet::from_parts(value[0][1], core::array::from_fn(|i| value[i + 1][1]));
+
+    Complex::from([real, imag])
+}
+
+fn jetted_complex_to_complex_jet<R: Real, const N: usize>(
+    value: Complex<RealJet<R, N>>,
+) -> Jet<𝐅𝐥𝐝::𝒞, Complex<R>, N> {
+    Jet::from_parts(
+        Complex::from([value[0][0], value[1][0]]),
+        core::array::from_fn(|i| Complex::from([value[0][i + 1], value[1][i + 1]])),
+    )
+}
+
+fn sl2_matrix_jet_to_nominal<R: Real, const N: usize>(
+    value: Sl2Jetted<Complex<R>, N>,
+) -> NominalSl2cJet<R, N> {
+    Sl(Matrix::new(core::array::from_fn(|i| {
+        core::array::from_fn(|j| complex_jet_to_jetted_complex(value[(i, j)]))
+    })))
+}
+
+fn nominal_sl2_to_matrix_jet<R: Real, const N: usize>(
+    value: NominalSl2cJet<R, N>,
+) -> Sl2Jetted<Complex<R>, N> {
+    Matrix::new(core::array::from_fn(|i| {
+        core::array::from_fn(|j| jetted_complex_to_complex_jet(value.0[(i, j)]))
+    }))
+}
+
+impl<R: Real, const N: usize> CommutesJet<Sl2c<R>, SlAlgebra<Complex<R>, 2, 3>, N>
+    for NominalSl2cJet<R, N>
+{
+    fn commute_jet(value: Tangent<Sl2c<R>, SlAlgebra<Complex<R>, 2, 3>, N>) -> Self {
+        sl2_matrix_jet_to_nominal(sl2_assemble_group_jet(value))
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<Sl2c<R>, SlAlgebra<Complex<R>, 2, 3>, N> {
+        sl2_split_group_jet(nominal_sl2_to_matrix_jet(value))
+    }
+}
+
+impl_lie_group_via_quotient!(
+    Lorentz<R>, Sl2c<R>, RootOfUnity<Complex<R>, 2>, SlAlgebra<Complex<R>, 2, 3>,
+    [R: Real];
+
+    commutes_jet<const N: usize> {
+        quotient = Lorentz<RealJet<R, N>>,
+        cover = Sl2c<RealJet<R, N>>,
+        subgroup = RootOfUnity<Complex<RealJet<R, N>>, 2>,
+        model = SlAlgebra<Complex<RealJet<R, N>>, 2, 3>,
+    }
+);
 
 impl<V: Tensor<F: CField>, const N: usize> Sl<V, N> {
     /// Returns the trace of the represented special-linear transformation.

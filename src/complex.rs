@@ -14,8 +14,8 @@ use crate::{
     traits::{
         CField, Chart, Field, FieldExp, Group, Interval, LieGroup, Metric, NatZero, NonZero, Real,
         Sesquilinear, Tensor,
-        calculus::{JetVector, JetVectorIn, Tangent},
-        𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥,
+        calculus::{CommutesJet, Jet, JetVector, Tangent},
+        𝐑𝐞𝐚𝐥,
     },
 };
 
@@ -175,6 +175,20 @@ impl<R: Real> LieGroup<Coords<R, 2>> for Complex<R> {
     }
 }
 
+impl<R: Real, const N: usize> CommutesJet<Complex<R>, Coords<R, 2>, N>
+    for Complex<Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>>
+{
+    fn commute_jet(value: Tangent<Complex<R>, Coords<R, 2>, N>) -> Self {
+        let value = value.into_jet(|point| point.0).retag();
+
+        Complex::from([value[0], value[1]])
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<Complex<R>, Coords<R, 2>, N> {
+        JetVector::from_iter([value.0[0], value.0[1]].map(Jet::retag)).into_tangent(Complex::from)
+    }
+}
+
 impl<R: Real> Metric for Complex<R> {}
 
 impl<R: Real> Inv for NonZero<Complex<R>> {
@@ -206,18 +220,18 @@ impl<R: Real> LieGroup<Coords<R, 2>> for NonZero<Complex<R>> {
     fn inverse_jet<const N: usize>(
         value: Tangent<Self, Coords<R, 2>, N>,
     ) -> Tangent<Self, Coords<R, 2>, N> {
-        let value = value.into_jet(|p| p.0.0).retag::<𝐑𝐞𝐚𝐥::𝒞>();
+        let value = value.into_jet(|p| p.0.0).retag();
 
         let norm_squared = value[0] * value[0] + value[1] * value[1];
 
-        JetVectorIn::<𝐑𝐞𝐚𝐥::𝒞, Coords<R, 2>, N>::from_fn(|i| {
+        JetVector::from_fn(|i| {
             if i == 0 {
                 value[0] / norm_squared
             } else {
                 -value[1] / norm_squared
             }
+            .retag()
         })
-        .retag::<𝐅𝐥𝐝::𝒞>()
         .into_tangent(|coordinate| NonZero(Complex::from(coordinate)))
     }
 
@@ -225,35 +239,47 @@ impl<R: Real> LieGroup<Coords<R, 2>> for NonZero<Complex<R>> {
     fn identity_exp<const N: usize>(
         coordinate: JetVector<Coords<R, 2>, N>,
     ) -> Tangent<Self, Coords<R, 2>, N> {
-        let coordinate = coordinate.retag::<𝐑𝐞𝐚𝐥::𝒞>();
+        let coordinate = coordinate.retag();
 
         let [a, b] = [coordinate[0], coordinate[1]];
         let (sin, cos) = b.sin_cos();
         let radius = a.exp();
 
-        JetVectorIn::<𝐑𝐞𝐚𝐥::𝒞, Coords<R, 2>, N>::from_fn(|i| {
-            if i == 0 { radius * cos } else { radius * sin }
-        })
-        .retag::<𝐅𝐥𝐝::𝒞>()
-        .into_tangent(|coordinate| NonZero(Complex::from(coordinate)))
+        JetVector::from_fn(|i| if i == 0 { radius * cos } else { radius * sin }.retag())
+            .into_tangent(|coordinate| NonZero(Complex::from(coordinate)))
     }
 
     // Log(a + bi) = ln(sqrt(a² + b²)) + i atan2(b, a)
     fn identity_log<const N: usize>(
         point: Tangent<Self, Coords<R, 2>, N>,
     ) -> Option<JetVector<Coords<R, 2>, N>> {
-        let point = point.into_jet(|p| p.0.0).retag::<𝐑𝐞𝐚𝐥::𝒞>();
+        let point = point.into_jet(|p| p.0.0).retag();
 
         let [a, b] = [point[0], point[1]];
         let radius = (a * a + b * b).sqrt();
         let theta = b.atan2(a);
 
-        Some(
-            JetVectorIn::<𝐑𝐞𝐚𝐥::𝒞, Coords<R, 2>, N>::from_fn(|i| {
-                if i == 0 { radius.ln() } else { theta }
-            })
-            .retag::<𝐅𝐥𝐝::𝒞>(),
-        )
+        Some(JetVector::from_fn(|i| {
+            if i == 0 { radius.ln() } else { theta }.retag()
+        }))
+    }
+}
+
+#[allow(type_alias_bounds)]
+type NonZeroComplexJet<R: Real, const N: usize> = NonZero<Complex<Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>>>;
+
+impl<R: Real, const N: usize> CommutesJet<NonZero<Complex<R>>, Coords<R, 2>, N>
+    for NonZeroComplexJet<R, N>
+{
+    fn commute_jet(value: Tangent<NonZero<Complex<R>>, Coords<R, 2>, N>) -> Self {
+        let value = value.into_jet(|point| point.0.0).retag();
+
+        NonZero(Complex::from([value[0], value[1]]))
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<NonZero<Complex<R>>, Coords<R, 2>, N> {
+        JetVector::<Coords<R, 2>, N>::from_fn(|i| value.0.0[i].retag())
+            .into_tangent(|coordinate| NonZero(Complex::from(coordinate)))
     }
 }
 

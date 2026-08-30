@@ -13,8 +13,9 @@ use crate::{
     coords::Coords,
     impl_group_via_add,
     traits::{
-        Field, FieldExp, Group, LieGroup, Metric, NatZero, NonZero, Real,
-        calculus::{JetVector, Tangent},
+        Field, FieldExp, Group, LieGroup, Metric, NatZero, NonZero, Real, Tensor,
+        calculus::{CommutesJet, Jet, JetVector, Tangent},
+        𝐑𝐞𝐚𝐥,
     },
 };
 
@@ -185,6 +186,22 @@ impl<R: Real> LieGroup<Coords<R, 4>> for Quaternion<R> {
         point: Tangent<Self, Coords<R, 4>, N>,
     ) -> Option<JetVector<Coords<R, 4>, N>> {
         Some(point.into_jet(|point| point.0))
+    }
+}
+
+impl<R: Real, const N: usize> CommutesJet<Quaternion<R>, Coords<R, 4>, N>
+    for Quaternion<Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>>
+{
+    fn commute_jet(value: Tangent<Quaternion<R>, Coords<R, 4>, N>) -> Self {
+        let value = value.into_jet(|point| point.0);
+
+        Quaternion::from([value[0], value[1], value[2], value[3]].map(Jet::retag))
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<Quaternion<R>, Coords<R, 4>, N> {
+        let value: [Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>; 4] = value.into();
+
+        JetVector::from_iter(value.map(Jet::retag)).into_tangent(Quaternion::from)
     }
 }
 

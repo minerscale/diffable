@@ -4,13 +4,15 @@ use diffable::{
     complex::Complex,
     coords::Coords,
     epsilon_metric::R64,
+    hypersphere::{Sphere, hopf},
     traits::{
         Atomic, BothSided, Cat, Chart, Dual, DualSinistered, Dualized, Euclidean, ExpMap, Field,
         Form, Left, Normalize, NormalizeWith, Right, Sinister, Sinistered, TangentBundle, Tensor,
         Undecorated, Vector,
         calculus::{
             Connection, Contract, Here, JetVector, JetVectorIn, MetricTensor, OnLeft,
-            ParallelTransport, Reassociate, Swap, Tangent, TensorProduct, ThroughSinister, d,
+            ParallelTransport, Reassociate, Swap, Tangent, TangentMap, TensorProduct,
+            ThroughSinister, d,
         },
     },
 };
@@ -515,4 +517,113 @@ fn ordered_musicals_preserve_metric_dispatch() {
 
     assert_eq!(ordered.raise(target, lowered), v);
     assert_eq!(explicit.g_calls(), 2);
+}
+
+#[test]
+fn differential_of_a_polymorphic_sphere_map() {
+    type V = Coords<R64, 2>;
+
+    fn identity<V: Euclidean>(point: Sphere<V>) -> Sphere<V> {
+        point
+    }
+
+    let point: Sphere<V> = Sphere::new(R64(0.5), [R64(0.5), R64(0.5)].into());
+
+    let derivative = d(identity).at(point);
+
+    assert!(
+        derivative
+            .iter()
+            .eq([1.0, 0.0, 0.0, 1.0].map(R64).iter())
+    );
+}
+
+#[test]
+fn differential_of_a_polymorphic_sphere_reflection() {
+    type V = Coords<R64, 2>;
+
+    fn reflect<V: Euclidean>(point: Sphere<V>) -> Sphere<V> {
+        Sphere::new(point.real(), -point.imag())
+    }
+
+    let identity = Sphere::new(R64::one(), V::zero());
+
+    let derivative = d(reflect).at(identity);
+
+    assert!(
+        derivative
+            .iter()
+            .eq([-1.0, 0.0, 0.0, -1.0].map(R64).iter(),)
+    );
+}
+
+#[test]
+fn differential_accepts_the_intrinsic_tangent_presentation() {
+    type V = Coords<R64, 2>;
+    type P = Sphere<V>;
+
+    fn identity(tangent: Tangent<P, V, 1>) -> Tangent<P, V, 1> {
+        tangent
+    }
+
+    let point = Sphere::new(R64(0.5), [R64(0.5), R64(0.5)].into());
+
+    let derivative = d(identity).at(point);
+
+    assert!(
+        derivative
+            .iter()
+            .eq([1.0, 0.0, 0.0, 1.0].map(R64).iter(),)
+    );
+}
+
+#[test]
+fn differential_of_the_hopf_map() {
+    type U = Coords<R64, 3>;
+    type V = Coords<R64, 2>;
+
+    let identity = Sphere::new(R64::one(), U::zero());
+
+    let derivative: TangentMap<U, Sphere<V>, V> = d(hopf).at(identity);
+
+    assert!(
+        derivative
+            .iter()
+            .eq([0.0, 0.0, 2.0, 0.0, -2.0, 0.0,].map(R64).iter(),)
+    );
+}
+
+#[test]
+fn second_derivative_of_the_hopf_map() {
+    type U = Coords<R64, 3>;
+    type V = Coords<R64, 2>;
+
+    type DHopf = TangentMap<U, Sphere<V>, V>;
+
+    let identity = Sphere::new(R64::one(), U::zero());
+
+    let second: TangentMap<U, DHopf, DHopf> = d(d(hopf)).at(identity);
+
+    assert!(
+        second.iter().eq([
+            // First output coordinate:
+            //
+            // 2(bc + ad)
+            //
+            // Hessian in (b,c,d):
+            0.0, 2.0, 0.0,
+            2.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            // Second output coordinate:
+            //
+            // 2(bd - ac)
+            //
+            // Hessian in (b,c,d):
+            0.0, 0.0, 2.0,
+            0.0, 0.0, 0.0,
+            2.0, 0.0, 0.0,
+        ]
+        .map(R64)
+        .iter(),)
+    );
 }
