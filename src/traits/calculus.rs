@@ -2206,13 +2206,25 @@ pub trait Connection<P: Point, V: Tensor>: TangentBundle<P, V> {
         //
         //     coordinate -> global -> local == coordinate
         //
-        // `tangent_to_global` is total, so every local coordinate must land
-        // inside the corresponding lifted local chart.
+        // This obligation applies when coefficient zero belongs to the branch
+        // selected by the ordinary chart. `tangent_to_global` may be total even
+        // when the exponential chart is not globally injective, so arbitrary
+        // vectors need not be canonical local coordinates of their image.
+        let coordinate_primal = V::from_fn(|index| coordinate[index][0]);
+
         let (point, tangent) =
             match Self::tangent_to_global::<N>(base.clone(), coordinate.clone()).into_option() {
-                Some(x) => x,
+                Some(value) => value,
                 None => return true,
             };
+
+        let chart = Self::chart_at(&base.0);
+
+        // The generated coordinate lies outside the branch represented by this
+        // chart. There is no inversehood obligation for this presentation.
+        if chart.to_local(&point) != Some(coordinate_primal) {
+            return true;
+        }
 
         let reconstructed = Tangent::new(point, tangent);
 

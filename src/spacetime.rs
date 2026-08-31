@@ -261,7 +261,13 @@ where
 
     let local = Sl2Matrix::<F>::log_jet::<M>(local_group).unwrap();
 
-    Tangent::new(point, SlAlgebra::from_matrix_jet(local))
+    let mut tangent = SlAlgebra::from_matrix_jet(local);
+
+    tangent[0][0] = F::zero();
+    tangent[1][0] = F::zero();
+    tangent[2][0] = F::zero();
+
+    Tangent::new(point, tangent)
 }
 
 impl<F: CField<Characteristic = NatZero>> SlAlgebra<F, 2, 3> {

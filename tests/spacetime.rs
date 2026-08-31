@@ -10,11 +10,15 @@ use diffable::{
     coords::Coords,
     epsilon_metric::R64,
     spacetime::{Lorentz, Minkowski, Sl, Sl2c, SlAlgebra},
-    test_group, test_quotient, test_tangent_bundle, test_vector,
-    traits::{Chart, Group, Quotient},
+    test_lie_group, test_quotient, test_vector,
+    traits::{Chart, Group},
 };
 
 use proptest::prelude::*;
+
+fn arb_complex() -> impl Strategy<Value = Complex<R64>> {
+    arb_vec::<2>().prop_map(Complex::from)
+}
 
 prop_compose! {
     pub fn arb_sl_algebra_2c()(
@@ -38,18 +42,22 @@ test_vector!(
     arb_scalar()
 );
 
-test_group!(lie_group_sl2c, Sl2c<R64>, arb_sl2c());
-test_tangent_bundle!(tangent_bundle_sl2c, Sl2c<R64>, arb_sl2c());
+test_lie_group!(
+    lie_group_sl2c,
+    Sl2c<R64>,
+    SlAlgebra<Complex<R64>, 2, 3>,
+    arb_sl2c(),
+    arb_sl_algebra_2c(),
+    arb_complex()
+);
 
 test_quotient!(
     quotient_lorentz,
     Lorentz<R64>,
-    arb_sl2c().prop_map(|x| Lorentz::new(x)),
+    SlAlgebra<Complex<R64>, 2, 3>,
+    arb_sl2c().prop_map(Lorentz::new),
+    arb_sl_algebra_2c(),
+    arb_complex(),
     arb_sl2c(),
     arb_root_of_unity()
-);
-test_tangent_bundle!(
-    tangent_bundle_lorentz,
-    Lorentz<R64>,
-    arb_sl2c().prop_map(|x| Lorentz::new(x))
 );

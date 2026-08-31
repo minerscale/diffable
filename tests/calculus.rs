@@ -531,11 +531,7 @@ fn differential_of_a_polymorphic_sphere_map() {
 
     let derivative = d(identity).at(point);
 
-    assert!(
-        derivative
-            .iter()
-            .eq([1.0, 0.0, 0.0, 1.0].map(R64).iter())
-    );
+    assert!(derivative.iter().eq([1.0, 0.0, 0.0, 1.0].map(R64).iter()));
 }
 
 #[test]
@@ -570,11 +566,7 @@ fn differential_accepts_the_intrinsic_tangent_presentation() {
 
     let derivative = d(identity).at(point);
 
-    assert!(
-        derivative
-            .iter()
-            .eq([1.0, 0.0, 0.0, 1.0].map(R64).iter(),)
-    );
+    assert!(derivative.iter().eq([1.0, 0.0, 0.0, 1.0].map(R64).iter(),));
 }
 
 #[test]
@@ -611,17 +603,13 @@ fn second_derivative_of_the_hopf_map() {
             // 2(bc + ad)
             //
             // Hessian in (b,c,d):
-            0.0, 2.0, 0.0,
-            2.0, 0.0, 0.0,
-            0.0, 0.0, 0.0,
+            0.0, 2.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0,
             // Second output coordinate:
             //
             // 2(bd - ac)
             //
             // Hessian in (b,c,d):
-            0.0, 0.0, 2.0,
-            0.0, 0.0, 0.0,
-            2.0, 0.0, 0.0,
+            0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0,
         ]
         .map(R64)
         .iter(),)

@@ -8,7 +8,7 @@ use diffable::{
     coords::Coords,
     epsilon_metric::R64,
     flat::{KleinBottle, S1, Torus},
-    test_pseudo_riemannian, test_quotient, test_tangent_bundle,
+    test_connection, test_lie_group, test_pseudo_riemannian, test_quotient, test_tangent_bundle,
 };
 
 use proptest::prelude::*;
@@ -20,8 +20,11 @@ test_tangent_bundle!(
 );
 test_quotient!(
     quotient_s1,
-    S1<Coords<_, _>>,
+    S1<Coords<R64, 1>>,
+    Coords<R64, 1>,
     arb_s1_quotient(),
+    arb_vec1(),
+    arb_scalar(),
     arb_vec1(),
     arb_z()
 );
@@ -33,10 +36,14 @@ test_pseudo_riemannian!(
 );
 
 // ($mod_name:ident, $scalar:ty, $chart:ty, $point:ty, $arb_point:expr, $arb_vec:expr)
-test_tangent_bundle!(
-    torus_tangent_bundle,
+test_lie_group!(
+    lie_group_torus,
     Torus<Coords<R64, 1>, Coords<R64, 2>>,
-    (arb_s1_quotient(), arb_s1_quotient()).prop_map(|(a, b)| Torus::new(a, b))
+    Coords<R64, 2>,
+    (arb_s1_quotient(), arb_s1_quotient())
+        .prop_map(|(a, b)| Torus::new(a, b)),
+    arb_vec2(),
+    arb_scalar()
 );
 test_pseudo_riemannian!(
     riemannian_torus,
@@ -45,10 +52,15 @@ test_pseudo_riemannian!(
     arb_vec2()
 );
 
-test_tangent_bundle!(
-    klein_bottle_tangent_bundle,
+test_connection!(
+    connection_klein_bottle,
     KleinBottle<Coords<R64, 1>, Coords<R64, 2>>,
-    (arb_s1_quotient(), arb_s1_quotient()).prop_map(|(a, b)| KleinBottle::new(a, b))
+    KleinBottle<Coords<R64, 1>, Coords<R64, 2>>,
+    Coords<R64, 2>,
+    (arb_s1_quotient(), arb_s1_quotient())
+        .prop_map(|(a, b)| KleinBottle::new(a, b)),
+    arb_vec2(),
+    arb_scalar()
 );
 // ($mod_name:ident, $chart:ty, $arb_point:expr, $arb_vec:expr)
 test_pseudo_riemannian!(

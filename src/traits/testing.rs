@@ -13,6 +13,11 @@
 // manifold, just invoke the relevant macro with appropriate generators.
 // ---------------------------------------------------------------------------
 
+use crate::traits::{
+    Point, Tensor,
+    calculus::{Jet, JetVector, Tangent, TensorOver},
+};
+
 /// Tests the axioms required by [`Vector`](crate::traits::Vector).
 #[macro_export]
 macro_rules! test_vector {
@@ -20,13 +25,18 @@ macro_rules! test_vector {
         mod $mod_name {
             use super::*;
             use $crate::{
-                test_group, test_tangent_bundle,
+                test_lie_group,
                 traits::{Field, Tensor},
             };
 
-            test_tangent_bundle!(tangent_bundle, $space, $arb_point);
-
-            test_group!(group, $space, $arb_point);
+            test_lie_group!(
+                lie_group,
+                $space,
+                $space,
+                $arb_point,
+                $arb_point,
+                $arb_scalar
+            );
 
             proptest! {
                 #[test]
@@ -534,18 +544,39 @@ macro_rules! test_inner_product {
 /// inherited LieGroup axioms which follow from the quotient structure.
 #[macro_export]
 macro_rules! test_quotient {
-    ($mod_name:ident, $quotient:ty, $arb_quotient:expr, $arb_g:expr, $arb_h:expr) => {
+    (
+        $mod_name:ident,
+        $quotient:ty,
+        $vector:ty,
+        $arb_quotient:expr,
+        $arb_vector:expr,
+        $arb_scalar:expr,
+        $arb_g:expr,
+        $arb_h:expr
+    ) => {
         mod $mod_name {
             use super::*;
-            use $crate::{test_group, traits::Quotient};
 
-            // A quotient group is a Lie group — inherit all LieGroup axioms.
-            test_group!(lie_group, $quotient, $arb_quotient);
+            use $crate::{test_lie_group, traits::Quotient};
+
+            test_lie_group!(
+                lie_group,
+                $quotient,
+                $vector,
+                $arb_quotient,
+                $arb_vector,
+                $arb_scalar
+            );
 
             proptest! {
                 #[test]
-                fn new_respects_coset(g in $arb_g, h in $arb_h) {
-                    prop_assert!(<$quotient>::check_new_respects_coset(g, h));
+                fn new_respects_coset(
+                    g in $arb_g,
+                    h in $arb_h,
+                ) {
+                    prop_assert!(
+                        <$quotient>::check_new_respects_coset(g, h)
+                    );
                 }
             }
         }
@@ -718,4 +749,222 @@ macro_rules! test_rig {
             }
         }
     };
+}
+
+/// Tests the axioms required by [`Connection`](crate::traits::Connection).
+///
+/// The lifted chart laws are exercised at jet order two, while truncation
+/// coherence is checked from order two to order one. The supplied generators
+/// must produce points in `P`, vectors in `V`, and scalars in `V::F`.
+#[macro_export]
+macro_rules! test_connection {
+    (
+        $mod_name:ident,
+        $connection:ty,
+        $point:ty,
+        $vector:ty,
+        $arb_point:expr,
+        $arb_vector:expr,
+        $arb_scalar:expr
+    ) => {
+        mod $mod_name {
+            use super::*;
+
+            use num_traits::Zero;
+
+            use $crate::{
+                test_tangent_bundle,
+                traits::{
+                    Chart, Tensor,
+                    calculus::{Connection, Jet, JetVector, Tangent, TensorOver},
+                    𝐅𝐥𝐝,
+                },
+            };
+
+            test_tangent_bundle!(tangent_bundle, $connection, $arb_point);
+
+            proptest! {
+                #[test]
+                fn quadratic_geodesic_acceleration(
+                    observer in $arb_point,
+                    point in $arb_point,
+                    u in $arb_vector,
+                    v in $arb_vector,
+                    scalar in $arb_scalar,
+                ) {
+                    let chart =
+                        <$connection as Chart<$point, $vector>>::chart_at(
+                            &observer,
+                        );
+
+                    prop_assert!(
+                        <$connection as Connection<$point, $vector>>::
+                            check_quadratic_geodesic_acceleration(
+                                &chart,
+                                point,
+                                u,
+                                v,
+                                scalar,
+                            )
+                    );
+                }
+
+                #[test]
+                fn tangent_to_local_agrees_with_chart(
+                    base in $arb_point,
+                    point in $arb_point,
+                ) {
+                    prop_assert!(
+                        <$connection as Connection<$point, $vector>>::
+                            check_tangent_to_local_agrees_with_chart(
+                                base,
+                                point,
+                            )
+                    );
+                }
+
+                #[test]
+                fn tangent_to_global_agrees_with_chart(
+                    base in $arb_point,
+                    coordinate in $arb_vector,
+                ) {
+                    prop_assert!(
+                        <$connection as Connection<$point, $vector>>::
+                            check_tangent_to_global_agrees_with_chart(
+                                base,
+                                coordinate,
+                            )
+                    );
+                }
+
+                #[test]
+                fn truncation_coherence(
+                    base_point in $arb_point,
+                    base_d1 in $arb_vector,
+                    base_d2 in $arb_vector,
+                    coordinate_0 in $arb_vector,
+                    coordinate_1 in $arb_vector,
+                    coordinate_2 in $arb_vector,
+                ) {
+                    let base =
+                        $crate::traits::testing::tangent_from_coefficients(
+                            base_point,
+                            [base_d1, base_d2],
+                        );
+
+                    let coordinate =
+                        $crate::traits::testing::jet_vector_from_coefficients(
+                            coordinate_0,
+                            [coordinate_1, coordinate_2],
+                        );
+
+                    prop_assert!(
+                        <$connection as Connection<$point, $vector>>::
+                            check_truncation_coherence::<1, 2>(
+                                base,
+                                coordinate,
+                            )
+                    );
+                }
+
+                #[test]
+                fn tangent_isomorphism(
+                    base_point in $arb_point,
+                    base_d1 in $arb_vector,
+                    base_d2 in $arb_vector,
+
+                    local_point in $arb_point,
+                    local_d1 in $arb_vector,
+                    local_d2 in $arb_vector,
+
+                    coordinate_0 in $arb_vector,
+                    coordinate_1 in $arb_vector,
+                    coordinate_2 in $arb_vector,
+                ) {
+                    let base =
+                        $crate::traits::testing::tangent_from_coefficients(
+                            base_point,
+                            [base_d1, base_d2],
+                        );
+
+                    let local =
+                        $crate::traits::testing::tangent_from_coefficients(
+                            local_point,
+                            [local_d1, local_d2],
+                        );
+
+                    let coordinate =
+                        $crate::traits::testing::jet_vector_from_coefficients(
+                            coordinate_0,
+                            [coordinate_1, coordinate_2],
+                        );
+
+                    prop_assert!(
+                        <$connection as Connection<$point, $vector>>::
+                            check_tangent_isomorphism::<2>(
+                                base,
+                                local,
+                                coordinate,
+                            )
+                    );
+                }
+            }
+        }
+    };
+}
+
+/// Tests the axioms required by [`LieGroup`](crate::traits::LieGroup).
+///
+/// A Lie group must satisfy the ordinary group laws, and the connection
+/// generated by left translation of its identity exponential must satisfy the
+/// complete lifted tangent-chart contract.
+#[macro_export]
+macro_rules! test_lie_group {
+    (
+        $mod_name:ident,
+        $group:ty,
+        $vector:ty,
+        $arb_group:expr,
+        $arb_vector:expr,
+        $arb_scalar:expr
+    ) => {
+        mod $mod_name {
+            use super::*;
+
+            use $crate::{test_connection, test_group};
+
+            test_group!(group, $group, $arb_group);
+
+            test_connection!(
+                connection,
+                $group,
+                $group,
+                $vector,
+                $arb_group,
+                $arb_vector,
+                $arb_scalar
+            );
+        }
+    };
+}
+
+#[doc(hidden)]
+pub fn jet_vector_from_coefficients<V: Tensor, const N: usize>(
+    primal: V,
+    coefficients: [V; N],
+) -> JetVector<V, N> {
+    TensorOver::from_fn(|coordinate| {
+        Jet::from_parts(
+            primal[coordinate].clone(),
+            core::array::from_fn(|order| coefficients[order][coordinate].clone()),
+        )
+    })
+}
+
+#[doc(hidden)]
+pub fn tangent_from_coefficients<P: Point, V: Tensor, const N: usize>(
+    point: P,
+    coefficients: [V; N],
+) -> Tangent<P, V, N> {
+    Tangent::new(point, jet_vector_from_coefficients(V::zero(), coefficients))
 }

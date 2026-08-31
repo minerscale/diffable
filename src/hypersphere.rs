@@ -156,40 +156,6 @@ impl<V: Euclidean> Sphere<V> {
         let sin_d = (w_real * w_real + w_imag.norm_squared()).sqrt();
         V::F::atan2(sin_d, cos_d) // θ, stable through the antipode
     }
-
-    fn exp_coordinate(&self, v: V) -> Self {
-        let eps = <V::F as NumCast>::from(EPSILON).unwrap();
-
-        // Identity-frame exp, centred at +e0:
-        //
-        //     (cos α, v · sinc α)
-        let alpha = v.norm();
-
-        let (sin_a, cos_a) = alpha.sin_cos();
-        let sinc = sinc_from(alpha, sin_a, eps);
-
-        // Transport the identity-frame point to self's frame.
-        self.transport_from_identity(cos_a, v * sinc)
-    }
-
-    fn log_coordinate(&self, other: &Self) -> Option<V> {
-        let one = V::F::one();
-        let eps = <V::F as NumCast>::from(EPSILON).unwrap();
-
-        // Transport other into the +e0 identity frame.
-        let p = self.transport_to_identity(other.real, other.imag.clone());
-
-        // Invert (cos α, v · sinc α).
-        if (p.real + one).abs() < eps {
-            return None;
-        }
-
-        let alpha = V::F::atan2(p.imag.norm(), p.real);
-
-        let sinc_recip = sinc_recip(alpha, eps);
-
-        Some(p.imag * sinc_recip)
-    }
 }
 
 /// The hopf map. See https://en.wikipedia.org/wiki/Hopf_fibration for more
@@ -227,7 +193,7 @@ fn sphere_constant_jet<V: Euclidean, const N: usize>(value: Sphere<V>) -> Sphere
 fn sphere_assemble_jet<V: Euclidean, const N: usize>(
     value: Tangent<Sphere<V>, V, N>,
 ) -> SphereJet<V, N> {
-    sphere_constant_jet(value.0).exp_coordinate(value.1.retag::<𝐑𝐞𝐚𝐥::𝒞>())
+    sphere_exp_coordinate_jet(&sphere_constant_jet(value.0), value.1.retag::<𝐑𝐞𝐚𝐥::𝒞>())
 }
 
 // Split a sphere-valued curve into its value at zero and exponential-chart
@@ -236,17 +202,39 @@ fn sphere_assemble_jet<V: Euclidean, const N: usize>(
 fn sphere_split_jet<V: Euclidean, const N: usize>(
     value: SphereJet<V, N>,
 ) -> Tangent<Sphere<V>, V, N> {
-    let point = Sphere {
-        real: value.real[0],
-        imag: V::from_iter(value.imag.iter().map(|coordinate| coordinate[0])),
-    };
+    let point = sphere_jet_primal(&value);
+    let base = sphere_constant_jet(point.clone());
 
-    let coordinate = sphere_constant_jet(point.clone())
-        .log_coordinate(&value)
-        .unwrap()
-        .retag::<𝐅𝐥𝐝::𝒞>();
+    let coordinate = sphere_log_coordinate_jet(&base, &value).unwrap();
 
-    Tangent::new(point, coordinate)
+    Tangent::new(point, coordinate.retag::<𝐅𝐥𝐝::𝒞>())
+}
+
+fn sphere_exp_coordinate_jet<V: Euclidean, const N: usize>(
+    base: &SphereJet<V, N>,
+    coordinate: JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>,
+) -> SphereJet<V, N> {
+    let (cos, sinc) = sphere_exp_factors(coordinate.norm_squared());
+
+    base.transport_from_identity(cos, coordinate * sinc)
+}
+
+fn sphere_log_coordinate_jet<V: Euclidean, const N: usize>(
+    base: &SphereJet<V, N>,
+    point: &SphereJet<V, N>,
+) -> Option<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>> {
+    let point = base.transport_to_identity(point.real, point.imag.clone());
+
+    let eps = <V::F as NumCast>::from(EPSILON).unwrap();
+
+    // The antipode is the cut locus of the exponential chart.
+    if (point.real[0] + V::F::one()).abs() < eps {
+        return None;
+    }
+
+    let factor = sphere_log_factor(point.imag.norm_squared(), point.real);
+
+    Some(point.imag * factor)
 }
 
 impl<V: Euclidean> Smooth<V> for Sphere<V> {
@@ -257,9 +245,11 @@ impl<V: Euclidean> Smooth<V> for Sphere<V> {
         coordinate: JetVector<V, N>,
     ) -> Self::Global<N> {
         let base = sphere_assemble_jet(base);
-        let coordinate = coordinate.retag::<𝐑𝐞𝐚𝐥::𝒞>();
 
-        sphere_split_jet(base.exp_coordinate(coordinate))
+        sphere_split_jet(sphere_exp_coordinate_jet(
+            &base,
+            coordinate.retag::<𝐑𝐞𝐚𝐥::𝒞>(),
+        ))
     }
 
     fn log<const N: usize>(
@@ -269,45 +259,7 @@ impl<V: Euclidean> Smooth<V> for Sphere<V> {
         let base = sphere_assemble_jet(base);
         let point = sphere_assemble_jet(point);
 
-        base.log_coordinate(&point)
-            .map(|coordinate| coordinate.retag::<𝐅𝐥𝐝::𝒞>())
-    }
-}
-
-/// The cardinal sine `sin(α)/α`, with a Taylor fallback near zero to
-/// avoid the `0/0` at the origin.
-///
-/// Series: `sin(α)/α = 1 − α²/6 + α⁴/120 − …`
-/// The two-term approximation `1 − α²/6` is used for `α < eps`; its
-/// error there is the dropped `α⁴/120` term (~8×10⁻¹⁵ at eps = 1e-3),
-/// far below the R64 tolerance.
-fn sinc_from<F: Real>(alpha: F, sin_a: F, eps: F) -> F {
-    let one = F::one();
-    if alpha < eps {
-        let six = (one + one) * (one + one + one);
-        one - alpha * alpha / six
-    } else {
-        sin_a / alpha
-    }
-}
-
-/// The reciprocal cardinal sine `α/sin(α)`, with a Taylor fallback near
-/// zero.
-///
-/// Series: `α/sin(α) = 1 + α²/6 + 7α⁴/360 + …`
-/// Note this is **not** a sign-flipped copy of [`sinc`]'s series: only the
-/// α² term flips sign; the α⁴ coefficient is `7/360`, not `±1/120`
-/// (because `1/(1−x) ≠ 1 ∓ x` beyond first order). The two-term
-/// approximation `1 + α²/6` is used for `α < eps`; its error there is the
-/// dropped `7α⁴/360` term (~2×10⁻¹⁴ at eps = 1e-3), below the R64
-/// tolerance.
-fn sinc_recip<F: Real>(alpha: F, eps: F) -> F {
-    let one = F::one();
-    if alpha < eps {
-        let six = (one + one) * (one + one + one);
-        one + alpha * alpha / six
-    } else {
-        alpha / alpha.sin()
+        sphere_log_coordinate_jet(&base, &point).map(|coordinate| coordinate.retag::<𝐅𝐥𝐝::𝒞>())
     }
 }
 

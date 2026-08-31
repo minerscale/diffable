@@ -8,7 +8,6 @@
 #[cfg(feature = "testing")]
 use crate::traits::Form;
 
-#[cfg(feature = "testing")]
 use num_traits::Zero;
 
 use crate::traits::{

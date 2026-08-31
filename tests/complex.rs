@@ -7,8 +7,9 @@ use common::*;
 
 use diffable::{
     complex::Complex,
+    coords::Coords,
     epsilon_metric::R64,
-    test_cfield, test_metric, test_pseudo_riemannian, test_tangent_bundle,
+    test_cfield, test_lie_group, test_metric, test_pseudo_riemannian,
     traits::{NonZero, Symmetrized},
 };
 
@@ -45,10 +46,16 @@ test_pseudo_riemannian!(
     arb_vec::<2>().prop_filter_map("must be nonzero", |x| NonZero::new(Complex::<R64>::from(x))),
     arb_vec::<2>()
 );
-test_tangent_bundle!(
+test_lie_group!(
     complex_exp_log,
     NonZero<Complex<R64>>,
-    arb_vec::<2>().prop_filter_map("must be nonzero", |x| NonZero::new(Complex::<R64>::from(x)))
+    Coords<R64, 2>,
+    arb_vec::<2>().prop_filter_map(
+        "must be nonzero",
+        |x| NonZero::new(Complex::<R64>::from(x)),
+    ),
+    arb_vec::<2>(),
+    arb_scalar()
 );
 
 proptest! {
