@@ -3046,13 +3046,40 @@ impl<F> d<F> {
     }
 }
 
-impl<F, BT> Along<F, BT> {
+impl<F, V> Along<F, V> {
     /// Evaluates the directional derivative at `point`.
-    pub fn at<𝒞: Cat, FT>(&self, point: BT) -> FT
+    pub fn at<𝒞: Cat, Point, Output, Route>(&self, point: Point) -> Output
     where
-        Self: EvaluableAt<𝒞, BT, FT>,
+        Self: EvaluableAt<𝒞, Point, Output, Route>,
     {
-        <Self as EvaluableAt<𝒞, BT, FT>>::evaluate_at(self, point)
+        <Self as EvaluableAt<𝒞, Point, Output, Route>>::evaluate_at(self, point)
+    }
+}
+
+impl<𝒞, F, P, V, Q, W, JP, JQ> EvaluableAt<𝒞, P, W, ManifoldRoute<Q, JP, JQ>> for Along<F, V>
+where
+    𝒞: Cat,
+    P: Connection<P, V> + ι,
+    P::C: Ⱶ<𝐓𝐞𝐧𝐬::𝒞, Absent>,
+    V: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
+    Q: Connection<Q, W>,
+    W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
+    JP: Point,
+    JQ: Point,
+    F: ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<Q, JP, JQ>>,
+    Jet<𝒞, V::F>: Field,
+{
+    fn evaluate_at(&self, point: P) -> W {
+        let tangent = JetVector::from_fn(|coordinate| {
+            Jet::from_parts(V::F::zero(), [self.direction[coordinate]])
+        });
+
+        let output = <F as ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<Q, JP, JQ>>>::jet_at(
+            &self.f,
+            Tangent::new(point, tangent),
+        );
+
+        W::from_fn(|coordinate| output.1[coordinate][1])
     }
 }
 
@@ -3235,7 +3262,7 @@ where
 }
 
 impl<𝒞, F, P, V, Q, W, JP, JQ>
-    DifferentialRegion<𝒞, F, TangentMap<V, Q, W, Q>, ManifoldRoute<JP, JQ>> for P
+    DifferentialRegion<𝒞, F, TangentMap<V, Q, W, Q>, ManifoldRoute<Q, JP, JQ>> for P
 where
     𝒞: Cat,
     P: Point + ι + Connection<P, V>,
@@ -3245,12 +3272,12 @@ where
     W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
     JP: Point,
     JQ: Point,
-    F: ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<JP, JQ>>,
+    F: ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<Q, JP, JQ>>,
 {
 }
 
 #[doc(hidden)]
-pub struct ManifoldRoute<JP: Point, JQ: Point>(PhantomData<fn(JP) -> JQ>);
+pub struct ManifoldRoute<Q: Point, JP: Point, JQ: Point>(PhantomData<fn(JP) -> (Q, JQ)>);
 
 #[doc(hidden)]
 pub struct DifferentiatedManifoldRoute<
@@ -3407,7 +3434,7 @@ where
     }
 }
 
-impl<𝒞, F, P, V, Q, W, JP, JQ> EvaluableAt<𝒞, P, TangentMap<V, Q, W, Q>, ManifoldRoute<JP, JQ>>
+impl<𝒞, F, P, V, Q, W, JP, JQ> EvaluableAt<𝒞, P, TangentMap<V, Q, W, Q>, ManifoldRoute<Q, JP, JQ>>
     for d<F>
 where
     𝒞: Cat,
@@ -3417,14 +3444,14 @@ where
     W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
     JP: Point,
     JQ: Point,
-    F: ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<JP, JQ>>,
+    F: ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<Q, JP, JQ>>,
 {
     fn evaluate_at(&self, point: P) -> TangentMap<V, Q, W, Q> {
-        evaluate_manifold_derivative_at::<F, P, V, Q, W, ManifoldRoute<JP, JQ>>(self, point)
+        evaluate_manifold_derivative_at::<F, P, V, Q, W, ManifoldRoute<Q, JP, JQ>>(self, point)
     }
 }
 
-impl<P, V, Q, W, F, const N: usize, JP, JQ> ManifoldJetMap<P, V, Q, W, N, ManifoldRoute<JP, JQ>>
+impl<P, V, Q, W, F, const N: usize, JP, JQ> ManifoldJetMap<P, V, Q, W, N, ManifoldRoute<Q, JP, JQ>>
     for F
 where
     P: Connection<P, V>,

@@ -263,6 +263,9 @@ where
 
     let mut tangent = SlAlgebra::from_matrix_jet(local);
 
+    // Only the primal (order-0) coordinate is provably zero
+    // it's the log of an exact identity by construction;
+    // We set these to zero for numerical stability.
     tangent[0][0] = F::zero();
     tangent[1][0] = F::zero();
     tangent[2][0] = F::zero();

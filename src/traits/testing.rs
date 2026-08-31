@@ -13,8 +13,10 @@
 // manifold, just invoke the relevant macro with appropriate generators.
 // ---------------------------------------------------------------------------
 
+use num_traits::One;
+
 use crate::traits::{
-    Point, Tensor,
+    Cat, DivRing, Field, FromReal, Interval, Point, Tensor,
     calculus::{Jet, JetVector, Tangent, TensorOver},
 };
 
@@ -967,4 +969,178 @@ pub fn tangent_from_coefficients<P: Point, V: Tensor, const N: usize>(
     coefficients: [V; N],
 ) -> Tangent<P, V, N> {
     Tangent::new(point, jet_vector_from_coefficients(V::zero(), coefficients))
+}
+
+/// Constructs a coefficient-wise constant jet without requiring a categorical
+/// admission proof for `Jet::constant`.
+///
+/// This is the raw representation-level embedding:
+///
+/// x ↦ (x, 0, ..., 0).
+#[doc(hidden)]
+pub fn constant_jet<𝒞: Cat, F: Field, const N: usize>(value: F) -> Jet<𝒞, F, N> {
+    Jet::from_parts(value, [F::zero(); N])
+}
+
+/// Generates a small closed polynomial curve from arbitrary Chebyshev
+/// coefficients.
+///
+/// With
+///
+/// z = 2t - 1,
+///
+/// this evaluates
+///
+/// c(t) = (1 / 16)(1 - z²) Σₖ aₖ Tₖ(z).
+///
+/// Consequently `c(0) = c(1) = 0`. The curve is smooth on `[0, 1]` and
+/// continuous, though not necessarily smooth, at the swippity.
+#[doc(hidden)]
+pub fn closed_chebyshev_curve<V, const N: usize>(
+    t: Jet<crate::traits::𝐑𝐞𝐚𝐥::𝒞, <V::F as Interval>::R, N>,
+    coefficients: &[V],
+) -> JetVector<V, N>
+where
+    V: Tensor<F: FromReal>,
+    Jet<crate::traits::𝐅𝐥𝐝::𝒞, V::F, N>: Field,
+{
+    assert!(!coefficients.is_empty());
+
+    type FieldJet<F, const N: usize> = Jet<crate::traits::𝐅𝐥𝐝::𝒞, F, N>;
+
+    let t = FieldJet::<V::F, N>::from_parts(
+        V::F::from_real(t[0]),
+        core::array::from_fn(|i| V::F::from_real(t[i + 1])),
+    );
+
+    let one = FieldJet::<V::F, N>::one();
+    let two = one.clone() + one.clone();
+    let four = two.clone() + two.clone();
+    let sixteen = four.clone() * four;
+
+    // Map [0,1] to [-1,1].
+    let z = two.clone() * t - one.clone();
+
+    // 1 - z² = 4t(1-t), so this vanishes exactly at both endpoints.
+    let envelope = (one.clone() - z.clone() * z.clone()).div(sixteen);
+
+    JetVector::<V, N>::from_fn(|i| {
+        let mut sum =
+            constant_jet::<crate::traits::𝐅𝐥𝐝::𝒞, V::F, N>(coefficients[0][i]);
+
+        if coefficients.len() > 1 {
+            let mut previous = one.clone();
+            let mut current = z.clone();
+
+            sum = sum
+                + constant_jet::<crate::traits::𝐅𝐥𝐝::𝒞, V::F, N>(coefficients[1][i])
+                    * current.clone();
+
+            for coefficient in coefficients.iter().skip(2) {
+                let next = two.clone() * z.clone() * current.clone() - previous;
+
+                sum = sum
+                    + constant_jet::<crate::traits::𝐅𝐥𝐝::𝒞, V::F, N>(coefficient[i]) * next.clone();
+
+                previous = current;
+                current = next;
+            }
+        }
+
+        envelope.clone() * sum
+    })
+}
+
+/// Tests that restricted holonomy preserves the model-space form.
+///
+/// Arbitrary Chebyshev coefficients are used to generate small closed
+/// polynomial loops in the tangent space at each sampled base point. Those
+/// loops are lifted through the connection before parallel transport is
+/// evaluated.
+#[macro_export]
+macro_rules! test_holonomy {
+    (
+        $mod_name:ident,
+        $point:ty,
+        $space:ty,
+        $arb_point:expr,
+        $arb_vector:expr
+    ) => {
+        mod $mod_name {
+            use super::*;
+
+            use num_traits::Zero;
+            use $crate::traits::{
+                Chart, ExpMap, OptionallyOption, Tensor,
+                calculus::{
+                    Connection, Jet, JetVector, ParallelTransport, TRANSPORT_ORDER, Tangent,
+                },
+                testing::closed_chebyshev_curve,
+            };
+
+            proptest! {
+                #![proptest_config(ProptestConfig::with_cases(10))]
+                #[test]
+                fn preserves_form_around_small_closed_loops(
+                    base in $arb_point,
+                    coefficients in proptest::collection::vec(
+                        $arb_vector,
+                        1..=TRANSPORT_ORDER + 1,
+                    ),
+                    u in $arb_vector,
+                    v in $arb_vector,
+                ) {
+                    let loop_base = base.clone();
+
+                    let closed_curve = move |t| {
+                        let coordinate =
+                            closed_chebyshev_curve::<
+                                $space,
+                                TRANSPORT_ORDER,
+                            >(
+                                t,
+                                &coefficients,
+                            );
+
+                        let tangent_base =
+                            Tangent::<
+                                $point,
+                                $space,
+                                TRANSPORT_ORDER,
+                            >::new(
+                                loop_base.base_point(),
+                                JetVector::<
+                                    $space,
+                                    TRANSPORT_ORDER,
+                                >::zero(),
+                            );
+
+                        let (point, tangent) =
+                            <$point as Connection<
+                                $point,
+                                $space,
+                            >>::tangent_to_global(
+                                tangent_base,
+                                coordinate,
+                            )
+                            .into_option()
+                            .unwrap();
+
+                        Tangent::new(point, tangent)
+                    };
+
+                    prop_assert!(
+                        base.check_holonomy_preserves_form::<
+                            TRANSPORT_ORDER
+                        >(
+                            <$space>::zero(),
+                            closed_curve,
+                            u,
+                            v,
+                        )
+                    );
+                }
+            }
+        }
+    };
 }

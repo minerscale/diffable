@@ -5,10 +5,7 @@ mod common;
 
 use common::*;
 use diffable::{
-    coords::Coords,
-    epsilon_metric::R64,
-    flat::{KleinBottle, S1, Torus},
-    test_connection, test_lie_group, test_pseudo_riemannian, test_quotient, test_tangent_bundle,
+    coords::Coords, epsilon_metric::R64, flat::{KleinBottle, S1, Torus}, test_connection, test_holonomy, test_lie_group, test_pseudo_riemannian, test_quotient, test_tangent_bundle,
 };
 
 use proptest::prelude::*;
@@ -67,6 +64,24 @@ test_pseudo_riemannian!(
     riemannian_klein_bottle,
     KleinBottle<Coords<R64, 1>, Coords<R64, 2>>,
     (arb_s1_quotient(), arb_s1_quotient()).prop_map(|(a, b)| KleinBottle::new(a, b)),
+    arb_vec2()
+);
+
+test_holonomy!(
+    holonomy_torus,
+    Torus<Coords<R64, 1>, Coords<R64, 2>>,
+    Coords<R64, 2>,
+    (arb_s1_quotient(), arb_s1_quotient())
+        .prop_map(|(a, b)| Torus::new(a, b)),
+    arb_vec2()
+);
+
+test_holonomy!(
+    holonomy_klein_bottle,
+    KleinBottle<Coords<R64, 1>, Coords<R64, 2>>,
+    Coords<R64, 2>,
+    (arb_s1_quotient(), arb_s1_quotient())
+        .prop_map(|(a, b)| KleinBottle::new(a, b)),
     arb_vec2()
 );
 

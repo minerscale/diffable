@@ -596,6 +596,7 @@ fn second_derivative_of_the_hopf_map() {
 
     let second: TangentMap<U, DHopf, DHopf> = d(d(hopf)).at(identity);
 
+    #[rustfmt::skip]
     assert!(
         second.iter().eq([
             // First output coordinate:
@@ -603,15 +604,38 @@ fn second_derivative_of_the_hopf_map() {
             // 2(bc + ad)
             //
             // Hessian in (b,c,d):
-            0.0, 2.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 2.0, 0.0,
+            2.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
             // Second output coordinate:
             //
             // 2(bd - ac)
             //
             // Hessian in (b,c,d):
-            0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0,
-        ]
-        .map(R64)
-        .iter(),)
+            0.0, 0.0, 2.0,
+            0.0, 0.0, 0.0,
+            2.0, 0.0, 0.0,
+        ].map(R64).iter())
     );
+}
+
+#[test]
+fn directional_derivative_of_the_hopf_map() {
+    type U = Coords<R64, 3>;
+    type V = Coords<R64, 2>;
+
+    let identity = Sphere::new(R64::one(), U::zero());
+
+    let direction: U = [1.0, 2.0, 3.0].map(R64).into();
+
+    let derivative: V = d(hopf).along(direction).at(identity);
+
+    // At the identity:
+    //
+    //     Dh =
+    //       [ 0  0  2 ]
+    //       [ 0 -2  0 ]
+    //
+    // so Dh · (1,2,3) = (6,-4).
+    assert!(derivative.iter().eq([6.0, -4.0].map(R64).iter()));
 }

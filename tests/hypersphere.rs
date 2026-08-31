@@ -9,8 +9,8 @@ use diffable::{
     coords::Coords,
     epsilon_metric::R64,
     hypersphere::{S0, S3, So3, Sphere, Stereographic, UnitComplex},
-    test_chart, test_connection, test_lie_group, test_metric, test_pseudo_riemannian,
-    test_quotient,
+    test_chart, test_connection, test_holonomy, test_lie_group, test_metric,
+    test_pseudo_riemannian, test_quotient,
     traits::{Chart, Group, InnerProduct, Quotient},
 };
 
@@ -173,6 +173,30 @@ test_lie_group!(
     arb_sphere3(),
     arb_vec::<3>(),
     arb_scalar()
+);
+
+test_holonomy!(
+    holonomy_sphere3,
+    Sphere<Coords<R64, 3>>,
+    Coords<R64, 3>,
+    arb_sphere3().prop_map(|x| x.to_inner()),
+    arb_vec3()
+);
+
+test_holonomy!(
+    holonomy_s3,
+    S3<Coords<R64, 3>>,
+    Coords<R64, 3>,
+    arb_sphere3(),
+    arb_vec3()
+);
+
+test_holonomy!(
+    holonomy_so3,
+    So3<Coords<R64, 3>>,
+    Coords<R64, 3>,
+    arb_so3(),
+    arb_vec3()
 );
 
 // ($mod_name:ident, $quotient:ty, $arb_quotient:expr, $arb_g:expr, $arb_h:expr)

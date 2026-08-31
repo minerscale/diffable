@@ -7,7 +7,7 @@ use common::*;
 
 use diffable::{
     complex::Complex, coords::Coords, epsilon_metric::R64, test_cfield, test_euclidean,
-    test_pseudo_euclidean, test_vector,
+    test_pseudo_euclidean, test_vector, test_holonomy, spacetime::Minkowski
 };
 
 use proptest::prelude::*;
@@ -75,3 +75,25 @@ test_vector!(complex_v32, Coords<_, _, 2>, (arb_vec::<3>(), arb_vec::<3>()).prop
 	let arr_b: [_; _] = b.into();
 	Coords::<Complex::<_>, 3, _>::from_fn(|i| [arr_a[i], arr_b[i]].into())
 }), arb_vec::<2>().prop_map(|x| Complex(x)));
+
+test_holonomy!(
+    holonomy_euclidean2,
+    Coords<R64, 2>,
+    Coords<R64, 2>,
+    arb_vec2(),
+    arb_vec2()
+);
+
+test_holonomy!(
+    holonomy_minkowski,
+    Minkowski<R64>,
+    Minkowski<R64>,
+    arb_vec4().prop_map(|x| {
+        let values: [R64; 4] = x.into();
+        Minkowski::from(values)
+    }),
+    arb_vec4().prop_map(|x| {
+        let values: [R64; 4] = x.into();
+        values.into()
+    })
+);

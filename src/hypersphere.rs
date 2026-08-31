@@ -39,6 +39,26 @@ include_point!(
     V: Euclidean
 );
 
+include_point!(
+    S0<V>,
+    V: Euclidean
+);
+
+include_point!(
+    UnitComplex<V>,
+    V: Euclidean
+);
+
+include_point!(
+    S3<V>,
+    V: Euclidean
+);
+
+include_point!(
+    So3<V>,
+    V: Euclidean
+);
+
 /// A [`Chart`] on the [`Sphere`] by stereographic projection from a chosen pole.
 ///
 /// Projecting from one pole leaves the *opposite* pole as the chart's single

@@ -9,9 +9,7 @@
 //! [`Bounded`]: crate::traits::simplicial::Bounded
 
 use crate::{
-    discrete::Z,
-    impl_lie_group_via_quotient,
-    traits::{
+    discrete::Z, impl_lie_group_via_quotient, include_point, traits::{
         Interval, Tensor,
         calculus::{Jet, JetVector, JetVectorIn, Tangent},
         𝐑𝐞𝐚𝐥,
@@ -291,6 +289,18 @@ impl<I: ICompatible<V>, V: VCompatible<I>> Interval for KleinBottle<I, V> {
         self.to_local(other).unwrap().norm_squared().into()
     }
 }
+
+include_point!(
+    Torus<I, V>,
+    I: ICompatible<V>,
+    V: VCompatible<I>
+);
+
+include_point!(
+    KleinBottle<I, V>,
+    I: ICompatible<V>,
+    V: VCompatible<I>
+);
 
 #[cfg(feature = "simplicial")]
 mod simplicial {
