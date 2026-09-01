@@ -6,8 +6,8 @@ mod common;
 use common::*;
 
 use diffable::{
-    complex::Complex, coords::Coords, epsilon_metric::R64, test_cfield, test_euclidean,
-    test_pseudo_euclidean, test_vector, test_holonomy, spacetime::Minkowski
+    complex::Complex, coords::Coords, epsilon_metric::R64, spacetime::Minkowski, test_cfield,
+    test_euclidean, test_holonomy, test_pseudo_euclidean, test_vector,
 };
 
 use proptest::prelude::*;

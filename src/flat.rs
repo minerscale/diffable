@@ -9,7 +9,9 @@
 //! [`Bounded`]: crate::traits::simplicial::Bounded
 
 use crate::{
-    discrete::Z, impl_lie_group_via_quotient, include_point, traits::{
+    discrete::Z,
+    impl_lie_group_via_quotient, include_point,
+    traits::{
         Interval, Tensor,
         calculus::{Jet, JetVector, JetVectorIn, Tangent},
         𝐑𝐞𝐚𝐥,

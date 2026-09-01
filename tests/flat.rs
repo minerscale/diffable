@@ -5,7 +5,11 @@ mod common;
 
 use common::*;
 use diffable::{
-    coords::Coords, epsilon_metric::R64, flat::{KleinBottle, S1, Torus}, test_connection, test_holonomy, test_lie_group, test_pseudo_riemannian, test_quotient, test_tangent_bundle,
+    coords::Coords,
+    epsilon_metric::R64,
+    flat::{KleinBottle, S1, Torus},
+    test_connection, test_holonomy, test_lie_group, test_pseudo_riemannian, test_quotient,
+    test_tangent_bundle,
 };
 
 use proptest::prelude::*;

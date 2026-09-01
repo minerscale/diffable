@@ -96,8 +96,12 @@ fn matrix_multiplication_is_tensor_contraction() {
     // Coordinates are A[i, j] B[k, l], flattened as (i, j, k, l).
     let tensor = Product::pure(a, b);
 
+    #[rustfmt::skip]
     assert!(tensor.iter().copied().eq([
-        5.0, 6.0, 7.0, 8.0, 10.0, 12.0, 14.0, 16.0, 15.0, 18.0, 21.0, 24.0, 20.0, 24.0, 28.0, 32.0,
+         5.0,  6.0,  7.0,  8.0,
+        10.0, 12.0, 14.0, 16.0,
+        15.0, 18.0, 21.0, 24.0,
+        20.0, 24.0, 28.0, 32.0,
     ]));
 
     // Reassociate and contract j with k:
@@ -190,8 +194,14 @@ fn differential_computes_a_multivariate_hessian() {
     // corresponding to:
     //
     //     (V ⊗ V*) ⊗ V*
+    #[rustfmt::skip]
+    assert!(hessian.iter().eq(&[
+        6.0, 4.0,
+        4.0, 0.0,
 
-    assert!(hessian.iter().eq(&[6.0, 4.0, 4.0, 0.0, 0.0, 6.0, 6.0, 4.0]));
+        0.0, 6.0,
+        6.0, 4.0
+    ]));
 }
 
 #[test]
@@ -469,9 +479,13 @@ fn explicit_metric_tensor_is_the_model_form_in_full_tensor_form() {
     let target = V::from([0.5, -1.0, 2.0, 3.0].map(R64));
     let g = <ExplicitMetric<V> as MetricTensor<V, V>>::g(&connection, target);
 
+    #[rustfmt::skip]
     assert!(
         g.iter().copied().eq([
-            -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            -1.0, 0.0, 0.0, 0.0,
+             0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0,
+             0.0, 0.0, 0.0, 1.0,
         ]
         .map(R64))
     );
@@ -484,8 +498,8 @@ fn supplied_and_transport_derived_musicals_agree_end_to_end() {
 
     let explicit = ExplicitMetric::new(V::zero());
     let derived = V::zero();
-    let target = V::from([R64(0.5), R64(-1.0), R64(2.0), R64(3.0)]);
-    let v = V::from([R64(1.0), R64(2.0), R64(-3.0), R64(4.0)]);
+    let target = V::from([0.5, -1.0, 2.0, 3.0].map(R64));
+    let v = V::from([1.0, 2.0, -3.0, 4.0].map(R64));
 
     let supplied_lower = explicit.lower(target.clone(), v.clone());
     let derived_lower = derived.lower(target.clone(), v.clone());
@@ -507,8 +521,8 @@ fn ordered_musicals_preserve_metric_dispatch() {
     type V = Coords<R64, 4, 1>;
 
     let explicit = ExplicitMetric::new(V::zero());
-    let target = V::from([R64(-0.25), R64(0.5), R64(1.0), R64(-2.0)]);
-    let v = V::from([R64(3.0), R64(-2.0), R64(1.5), R64(0.25)]);
+    let target = V::from([-0.25, 0.5, 1.0, -2.0].map(R64));
+    let v = V::from([3.0, -2.0, 1.5, 0.25].map(R64));
 
     let ordered = explicit.order::<3>();
     let lowered = ordered.lower(target.clone(), v.clone());
