@@ -48,6 +48,21 @@ impl<R: Real> Quaternion<R> {
     pub fn k() -> Self {
         Self::new(R::zero(), R::zero(), R::zero(), R::one())
     }
+
+    /// Computes `self * rhs.conj()` without first materialising `rhs.conj()`.
+    #[inline]
+    pub fn sandwich(self, value: Self) -> Self {
+        let product = self * value;
+        let [a, b, c, d] = product.into();
+        let [e, f, g, h] = self.into();
+
+        Self::new(
+            (a * e + b * f) + (c * g + d * h),
+            (b * e - a * f) + (d * g - c * h),
+            (c * e - a * g) + (b * h - d * f),
+            (d * e - a * h) + (c * f - b * g),
+        )
+    }
 }
 
 impl<R: Real> From<R> for Quaternion<R> {
@@ -125,6 +140,7 @@ impl<R: Real> Neg for Quaternion<R> {
 impl<R: Real> Mul for Quaternion<R> {
     type Output = Self;
 
+    #[inline]
     fn mul(self, rhs: Self) -> Self::Output {
         let [a, b, c, d] = self.into();
         let [e, f, g, h] = rhs.into();

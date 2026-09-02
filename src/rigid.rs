@@ -1,12 +1,14 @@
 use num_traits::Zero;
 
 use crate::{
+    coords::Coords,
+    epsilon_metric::R64,
     hypersphere::So3,
     quaternion::Quaternion,
     traits::{
-        Euclidean, Field, Quotient, SemidirectJetStructure, SemidirectProduct, SemidirectStructure,
+        Euclidean, Quotient, SemidirectJetStructure, SemidirectProduct, SemidirectStructure,
         Tensor,
-        calculus::{CommutesJet, DirectSum, JetVector, JetVectorIn, Tangent},
+        calculus::{CommutesJet, DirectSum, Jet, JetVector, JetVectorIn, Tangent},
         𝐑𝐞𝐚𝐥,
     },
 };
@@ -25,7 +27,7 @@ impl<V: Euclidean> SemidirectStructure<V, V, So3<V>, V> for RigidMotionStructure
         let q = g.lift().to_quaternion();
         let n = Quaternion::new(Zero::zero(), n[0], n[1], n[2]);
 
-        let acted = q * n * q.conj();
+        let acted = q.sandwich(n);
 
         JetVector::<V, K>::from_fn(|coordinate| acted[coordinate + 1].retag())
             .into_tangent(|value| value)
@@ -49,4 +51,15 @@ impl<V: Euclidean> SemidirectJetStructure<V, V, So3<V>, V> for RigidMotionStruct
     type JetG<const K: usize> = So3<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, K>>;
     type JetN<const K: usize> = JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, K>;
     type JetStructure<const K: usize> = RigidMotionStructure;
+}
+
+#[inline(never)]
+pub fn inspect_se3_infinitesimal_alpha(x: Coords<R64, 3>, v: Coords<R64, 3>) -> Coords<R64, 3> {
+    type V = Coords<R64, 3>;
+
+    let x = JetVector::<V, 0>::from_fn(|coordinate| Jet::from_parts(x[coordinate], []));
+    let v = JetVector::<V, 0>::from_fn(|coordinate| Jet::from_parts(v[coordinate], []));
+    let result = Se3::<V>::infinitesimal_alpha::<0>(x, v);
+
+    V::from_fn(|coordinate| result[coordinate][0])
 }

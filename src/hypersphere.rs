@@ -112,7 +112,7 @@ impl<V: Euclidean> Chart<Sphere<V>, V> for Stereographic<V> {
         let two = V::F::one() + V::F::one();
         let r_sq = coord.norm_squared();
         let denom = V::F::one() + r_sq;
-        Sphere::new(
+        Sphere::new_unnormalised(
             match self.0 {
                 StereographicPole::NorthPole => (r_sq - V::F::one()) / denom,
                 StereographicPole::SouthPole => (V::F::one() - r_sq) / denom,
@@ -155,7 +155,7 @@ impl<V: Euclidean> Sphere<V> {
     }
 
     fn identity() -> Self {
-        Sphere::new(V::F::one(), V::zero())
+        Sphere::new_unnormalised(V::F::one(), V::zero())
     }
 
     fn is_identity(&self) -> bool {
@@ -167,6 +167,10 @@ impl<V: Euclidean> Sphere<V> {
         let sphere = Sphere { real, imag };
 
         sphere.normalised()
+    }
+
+    fn new_unnormalised(real: V::F, imag: V) -> Self {
+        Self { real, imag }
     }
 
     fn geodesic_distance(&self, other: &Self) -> V::F {
@@ -192,7 +196,7 @@ pub fn hopf<U: Euclidean, V: Euclidean<F = U::F>>(q: Sphere<U>) -> Sphere<V> {
 
     let two = U::F::one() + U::F::one();
 
-    Sphere::new(
+    Sphere::new_unnormalised(
         a * a + b * b - c * c - d * d,
         V::from_iter([two * (b * c + a * d), two * (b * d - a * c)]),
     )
@@ -309,9 +313,9 @@ impl<V: Euclidean> Sphere<V> {
         let s = self.far_pole_sign();
         let (r, im) = self.reflect(s, x_real, x_imag); // self → s·e0
         if s < V::F::zero() {
-            Sphere::new(-r, im)
+            Sphere::new_unnormalised(-r, im)
         } else {
-            Sphere::new(r, im)
+            Sphere::new_unnormalised(r, im)
         } // F if s=-1
     }
 
@@ -325,7 +329,7 @@ impl<V: Euclidean> Sphere<V> {
             (x_real, x_imag)
         };
         let (r, im) = self.reflect(s, x_real, x_imag);
-        Sphere::new(r, im)
+        Sphere::new_unnormalised(r, im)
     }
 }
 
@@ -397,49 +401,6 @@ impl<V: Euclidean> UnitComplex<V> {
     }
 }
 
-fn sphere_exp_factors<R: Real, const N: usize>(
-    norm_squared: Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>,
-) -> (Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>, Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>) {
-    let eps = <R as NumCast>::from(EPSILON).unwrap();
-
-    if norm_squared[0] >= eps * eps {
-        let alpha = norm_squared.sqrt();
-        let (sin, cos) = alpha.sin_cos();
-
-        return (cos, sin / alpha);
-    }
-
-    // cos(sqrt(q))
-    //     = 1 - q/2! + q²/4! - q³/6! + ...
-    //
-    // sinc(sqrt(q))
-    //     = 1 - q/3! + q²/5! - q³/7! + ...
-    let mut cos = Jet::zero();
-    let mut sinc = Jet::zero();
-    let mut power = Jet::one();
-
-    let mut cos_coefficient = R::one();
-    let mut sinc_coefficient = R::one();
-
-    for k in 0..=(N + 8) {
-        cos = cos + power * Jet::from_parts(cos_coefficient, [R::zero(); N]);
-
-        sinc = sinc + power * Jet::from_parts(sinc_coefficient, [R::zero(); N]);
-
-        let cos_denominator = <R as NumCast>::from((2 * k + 1) * (2 * k + 2)).unwrap();
-
-        let sinc_denominator = <R as NumCast>::from((2 * k + 2) * (2 * k + 3)).unwrap();
-
-        cos_coefficient = -cos_coefficient / cos_denominator;
-
-        sinc_coefficient = -sinc_coefficient / sinc_denominator;
-
-        power = power * norm_squared;
-    }
-
-    (cos, sinc)
-}
-
 impl<V: Euclidean, const N: usize> CommutesJet<Sphere<V>, V, N>
     for Sphere<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>
 {
@@ -488,6 +449,59 @@ impl<V: Euclidean, const N: usize> CommutesJet<S3<V>, V, N> for S3<JetVectorIn<�
 
         Tangent::new(point, sphere_identity_log_jet(&local.0).unwrap())
     }
+}
+
+fn sphere_exp_factors<R: Real, const N: usize>(
+    norm_squared: Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>,
+) -> (Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>, Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>) {
+    if norm_squared.0.is_zero() {
+        (Jet::one(), Jet::one())
+    } else {
+        sphere_exp_factors_nonzero(norm_squared)
+    }
+}
+
+fn sphere_exp_factors_nonzero<R: Real, const N: usize>(
+    norm_squared: Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>,
+) -> (Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>, Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>) {
+    let eps = <R as NumCast>::from(EPSILON).unwrap();
+
+    if norm_squared[0] >= eps * eps {
+        let alpha = norm_squared.sqrt();
+        let (sin, cos) = alpha.sin_cos();
+
+        return (cos, sin / alpha);
+    }
+
+    // cos(sqrt(q))
+    //     = 1 - q/2! + q²/4! - q³/6! + ...
+    //
+    // sinc(sqrt(q))
+    //     = 1 - q/3! + q²/5! - q³/7! + ...
+    let mut cos = Jet::zero();
+    let mut sinc = Jet::zero();
+    let mut power = Jet::one();
+
+    let mut cos_coefficient = R::one();
+    let mut sinc_coefficient = R::one();
+
+    for k in 0..=(N + 8) {
+        cos = cos + power * Jet::from_parts(cos_coefficient, [R::zero(); N]);
+
+        sinc = sinc + power * Jet::from_parts(sinc_coefficient, [R::zero(); N]);
+
+        let cos_denominator = <R as NumCast>::from((2 * k + 1) * (2 * k + 2)).unwrap();
+
+        let sinc_denominator = <R as NumCast>::from((2 * k + 2) * (2 * k + 3)).unwrap();
+
+        cos_coefficient = -cos_coefficient / cos_denominator;
+
+        sinc_coefficient = -sinc_coefficient / sinc_denominator;
+
+        power = power * norm_squared;
+    }
+
+    (cos, sinc)
 }
 
 fn sphere_log_factor<R: Real, const N: usize>(
@@ -540,7 +554,7 @@ fn sphere_identity_exp_jet<V: Euclidean, const N: usize>(
     // derivatives remain well-defined at v = 0.
     let (cos, sinc) = sphere_exp_factors(coordinate.norm_squared());
 
-    Sphere::new(cos, coordinate * sinc)
+    Sphere::new_unnormalised(cos, coordinate * sinc)
 }
 
 fn sphere_identity_log_jet<V: Euclidean, const N: usize>(
@@ -649,7 +663,10 @@ impl<V: Euclidean> Mul for S0<V> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        Self(Sphere::new(self.0.real * rhs.0.real, V::zero()))
+        Self(Sphere::new_unnormalised(
+            self.0.real * rhs.0.real,
+            V::zero(),
+        ))
     }
 }
 
@@ -657,7 +674,7 @@ impl<V: Euclidean> Inv for S0<V> {
     type Output = Self;
 
     fn inv(self) -> Self::Output {
-        Self(Sphere::new(self.0.real, V::zero()))
+        Self(Sphere::new_unnormalised(self.0.real, V::zero()))
     }
 }
 
@@ -707,7 +724,7 @@ impl<V: Euclidean> Mul for UnitComplex<V> {
         let (a1, b1) = (self.0.real, self.0.imag[0]);
         let (a2, b2) = (rhs.0.real, rhs.0.imag[0]);
 
-        Self(Sphere::new(
+        Self(Sphere::new_unnormalised(
             a1 * a2 - b1 * b2,
             V::from_iter([a1 * b2 + a2 * b1]),
         ))
@@ -718,7 +735,7 @@ impl<V: Euclidean> Inv for UnitComplex<V> {
     type Output = Self;
 
     fn inv(self) -> Self::Output {
-        Self(Sphere::new(self.0.real, -self.0.imag))
+        Self(Sphere::new_unnormalised(self.0.real, -self.0.imag))
     }
 }
 
@@ -745,7 +762,7 @@ impl<V: Euclidean> LieGroup<V> for UnitComplex<V> {
             let alpha = coordinate[0];
             let (sin, cos) = alpha.sin_cos();
 
-            Self::new(Sphere::new(cos, V::from_iter([sin])))
+            Self::new(Sphere::new_unnormalised(cos, V::from_iter([sin])))
         })
     }
 
@@ -782,7 +799,7 @@ impl<V: Euclidean> Mul for S3<V> {
         let im2 = rhs.0.imag;
         let (b1, c1, d1, b2, c2, d2) = (im1[0], im1[1], im1[2], im2[0], im2[1], im2[2]);
 
-        Self(Sphere::new(
+        Self(Sphere::new_unnormalised(
             a1 * a2 - b1 * b2 - c1 * c2 - d1 * d2,
             V::from_iter([
                 a1 * b2 + b1 * a2 + c1 * d2 - d1 * c2,
@@ -801,7 +818,7 @@ impl<V: Euclidean> Inv for S3<V> {
         let im = self.0.imag;
         let (b, c, d) = (im[0], im[1], im[2]);
 
-        Self(Sphere::new(a, V::from_iter([-b, -c, -d])))
+        Self(Sphere::new_unnormalised(a, V::from_iter([-b, -c, -d])))
     }
 }
 
@@ -854,7 +871,9 @@ impl<V: Euclidean> Quotient<S3<V>, RootOfUnity<V::F, 2>, V> for So3<V> {
             .unwrap()
             .then(g.0.imag().iter().partial_cmp(V::zero().iter()).unwrap())
         {
-            core::cmp::Ordering::Less => So3(S3(Sphere::new(-g.0.real(), -g.0.imag()))),
+            core::cmp::Ordering::Less => {
+                So3(S3(Sphere::new_unnormalised(-g.0.real(), -g.0.imag())))
+            }
             core::cmp::Ordering::Equal | core::cmp::Ordering::Greater => So3(g),
         }
     }
@@ -864,7 +883,7 @@ impl<V: Euclidean> Quotient<S3<V>, RootOfUnity<V::F, 2>, V> for So3<V> {
     }
 
     fn embed(h: RootOfUnity<V::F, 2>) -> S3<V> {
-        S3(Sphere::new(h.inner(), V::zero()))
+        S3(Sphere::new_unnormalised(h.inner(), V::zero()))
     }
 }
 

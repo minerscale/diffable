@@ -1549,7 +1549,7 @@ impl<
             F::JetG<K>,
             F::JetN<K>,
             F::JetStructure<K>,
-        > = CommutesJet::commute_jet(Tangent::new(Self::identity(), Zero::zero()));
+        > = SemidirectProduct::identity();
 
         d(d(action).along(v))
             .along(x)

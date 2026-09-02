@@ -189,7 +189,7 @@ type JetCoords<F, const N: usize> = DirectSum<Coords<F, 1>, Coords<F, N>>;
 /// them when independent derivative slots are required.
 #[doc(hidden)]
 #[derive(Debug, Copy, Clone)]
-pub struct Jet<𝒞: Cat, F: Field, const N: usize = 1>(JetCoords<F, N>, PhantomData<𝒞>);
+pub struct Jet<𝒞: Cat, F: Field, const N: usize = 1>(pub(crate) JetCoords<F, N>, PhantomData<𝒞>);
 
 impl<𝒞: Cat, F: Field, const N: usize> Jet<𝒞, F, N> {
     #[inline]
