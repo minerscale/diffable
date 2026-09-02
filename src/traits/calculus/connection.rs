@@ -266,7 +266,7 @@ pub trait Connection<P: Point, V: Tensor>: TangentBundle<P, V> {
         let (actual, tangent) = match Self::tangent_to_global(lifted_base, coordinate).into_option()
         {
             Some(x) => x,
-            None => return true,
+            None => return false,
         };
 
         tangent == JetVectorIn::zero() && chart.to_local(&actual) == chart.to_local(&expected)
@@ -304,7 +304,7 @@ pub trait Connection<P: Point, V: Tensor>: TangentBundle<P, V> {
         let (point_m, tangent_m) =
             match Self::tangent_to_global::<M>(base_m, coordinate_m).into_option() {
                 Some(x) => x,
-                None => return true,
+                None => return false,
             };
 
         point_n == point_m && tangent_n.truncate::<M>() == tangent_m
@@ -350,7 +350,7 @@ pub trait Connection<P: Point, V: Tensor>: TangentBundle<P, V> {
             let (point, tangent) =
                 match Self::tangent_to_global::<N>(base.clone(), local_coordinate).into_option() {
                     Some(x) => x,
-                    None => return true,
+                    None => return false,
                 };
 
             // Since `P` need not implement PartialEq, compare the reconstructed
@@ -375,7 +375,7 @@ pub trait Connection<P: Point, V: Tensor>: TangentBundle<P, V> {
         let (point, tangent) =
             match Self::tangent_to_global::<N>(base.clone(), coordinate.clone()).into_option() {
                 Some(value) => value,
-                None => return true,
+                None => return true, // geodesically incomplete, not our problem
             };
 
         let chart = Self::chart_at(&base.0);

@@ -30,7 +30,7 @@ pub struct Along<F, V> {
 }
 
 impl<F> d<F> {
-    pub fn at<𝒞: Cat, Point: DifferentialRegion<𝒞, F, Output, Route>, Output, Route>(
+    pub fn at<𝒞: Cat, Point: DifferentialRegion<𝒞, d<F>, Output, Route>, Output, Route>(
         &self,
         point: Point,
     ) -> Output
@@ -50,7 +50,10 @@ impl<F> d<F> {
 
 impl<F, V> Along<F, V> {
     /// Evaluates the directional derivative at `point`.
-    pub fn at<𝒞: Cat, Point, Output, Route>(&self, point: Point) -> Output
+    pub fn at<𝒞: Cat, Point: DifferentialRegion<𝒞, Along<F, V>, Output, Route>, Output, Route>(
+        &self,
+        point: Point,
+    ) -> Output
     where
         Self: EvaluableAt<𝒞, Point, Output, Route>,
     {
@@ -58,17 +61,16 @@ impl<F, V> Along<F, V> {
     }
 }
 
-impl<𝒞, F, P, V, Q, W, JP, JQ> EvaluableAt<𝒞, P, W, ManifoldRoute<Q, JP, JQ>> for Along<F, V>
+impl<𝒞, F, P, V, Q, W, Route> EvaluableAt<𝒞, P, W, ManifoldEvaluationRoute<Q, Route>>
+    for Along<F, V>
 where
     𝒞: Cat,
     P: Connection<P, V> + ι,
     P::C: Ⱶ<𝐓𝐞𝐧𝐬::𝒞, Absent>,
-    V: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
+    V: Tensor<F: ι<C: JetRegion<𝒞>>>,
     Q: Connection<Q, W>,
-    W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
-    JP: Point,
-    JQ: Point,
-    F: ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<Q, JP, JQ>>,
+    W: Tensor<F = V::F>,
+    F: ManifoldJetMap<P, V, Q, W, 1, Route>,
     Jet<𝒞, V::F>: Field,
 {
     fn evaluate_at(&self, point: P) -> W {
@@ -76,7 +78,7 @@ where
             Jet::from_parts(V::F::zero(), [self.direction[coordinate]])
         });
 
-        let output = <F as ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<Q, JP, JQ>>>::jet_at(
+        let output = <F as ManifoldJetMap<P, V, Q, W, 1, Route>>::jet_at(
             &self.f,
             Tangent::new(point, tangent),
         );
@@ -89,6 +91,9 @@ where
     message = "this differential program cannot be evaluated at `{Point}`",
     label = "the composed differential operations are not defined for this point type",
     note = "the function may not accept the required jet presentation",
+    note = "the point must have a canonical category inclusion; use `include_point!` for a point with no richer inclusion",
+    note = "negative route selection is only available for types inside the closed category universe",
+    note = "the model scalar's canonical inclusion must select the required jet region",
     note = "the input and output tensors may have incompatible fields, handedness, or actions",
     note = "a required form or musical isomorphism may not lift through nested jets"
 )]
@@ -158,7 +163,7 @@ impl<
     𝒞: Cat,
     F: JetMap<𝒞, BT, FT, 1, BT::F>,
     BT: Vector<F: ι<C: JetRegion<𝒞>>>,
-    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    FT: Tensor<F = BT::F>,
 > EvaluableAt<𝒞, BT, FT> for Along<F, BT>
 where
     Jet<𝒞, BT::F>: Field,
@@ -253,7 +258,7 @@ pub trait ManifoldJetMap<P: Point, V: Tensor, Q: Point, W: Tensor<F = V::F>, con
 #[doc(hidden)]
 pub trait DifferentialRegion<𝒞: Cat, F, Output, Route>: Point {}
 
-impl<𝒞, F, BT, FT> DifferentialRegion<𝒞, F, TangentMap<BT, FT, FT, FT>, Ø> for BT
+impl<𝒞, F, BT, FT> DifferentialRegion<𝒞, d<F>, TangentMap<BT, FT, FT, FT>, Ø> for BT
 where
     𝒞: Cat,
     F: JetMap<𝒞, BT, FT, 1, BT::F>,
@@ -263,33 +268,52 @@ where
 {
 }
 
-impl<𝒞, F, P, V, Q, W, JP, JQ>
-    DifferentialRegion<𝒞, F, TangentMap<V, Q, W, Q>, ManifoldRoute<Q, JP, JQ>> for P
+impl<𝒞, F, BT, FT> DifferentialRegion<𝒞, Along<F, BT>, FT, Ø> for BT
 where
     𝒞: Cat,
-    P: Point + ι + Connection<P, V>,
-    P::C: Ⱶ<𝐓𝐞𝐧𝐬::𝒞, Absent>,
-    V: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
-    Q: Connection<Q, W>,
-    W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
-    JP: Point,
-    JQ: Point,
-    F: ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<Q, JP, JQ>>,
+    F: JetMap<𝒞, BT, FT, 1, BT::F>,
+    BT: Vector<F: ι<C: JetRegion<𝒞>>>,
+    FT: Tensor<F = BT::F, Hand = Right, Action: TensorProductAction<BT::Action>>,
+    Jet<𝒞, BT::F>: Field,
 {
 }
 
+/// Selects manifold evaluation rather than ordinary tensor evaluation.
 #[doc(hidden)]
-pub struct ManifoldRoute<Q: Point, JP: Point, JQ: Point>(PhantomData<fn(JP) -> (Q, JQ)>);
+pub struct EvaluateManifold<Q>(PhantomData<fn() -> Q>);
+
+/// Evaluates a manifold map by commuting through the Rust-level jet
+/// presentations `JP` and `JQ`.
+#[doc(hidden)]
+pub struct CommuteManifold<Q, JP, JQ>(PhantomData<fn(JP) -> (Q, JQ)>);
+
+/// Differentiates a manifold jet map by commuting an outer jet through
+/// `JP` and `JQ`, whose model tensors are `JV` and `JW`.
+#[doc(hidden)]
+pub struct DifferentiateManifold<𝒞, JP, JV, JQ, JW>(PhantomData<fn(𝒞, JP, JV) -> (JQ, JW)>);
+
+/// The evaluation boundary for a manifold differential program.
+#[doc(hidden)]
+pub type ManifoldEvaluationRoute<Q, Route> = ː<EvaluateManifold<Q>, Route>;
+
+/// The base route for an ordinary Rust function between manifolds.
+#[doc(hidden)]
+pub type ManifoldRoute<Q, JP, JQ> = ː<CommuteManifold<Q, JP, JQ>, Ø>;
+
+/// The route obtained by applying the differential functor to an existing
+/// manifold route.
+#[doc(hidden)]
+pub type DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute> =
+    ː<DifferentiateManifold<𝒞, JP, JV, JQ, JW>, InnerRoute>;
+
+/// Contracts the differential of a manifold map with a captured source
+/// direction while preserving an outer jet.
+#[doc(hidden)]
+pub struct ContractManifold<𝒞, Q, JP, JV, JQ, JW>(PhantomData<fn(𝒞, JP, JV) -> (Q, JQ, JW)>);
 
 #[doc(hidden)]
-pub struct DifferentiatedManifoldRoute<
-    𝒞: Cat,
-    JP: Point,
-    JV: Tensor,
-    JQ: Point,
-    JW: Tensor,
-    InnerRoute,
->(PhantomData<fn(𝒞, JP, JV, InnerRoute) -> (JQ, JW)>);
+pub type ContractedManifoldRoute<𝒞, Q, JP, JV, JQ, JW, InnerRoute> =
+    ː<ContractManifold<𝒞, Q, JP, JV, JQ, JW>, InnerRoute>;
 
 impl<𝒞, F, P, V, Q, W, JP, JV, JQ, JW, InnerRoute, const N: usize>
     ManifoldJetMap<
@@ -360,96 +384,90 @@ where
     }
 }
 
-impl<𝒞, F, P, V, Q, W, JP, JV, JQ, JW, InnerRoute>
-    DifferentialRegion<
-        𝒞,
-        d<F>,
-        TangentMap<V, TangentMap<V, Q, W>, TangentMap<V, Q, W>>,
-        DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
-    > for P
+impl<𝒞, F, P, V, Q, W, JP, JV, JQ, JW, InnerRoute, const N: usize>
+    ManifoldJetMap<P, V, W, W, N, ContractedManifoldRoute<𝒞, Q, JP, JV, JQ, JW, InnerRoute>>
+    for Along<F, V>
+where
+    𝒞: Cat,
+    P: Connection<P, V>,
+    V: Tensor,
+    Q: Connection<Q, W>,
+    W: Tensor<F = V::F> + Connection<W, W>,
+    JP: Point + Connection<JP, JV> + CommutesJet<P, V, N>,
+    JV: Tensor<F = Jet<𝒞, V::F, N>>,
+    JQ: Point + Connection<JQ, JW> + CommutesJet<Q, W, N>,
+    JW: Tensor<F = Jet<𝒞, V::F, N>>,
+    F: ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>,
+    Jet<𝒞, V::F, N>: Field,
+    Jet<𝐅𝐥𝐝::𝒞, JV::F>: Field,
+{
+    fn jet_at(&self, input: Tangent<P, V, N>) -> Tangent<W, W, N> {
+        const {
+            assert!(JV::N == V::N);
+            assert!(JW::N == W::N);
+        }
+
+        let outer_point = <JP as CommutesJet<P, V, N>>::commute_jet(input);
+
+        let inner_tangent = JetVector::<JV, 1>::from_fn(|coordinate| {
+            let direction = Jet::<𝒞, V::F, N>::from_parts(
+                self.direction[coordinate].clone(),
+                [V::F::zero(); N],
+            );
+
+            Jet::from_parts(JV::F::zero(), [direction])
+        });
+
+        let inner_input = Tangent::<JP, JV, 1>::new(outer_point, inner_tangent);
+
+        let output =
+            <F as ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>>::jet_at(&self.f, inner_input);
+
+        JetVectorIn::<𝒞, W, N>::from_fn(|coordinate| output.1[coordinate][1].clone())
+            .retag::<𝐅𝐥𝐝::𝒞>()
+            .into_tangent(|value| value)
+    }
+}
+
+impl<𝒞, F, P, V, Q, W, Route>
+    DifferentialRegion<𝒞, d<F>, TangentMap<V, Q, W, Q>, ManifoldEvaluationRoute<Q, Route>> for P
 where
     𝒞: Cat,
     P: Point + ι + Connection<P, V>,
     P::C: Ⱶ<𝐓𝐞𝐧𝐬::𝒞, Absent>,
-    V: Tensor<Hand = Right, Action: ActionExists>,
+    V: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
     Q: Connection<Q, W>,
     W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
-    JP: Point + Connection<JP, JV> + CommutesJet<P, V, 1>,
-    JV: Tensor<F = Jet<𝒞, V::F, 1>, Hand = Right, Action: ActionExists>,
-    JQ: Point + Connection<JQ, JW> + CommutesJet<Q, W, 1>,
-    JW: Tensor<F = Jet<𝒞, V::F, 1>, Hand = Right, Action: TensorProductAction<JV::Action>>,
-    F: ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>,
-    Jet<𝒞, V::F, 1>: Field,
-    Jet<𝐅𝐥𝐝::𝒞, V::F, 1>: Field,
-    TangentMap<V, Q, W>: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
-    d<F>: ManifoldJetMap<
-            P,
-            V,
-            TangentMap<V, Q, W>,
-            TangentMap<V, Q, W>,
-            1,
-            DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
-        >,
+    F: ManifoldJetMap<P, V, Q, W, 1, Route>,
 {
 }
 
-impl<𝒞, F, P, V, Q, W, JP, JV, JQ, JW, InnerRoute>
-    EvaluableAt<
-        𝒞,
-        P,
-        TangentMap<V, TangentMap<V, Q, W>, TangentMap<V, Q, W>>,
-        DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
-    > for d<d<F>>
+impl<𝒞, F, P, V, Q, W, Route>
+    DifferentialRegion<𝒞, Along<F, V>, W, ManifoldEvaluationRoute<Q, Route>> for P
 where
     𝒞: Cat,
-    P: Connection<P, V>,
-    V: Tensor<Hand = Right, Action: ActionExists>,
+    P: Point + ι + Connection<P, V>,
+    P::C: Ⱶ<𝐓𝐞𝐧𝐬::𝒞, Absent>,
+    V: Tensor,
     Q: Connection<Q, W>,
-    W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
-    JP: Point + Connection<JP, JV> + CommutesJet<P, V, 1>,
-    JV: Tensor<F = Jet<𝒞, V::F, 1>, Hand = Right, Action: ActionExists>,
-    JQ: Point + Connection<JQ, JW> + CommutesJet<Q, W, 1>,
-    JW: Tensor<F = Jet<𝒞, V::F, 1>, Hand = Right, Action: TensorProductAction<JV::Action>>,
-    F: ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>,
-    Jet<𝒞, V::F, 1>: Field,
-    Jet<𝐅𝐥𝐝::𝒞, V::F, 1>: Field,
-    TangentMap<V, Q, W>: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>
-        + Connection<TangentMap<V, Q, W>, TangentMap<V, Q, W>>,
-    d<F>: ManifoldJetMap<
-            P,
-            V,
-            TangentMap<V, Q, W>,
-            TangentMap<V, Q, W>,
-            1,
-            DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
-        >,
+    W: Tensor<F = V::F>,
+    F: ManifoldJetMap<P, V, Q, W, 1, Route>,
+    Jet<𝒞, V::F>: Field,
 {
-    fn evaluate_at(&self, point: P) -> TangentMap<V, TangentMap<V, Q, W>, TangentMap<V, Q, W>> {
-        evaluate_manifold_derivative_at::<
-            d<F>,
-            P,
-            V,
-            TangentMap<V, Q, W>,
-            TangentMap<V, Q, W>,
-            DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
-        >(self, point)
-    }
 }
 
-impl<𝒞, F, P, V, Q, W, JP, JQ> EvaluableAt<𝒞, P, TangentMap<V, Q, W, Q>, ManifoldRoute<Q, JP, JQ>>
-    for d<F>
+impl<𝒞, F, P, V, Q, W, Route>
+    EvaluableAt<𝒞, P, TangentMap<V, Q, W, Q>, ManifoldEvaluationRoute<Q, Route>> for d<F>
 where
     𝒞: Cat,
     P: Connection<P, V>,
     V: Tensor<F: ι<C: JetRegion<𝒞>>, Hand = Right, Action: ActionExists>,
     Q: Connection<Q, W>,
     W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
-    JP: Point,
-    JQ: Point,
-    F: ManifoldJetMap<P, V, Q, W, 1, ManifoldRoute<Q, JP, JQ>>,
+    F: ManifoldJetMap<P, V, Q, W, 1, Route>,
 {
     fn evaluate_at(&self, point: P) -> TangentMap<V, Q, W, Q> {
-        evaluate_manifold_derivative_at::<F, P, V, Q, W, ManifoldRoute<Q, JP, JQ>>(self, point)
+        evaluate_manifold_derivative_at::<F, P, V, Q, W, Route>(self, point)
     }
 }
 

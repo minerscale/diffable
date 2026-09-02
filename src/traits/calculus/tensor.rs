@@ -8,9 +8,11 @@ use core::{
 use crate::{
     impl_vector_ops,
     traits::{
-        ActionExists, Array, Atomic, BothSided, DivRing, Dual, Field, Handedness, Left, NonZero,
-        Normalize, NormalizeWith, OneSided, Point, Rehandable, Right, Sidedness, Sinister,
-        TangentBundle, Tensor, TensorNormalizer, TensorProductAction, Undecorated, Vector,
+        ActionExists, Array, Atomic, BothSided, Cat, DivRing, Dual, Field, Form, Handedness,
+        Interval, Left, Metric, NonZero, Nondegenerate, Normalize, NormalizeWith, OneSided, Point,
+        Rehandable, Right, Sesquilinear, Sidedness, Sinister, TangentBundle, Tensor,
+        TensorNormalizer, TensorProductAction, Undecorated, Vector,
+        calculus::{FormLift, Jet, JetVector, NondegenerateLift, TangentElement, TensorOver},
     },
 };
 
@@ -30,9 +32,22 @@ pub struct DirectSum<U: Tensor<F = V::F>, V: Tensor>(
     pub(crate) DirectSumArray<V::F, U::Array<V::F>, V::Array<V::F>>,
 );
 
-impl<F: Field, H: Handedness, U: Tensor<F = F, Hand = H>, V: Tensor<F = F, Hand = H>>
-    DirectSum<U, V>
-{
+impl<U: Tensor, V: Tensor<F = U::F, Hand = U::Hand>> DirectSum<U, V> {
+    pub fn join(u: U, v: V) -> Self {
+        Self(DirectSumArray(
+            u.as_ref().clone(),
+            v.as_ref().clone(),
+            PhantomData,
+        ))
+    }
+
+    pub fn split(self) -> (U, V) {
+        (
+            U::from_iter(self.0.0.into_iter()),
+            V::from_iter(self.0.1.into_iter()),
+        )
+    }
+
     /// Applies the canonical isomorphism `(U ⊕ V)* ≅ U* ⊕ V*`.
     pub fn dual_isomorphism(dual: Dual<Self>) -> DirectSum<Dual<U>, Dual<V>> {
         DirectSum::<Dual<U>, Dual<V>>::from_fn(|i| dual[i])
@@ -203,6 +218,79 @@ impl_vector_ops!(
     U: Tensor<F = F, Hand = H>,
     V: Tensor<F = F, Hand = H>
 );
+
+impl<U: Form, V: Form<F = U::F, Hand = U::Hand>> Form for DirectSum<U, V> {
+    fn flat(&self) -> Dual<Self> {
+        let (u, v) = self.clone().split();
+
+        Self::dual_isomorphism_inverse(DirectSum::join(u.flat(), v.flat()))
+    }
+}
+
+impl<U: Nondegenerate, V: Nondegenerate<F = U::F, Hand = U::Hand>> Nondegenerate
+    for DirectSum<U, V>
+{
+    fn sharp(v: Dual<Self>) -> Self {
+        let (u, v) = Self::dual_isomorphism(v).split();
+
+        Self::join(U::sharp(u), V::sharp(v))
+    }
+}
+
+impl<U: FormLift, V: FormLift<F = U::F, Hand = U::Hand>> FormLift for DirectSum<U, V> {
+    fn jet_flat_array<𝒞: Cat, S: Field, const N: usize>(
+        value: &Self::Array<Jet<𝒞, S, N>>,
+    ) -> <Dual<Self> as Tensor>::Array<Jet<𝒞, S, N>>
+    where
+        Jet<𝒞, S, N>: Field,
+    {
+        DirectSumArray(
+            U::jet_flat_array::<𝒞, S, N>(&value.0),
+            V::jet_flat_array::<𝒞, S, N>(&value.1),
+            PhantomData,
+        )
+    }
+}
+
+impl<U: NondegenerateLift, V: NondegenerateLift<F = U::F, Hand = U::Hand>> NondegenerateLift
+    for DirectSum<U, V>
+{
+    fn jet_sharp_array<𝒞: Cat, S: Field, const N: usize>(
+        value: &<Dual<Self> as Tensor>::Array<Jet<𝒞, S, N>>,
+    ) -> Self::Array<Jet<𝒞, S, N>>
+    where
+        Jet<𝒞, S, N>: Field,
+    {
+        DirectSumArray(
+            U::jet_sharp_array::<𝒞, S, N>(&value.0),
+            V::jet_sharp_array::<𝒞, S, N>(&value.1),
+            PhantomData,
+        )
+    }
+}
+
+impl<U: Sesquilinear, V: Sesquilinear<F = U::F, Hand = U::Hand>> Sesquilinear for DirectSum<U, V> where
+    <U::Action as Sidedness>::Meet<V::Action>: ActionExists
+{
+}
+
+impl<U: Tensor + Interval, V: Tensor<F = U::F, Hand = U::Hand> + Interval<R = U::R>> Interval
+    for DirectSum<U, V>
+{
+    type R = U::R;
+
+    fn interval_squared(&self, other: &Self) -> Self::R {
+        let (u1, v1) = self.clone().split();
+        let (u2, v2) = other.clone().split();
+
+        u1.interval_squared(&u2) + v1.interval_squared(&v2)
+    }
+}
+
+impl<U: Tensor + Metric, V: Tensor<F = U::F, Hand = U::Hand> + Metric<R = U::R>> Metric
+    for DirectSum<U, V>
+{
+}
 
 /// The nested array representation used by [`TensorProduct`].
 ///
@@ -1138,5 +1226,38 @@ impl<V: Vector<Hand = Left, Action = BothSided>> TensorProduct<Dual<V>, V> {
 
     pub fn identity() -> Self {
         TensorProduct::from_fn_ij(|i, j| if i == j { V::F::one() } else { V::F::zero() })
+    }
+}
+
+impl<U: Tensor, V: Tensor<F = U::F, Hand = U::Hand>, S: Point> TensorOver<DirectSum<U, V>, S> {
+    pub fn split(self) -> (TensorOver<U, S>, TensorOver<V, S>) {
+        let DirectSumArray(u, v, _) = self.0;
+
+        (TensorOver(u, PhantomData), TensorOver(v, PhantomData))
+    }
+
+    pub fn join(u: TensorOver<U, S>, v: TensorOver<V, S>) -> Self {
+        Self(DirectSumArray(u.0, v.0, PhantomData), PhantomData)
+    }
+}
+
+impl<P: Point, U: Tensor, V: Tensor<F = U::F, Hand = U::Hand>, Tower, const N: usize>
+    TangentElement<P, DirectSum<U, V>, Tower, N>
+{
+    pub fn split(
+        self,
+    ) -> (
+        TangentElement<P, U, Tower, N>,
+        TangentElement<P, V, Tower, N>,
+    ) {
+        let (u, v) = self.1.split();
+        (
+            TangentElement::new(self.0.clone(), u),
+            TangentElement::new(self.0, v),
+        )
+    }
+
+    pub fn join(p: P, u: JetVector<U, N>, v: JetVector<V, N>) -> Self {
+        Self::new(p, TensorOver::join(u, v))
     }
 }

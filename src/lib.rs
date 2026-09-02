@@ -619,6 +619,7 @@ pub mod flat;
 pub mod hypersphere;
 pub mod matrix;
 pub mod quaternion;
+pub mod rigid;
 pub mod spacetime;
 pub mod traits;
 

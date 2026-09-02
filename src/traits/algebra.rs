@@ -7,13 +7,17 @@
 //! structural approach into geometry.
 
 use crate::{
-    impl_group_via_mul,
+    impl_group_via_mul, include_point,
     traits::{
-        Different, ExactCmp, FromReal, Interval, Metric, Real, Same, Tensor,
-        calculus::{JetVector, Tangent},
+        Cat, Different, ExactCmp, FromReal, Interval, Metric, Real, Same, Tensor, Vector,
+        calculus::{CommutesJet, DirectSum, Jet, JetRegion, JetVector, JetVectorIn, Tangent, d},
+        ι, 𝐅𝐥𝐝,
     },
 };
-use core::ops::{Add, Mul, Neg, Sub};
+use core::{
+    marker::PhantomData,
+    ops::{Add, Mul, Neg, Sub},
+};
 use num_traits::{Inv, NumCast, One, Zero, real::Real as _};
 
 use super::{Point, Smooth};
@@ -1432,6 +1436,406 @@ pub trait Quotient<G: LieGroup<V>, H: Group, V: Tensor>: Point {
         Self: PartialEq,
     {
         Self::new(Self::embed(h).compose(&g)) == Self::new(g)
+    }
+}
+
+pub trait SemidirectStructure<
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U>,
+    N: LieGroup<V>,
+>: core::fmt::Debug + Copy + Clone
+{
+    fn alpha<const K: usize>(g: Tangent<G, U, K>, n: Tangent<N, V, K>) -> Tangent<N, V, K>;
+
+    fn identity_exp<const K: usize>(
+        coordinate: JetVector<DirectSum<U, V>, K>,
+    ) -> Tangent<SemidirectProduct<U, V, G, N, Self>, DirectSum<U, V>, K>;
+
+    fn identity_log<const K: usize>(
+        point: Tangent<SemidirectProduct<U, V, G, N, Self>, DirectSum<U, V>, K>,
+    ) -> Option<JetVector<DirectSum<U, V>, K>>;
+}
+
+pub trait SemidirectJetStructure<
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U>,
+    N: LieGroup<V>,
+>: SemidirectStructure<U, V, G, N>
+{
+    type JetCategory: Cat;
+
+    type JetG<const K: usize>: LieGroup<JetVectorIn<Self::JetCategory, U, K>> + CommutesJet<G, U, K>
+    where
+        Jet<Self::JetCategory, U::F, K>: Field;
+
+    type JetN<const K: usize>: LieGroup<JetVectorIn<Self::JetCategory, V, K>> + CommutesJet<N, V, K>
+    where
+        Jet<Self::JetCategory, U::F, K>: Field;
+
+    type JetStructure<const K: usize>: SemidirectJetStructure<
+            JetVectorIn<Self::JetCategory, U, K>,
+            JetVectorIn<Self::JetCategory, V, K>,
+            Self::JetG<K>,
+            Self::JetN<K>,
+            JetCategory = Self::JetCategory,
+        >
+    where
+        Jet<Self::JetCategory, U::F, K>: Field;
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct SemidirectProduct<
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U>,
+    N: LieGroup<V>,
+    F: SemidirectStructure<U, V, G, N>,
+>(G, N, PhantomData<(U, V, F)>);
+
+include_point!(SemidirectProduct<U, V, G, N, F>, U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U>,
+    N: LieGroup<V>,
+    F: SemidirectStructure<U, V, G, N>,
+);
+
+impl<
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U>,
+    N: LieGroup<V>,
+    F: SemidirectJetStructure<U, V, G, N>,
+> SemidirectProduct<U, V, G, N, F>
+{
+    pub fn infinitesimal_alpha<const K: usize>(
+        x: JetVector<U, K>,
+        v: JetVector<V, K>,
+    ) -> JetVector<V, K>
+    where
+        F: SemidirectJetStructure<U, V, G, N>,
+        Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
+        Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
+        Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
+    {
+        fn action<
+            U: Tensor,
+            V: Tensor<F = U::F, Hand = U::Hand>,
+            G: LieGroup<U>,
+            N: LieGroup<V>,
+            F: SemidirectStructure<U, V, G, N>,
+        >(
+            point: SemidirectProduct<U, V, G, N, F>,
+        ) -> N {
+            SemidirectProduct::<U, V, G, N, F>::alpha_point(point.0, point.1)
+        }
+
+        let x: DirectSum<JetVectorIn<F::JetCategory, U, K>, JetVectorIn<F::JetCategory, V, K>> =
+            DirectSum::join(
+                x.retag::<F::JetCategory>(),
+                JetVectorIn::<F::JetCategory, V, K>::zero(),
+            );
+
+        let v: DirectSum<JetVectorIn<F::JetCategory, U, K>, JetVectorIn<F::JetCategory, V, K>> =
+            DirectSum::join(
+                JetVectorIn::<F::JetCategory, U, K>::zero(),
+                v.retag::<F::JetCategory>(),
+            );
+
+        let identity: SemidirectProduct<
+            JetVectorIn<F::JetCategory, U, K>,
+            JetVectorIn<F::JetCategory, V, K>,
+            F::JetG<K>,
+            F::JetN<K>,
+            F::JetStructure<K>,
+        > = CommutesJet::commute_jet(Tangent::new(Self::identity(), Zero::zero()));
+
+        d(d(action).along(v))
+            .along(x)
+            .at(identity)
+            .retag::<𝐅𝐥𝐝::𝒞>()
+    }
+}
+
+impl<
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U>,
+    N: LieGroup<V>,
+    F: SemidirectStructure<U, V, G, N>,
+> SemidirectProduct<U, V, G, N, F>
+{
+    pub fn alpha_point(g: G, n: N) -> N {
+        F::alpha::<0>(Tangent::new(g, Zero::zero()), Tangent::new(n, Zero::zero())).0
+    }
+
+    /// Applies
+    ///
+    /// φ₁(ρ(x))v = Σₙ₌₀∞ ρ(x)ⁿv / (n + 1)!
+    ///
+    /// using `TERMS` terms.
+    pub fn abelian_left_jacobian_series<const K: usize, const TERMS: usize>(
+        x: JetVector<U, K>,
+        v: JetVector<V, K>,
+    ) -> JetVector<V, K>
+    where
+        U::F: Field<Characteristic = NatZero>,
+        V: Vector,
+        F: SemidirectJetStructure<U, V, G, N>,
+        Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
+        Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
+        Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
+    {
+        const {
+            assert!(TERMS != 0);
+        }
+
+        let mut term = v;
+        let mut result = term.clone();
+
+        for n in 1..TERMS {
+            term = Self::infinitesimal_alpha(x.clone(), term);
+
+            let denominator = Jet::<𝐅𝐥𝐝::𝒞, U::F, K>::from_nat(n + 1);
+
+            let reciprocal = Jet::<𝐅𝐥𝐝::𝒞, U::F, K>::one().div(denominator);
+
+            term = term * reciprocal;
+            result = result + term.clone();
+        }
+
+        result
+    }
+
+    /// Applies the local inverse of `φ₁(ρ(x))` using a Neumann series.
+    ///
+    /// If `J = φ₁(ρ(x))`, then
+    ///
+    /// J⁻¹ = Σₙ₌₀∞ (I - J)ⁿ
+    ///
+    /// locally around `x = 0`.
+    pub fn abelian_left_jacobian_inverse_series<
+        const K: usize,
+        const PHI_TERMS: usize,
+        const INVERSE_TERMS: usize,
+    >(
+        x: JetVector<U, K>,
+        value: JetVector<V, K>,
+    ) -> JetVector<V, K>
+    where
+        U::F: Field<Characteristic = NatZero>,
+        V: Vector,
+        F: SemidirectJetStructure<U, V, G, N>,
+        Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
+        Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
+        Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
+    {
+        const {
+            assert!(PHI_TERMS != 0);
+            assert!(INVERSE_TERMS != 0);
+        }
+
+        let mut term = value;
+        let mut result = term.clone();
+
+        for _ in 1..INVERSE_TERMS {
+            let applied =
+                Self::abelian_left_jacobian_series::<K, PHI_TERMS>(x.clone(), term.clone());
+
+            // Apply I - J.
+            term = term - applied;
+            result = result + term.clone();
+        }
+
+        result
+    }
+
+    fn split_tangent<const K: usize>(
+        value: Tangent<Self, DirectSum<U, V>, K>,
+    ) -> (Tangent<G, U, K>, Tangent<N, V, K>) {
+        let Self(g, n, _) = value.0;
+        let (u, v) = value.1.split();
+
+        (Tangent::new(g, u), Tangent::new(n, v))
+    }
+
+    fn join_tangent<const K: usize>(
+        g: Tangent<G, U, K>,
+        n: Tangent<N, V, K>,
+    ) -> Tangent<Self, DirectSum<U, V>, K> {
+        Tangent::join(Self(g.0, n.0, PhantomData), g.1, n.1)
+    }
+}
+
+impl<
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand> + LieGroup<V>,
+    G: LieGroup<U>,
+    F: SemidirectStructure<U, V, G, V>,
+> SemidirectProduct<U, V, G, V, F>
+{
+    pub fn abelian_identity_exp_series<const K: usize, const TERMS: usize>(
+        coordinate: JetVector<DirectSum<U, V>, K>,
+    ) -> Tangent<Self, DirectSum<U, V>, K>
+    where
+        U::F: Field<Characteristic = NatZero>,
+        V: Vector,
+        F: SemidirectJetStructure<U, V, G, V>,
+        Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
+        Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
+        Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
+    {
+        let (x, v) = coordinate.split();
+
+        let translation = Self::abelian_left_jacobian_series::<K, TERMS>(x.clone(), v);
+
+        Self::join_tangent(G::identity_exp(x), translation.into_tangent(|value| value))
+    }
+
+    pub fn abelian_identity_log_series<
+        const K: usize,
+        const PHI_TERMS: usize,
+        const INVERSE_TERMS: usize,
+    >(
+        point: Tangent<Self, DirectSum<U, V>, K>,
+    ) -> Option<JetVector<DirectSum<U, V>, K>>
+    where
+        U::F: Field<Characteristic = NatZero>,
+        V: Vector,
+        F: SemidirectJetStructure<U, V, G, V>,
+        Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
+        Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
+        Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
+    {
+        let (g, translation) = Self::split_tangent(point);
+
+        let x = G::identity_log(g)?;
+        let translation = translation.into_jet(|value| value);
+
+        let v = Self::abelian_left_jacobian_inverse_series::<K, PHI_TERMS, INVERSE_TERMS>(
+            x.clone(),
+            translation,
+        );
+
+        Some(JetVector::<DirectSum<U, V>, K>::join(x, v))
+    }
+}
+
+impl<U, V, G, N, F, const K: usize>
+    CommutesJet<SemidirectProduct<U, V, G, N, F>, DirectSum<U, V>, K>
+    for SemidirectProduct<
+        JetVectorIn<F::JetCategory, U, K>,
+        JetVectorIn<F::JetCategory, V, K>,
+        F::JetG<K>,
+        F::JetN<K>,
+        F::JetStructure<K>,
+    >
+where
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U>,
+    N: LieGroup<V>,
+    F: SemidirectJetStructure<U, V, G, N>,
+    Jet<F::JetCategory, U::F, K>: Field,
+{
+    fn commute_jet(value: Tangent<SemidirectProduct<U, V, G, N, F>, DirectSum<U, V>, K>) -> Self {
+        let SemidirectProduct(g, n, _) = value.0;
+        let (u, v) = value.1.split();
+
+        let g = <F::JetG<K> as CommutesJet<G, U, K>>::commute_jet(Tangent::new(g, u));
+
+        let n = <F::JetN<K> as CommutesJet<N, V, K>>::commute_jet(Tangent::new(n, v));
+
+        SemidirectProduct(g, n, PhantomData)
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<SemidirectProduct<U, V, G, N, F>, DirectSum<U, V>, K> {
+        let SemidirectProduct(g, n, _) = value;
+
+        let g = <F::JetG<K> as CommutesJet<G, U, K>>::uncommute_jet(g);
+
+        let n = <F::JetN<K> as CommutesJet<N, V, K>>::uncommute_jet(n);
+
+        Tangent::join(SemidirectProduct(g.0, n.0, PhantomData), g.1, n.1)
+    }
+}
+
+impl<
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U>,
+    N: LieGroup<V>,
+    F: SemidirectStructure<U, V, G, N>,
+> Group for SemidirectProduct<U, V, G, N, F>
+{
+    fn identity() -> Self {
+        Self(G::identity(), N::identity(), PhantomData)
+    }
+
+    fn compose(&self, other: &Self) -> Self {
+        let acted = Self::alpha_point(self.0.clone(), other.1.clone());
+
+        Self(
+            self.0.compose(&other.0),
+            self.1.compose(&acted),
+            PhantomData,
+        )
+    }
+
+    fn inverse(&self) -> Self {
+        let g_inverse = self.0.inverse();
+        let n_inverse = self.1.inverse();
+
+        let acted_inverse = Self::alpha_point(g_inverse.clone(), n_inverse);
+
+        Self(g_inverse, acted_inverse, PhantomData)
+    }
+}
+
+impl<
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U>,
+    N: LieGroup<V>,
+    F: SemidirectStructure<U, V, G, N>,
+> LieGroup<DirectSum<U, V>> for SemidirectProduct<U, V, G, N, F>
+{
+    fn compose_jet<const K: usize>(
+        lhs: Tangent<Self, DirectSum<U, V>, K>,
+        rhs: Tangent<Self, DirectSum<U, V>, K>,
+    ) -> Tangent<Self, DirectSum<U, V>, K> {
+        let (g, n) = Self::split_tangent(lhs);
+        let (h, m) = Self::split_tangent(rhs);
+
+        let acted = F::alpha(g.clone(), m);
+
+        Self::join_tangent(G::compose_jet(g, h), N::compose_jet(n, acted))
+    }
+
+    fn inverse_jet<const K: usize>(
+        value: Tangent<Self, DirectSum<U, V>, K>,
+    ) -> Tangent<Self, DirectSum<U, V>, K> {
+        let (g, n) = Self::split_tangent(value);
+
+        let g_inverse = G::inverse_jet(g);
+        let n_inverse = N::inverse_jet(n);
+
+        let acted_inverse = F::alpha(g_inverse.clone(), n_inverse);
+
+        Self::join_tangent(g_inverse, acted_inverse)
+    }
+
+    fn identity_exp<const K: usize>(
+        coordinate: JetVector<DirectSum<U, V>, K>,
+    ) -> Tangent<Self, DirectSum<U, V>, K> {
+        F::identity_exp(coordinate)
+    }
+
+    fn identity_log<const K: usize>(
+        point: Tangent<Self, DirectSum<U, V>, K>,
+    ) -> Option<JetVector<DirectSum<U, V>, K>> {
+        F::identity_log(point)
     }
 }
 

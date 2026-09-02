@@ -560,10 +560,12 @@ fn differential_of_a_polymorphic_sphere_reflection() {
 
     let derivative = d(reflect).at(identity);
 
+    #[rustfmt::skip]
     assert!(
-        derivative
-            .iter()
-            .eq([-1.0, 0.0, 0.0, -1.0].map(R64).iter(),)
+        derivative.iter().eq([
+            -1.0,  0.0,
+             0.0, -1.0,
+        ].map(R64).iter())
     );
 }
 
@@ -580,7 +582,12 @@ fn differential_accepts_the_intrinsic_tangent_presentation() {
 
     let derivative = d(identity).at(point);
 
-    assert!(derivative.iter().eq([1.0, 0.0, 0.0, 1.0].map(R64).iter(),));
+    #[rustfmt::skip]
+    assert!(
+        derivative.iter().eq([
+            1.0, 0.0,
+            0.0, 1.0
+    ].map(R64).iter(),));
 }
 
 #[test]
@@ -592,10 +599,12 @@ fn differential_of_the_hopf_map() {
 
     let derivative: TangentMap<U, Sphere<V>, V> = d(hopf).at(identity);
 
+    #[rustfmt::skip]
     assert!(
-        derivative
-            .iter()
-            .eq([0.0, 0.0, 2.0, 0.0, -2.0, 0.0,].map(R64).iter(),)
+        derivative.iter().eq([
+            0.0,  0.0, 2.0,
+            0.0, -2.0, 0.0,
+        ].map(R64).iter())
     );
 }
 

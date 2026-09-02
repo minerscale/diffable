@@ -7,13 +7,13 @@ use num_traits::{Euclid, Inv, Num, NumCast, One, ToPrimitive, Zero};
 
 use crate::{
     coords::Coords,
-    impl_vector_ops,
+    impl_vector_ops, include_as,
     traits::{
         Absent, Array, AssocName, Atomic, BindsReflected, BothSided, CField, Cat, Category,
         DivRing, Dual, Euclidean, ExactCmp, Field, Form, Interval, Jetted, Metric, NonZero,
         Nondegenerate, Point, Real, Reflect, ReflectedContext, Sesquilinear, Sinister, Tensor,
         TensorOf, Vector,
-        calculus::{DirectSum, DirectSumArray, Tangent},
+        calculus::{CommutesJet, DirectSum, DirectSumArray, Tangent},
         jet, tensor_of, Ø, ː, ι, π, Ⱶ, 𝐅𝐥𝐝, 𝐑𝐞𝐚𝐥, 𝐓𝐞𝐧𝐬, 𝒯,
     },
 };
@@ -1355,3 +1355,29 @@ where
         <Self as Tensor>::Array::from_fn(|coordinate| sharp[coordinate])
     }
 }
+
+impl<𝒞, V, const K: usize> CommutesJet<V, V, K> for JetVectorIn<𝒞, V, K>
+where
+    𝒞: Cat,
+    V: Vector,
+    Jet<𝒞, V::F, K>: Field,
+{
+    fn commute_jet(value: Tangent<V, V, K>) -> Self {
+        value.into_jet(|point| point).retag::<𝒞>()
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<V, V, K> {
+        value.retag::<𝐅𝐥𝐝::𝒞>().into_tangent(|point| point)
+    }
+}
+
+// Algebraic jets are canonically included at `Field`. Real jets are a
+// distinct presentation, `Jet<𝐑𝐞𝐚𝐥::𝒞, _, _>`, and obtain their richer
+// canonical inclusion through the blanket `Real -> ι` implementation.
+// Keeping this admission restricted to `𝐅𝐥𝐝::𝒞` preserves the disjoint
+// region selection performed by `JetRegion`.
+include_as!(
+    Jet<𝐅𝐥𝐝::𝒞, F, N> => Field,
+    F: Field,
+    const N: usize
+);

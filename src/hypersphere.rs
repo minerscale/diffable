@@ -825,6 +825,7 @@ impl<V: Euclidean> LieGroup<V> for S3<V> {
         sphere_identity_log_jet(&Self::assemble_jet(point).0)
     }
 }
+
 impl<V: Euclidean> Interval for Sphere<V> {
     type R = V::F;
 

@@ -132,8 +132,8 @@ impl<R: RealNum> CField for R where NonZero<R>: Inv<Output = NonZero<R>> {}
 /// transitive order an iterative algorithm needs to decide convergence — hence
 /// [`ExactCmp`], which recovers the genuine order from the sign bit instead of
 /// the tolerant comparison.
-pub trait Real: RealNum + CField<Fixed = Self> {}
-impl<R: RealNum + CField<Fixed = Self>> Real for R {}
+pub trait Real: RealNum + CField<Fixed = Self, Characteristic = NatZero> {}
+impl<R: RealNum + CField<Fixed = Self, Characteristic = NatZero>> Real for R {}
 
 // A real scalar is admitted once at its richest reflected scalar context.
 // Weaker models (for example as a field) are selected from this
