@@ -10,7 +10,11 @@ use crate::{
     impl_group_via_mul, include_point,
     traits::{
         Cat, Different, ExactCmp, FromReal, Interval, Metric, Real, Same, Tensor, Vector,
-        calculus::{CommutesJet, DirectSum, Jet, JetRegion, JetVector, JetVectorIn, Tangent, d},
+        calculus::{
+            Along, CommutesJet, ContractedManifoldRoute, DifferentialRegion, DirectSum,
+            EvaluableAt, Jet, JetPresentation, JetRegion, JetVector, JetVectorIn,
+            ManifoldEvaluationRoute, ManifoldJetMap, Tangent, d,
+        },
         ι, 𝐅𝐥𝐝,
     },
 };
@@ -1446,6 +1450,10 @@ pub trait SemidirectStructure<
     N: LieGroup<V>,
 >: core::fmt::Debug + Copy + Clone
 {
+    /// Scalar category in which this action admits its canonical nominal jet
+    /// presentations.
+    type JetCategory: Cat;
+
     fn alpha<const K: usize>(g: Tangent<G, U, K>, n: Tangent<N, V, K>) -> Tangent<N, V, K>;
 
     fn identity_exp<const K: usize>(
@@ -1457,33 +1465,20 @@ pub trait SemidirectStructure<
     ) -> Option<JetVector<DirectSum<U, V>, K>>;
 }
 
-pub trait SemidirectJetStructure<
+#[allow(type_alias_bounds)]
+type SemidirectJetCategory<
     U: Tensor,
     V: Tensor<F = U::F, Hand = U::Hand>,
     G: LieGroup<U>,
     N: LieGroup<V>,
->: SemidirectStructure<U, V, G, N>
-{
-    type JetCategory: Cat;
+    F: SemidirectStructure<U, V, G, N>,
+> = <F as SemidirectStructure<U, V, G, N>>::JetCategory;
 
-    type JetG<const K: usize>: LieGroup<JetVectorIn<Self::JetCategory, U, K>> + CommutesJet<G, U, K>
-    where
-        Jet<Self::JetCategory, U::F, K>: Field;
-
-    type JetN<const K: usize>: LieGroup<JetVectorIn<Self::JetCategory, V, K>> + CommutesJet<N, V, K>
-    where
-        Jet<Self::JetCategory, U::F, K>: Field;
-
-    type JetStructure<const K: usize>: SemidirectJetStructure<
-            JetVectorIn<Self::JetCategory, U, K>,
-            JetVectorIn<Self::JetCategory, V, K>,
-            Self::JetG<K>,
-            Self::JetN<K>,
-            JetCategory = Self::JetCategory,
-        >
-    where
-        Jet<Self::JetCategory, U::F, K>: Field;
-}
+#[allow(type_alias_bounds)]
+type PresentedJet<𝒞: Cat, P: JetPresentation<𝒞, V, K>, V: Tensor, const K: usize>
+where
+    Jet<𝒞, V::F, K>: Field,
+= <P as JetPresentation<𝒞, V, K>>::Commuted;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SemidirectProduct<
@@ -1501,60 +1496,169 @@ include_point!(SemidirectProduct<U, V, G, N, F>, U: Tensor,
     F: SemidirectStructure<U, V, G, N>,
 );
 
+/// The action map carried by a [`SemidirectStructure`].
+///
+/// Its jet implementation is exactly `F::alpha`; differentiating this program
+/// therefore reuses the same action law recursively at every presentation.
+#[doc(hidden)]
+#[derive(Debug, Copy, Clone)]
+struct SemidirectAction<F>(PhantomData<F>);
+
+#[doc(hidden)]
+struct SemidirectActionRoute;
+
+impl<U, V, G, N, F, const K: usize>
+    ManifoldJetMap<
+        SemidirectProduct<U, V, G, N, F>,
+        DirectSum<U, V>,
+        N,
+        V,
+        K,
+        SemidirectActionRoute,
+    > for SemidirectAction<F>
+where
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U>,
+    N: LieGroup<V>,
+    F: SemidirectStructure<U, V, G, N>,
+{
+    fn jet_at(
+        &self,
+        input: Tangent<SemidirectProduct<U, V, G, N, F>, DirectSum<U, V>, K>,
+    ) -> Tangent<N, V, K> {
+        let (g, n) = SemidirectProduct::split_tangent(input);
+
+        F::alpha(g, n)
+    }
+}
+
+#[allow(type_alias_bounds)]
+type SemidirectJetDirection<
+    𝒞: Cat,
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    const K: usize,
+> = DirectSum<JetVectorIn<𝒞, U, K>, JetVectorIn<𝒞, V, K>>;
+
+#[allow(type_alias_bounds)]
+type SemidirectActionProgram<
+    𝒞: Cat,
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    F,
+    const K: usize,
+> = Along<
+    Along<SemidirectAction<F>, SemidirectJetDirection<𝒞, U, V, K>>,
+    SemidirectJetDirection<𝒞, U, V, K>,
+>;
+
+#[allow(type_alias_bounds)]
+type SemidirectJetPoint<
+    𝒞: Cat,
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U> + JetPresentation<𝒞, U, K>,
+    N: LieGroup<V> + JetPresentation<𝒞, V, K>,
+    F: SemidirectStructure<U, V, G, N>,
+    const K: usize,
+> where
+    Jet<𝒞, U::F, K>: Field,
+= SemidirectProduct<
+    JetVectorIn<𝒞, U, K>,
+    JetVectorIn<𝒞, V, K>,
+    PresentedJet<𝒞, G, U, K>,
+    PresentedJet<𝒞, N, V, K>,
+    F,
+>;
+
+#[allow(type_alias_bounds)]
+type SemidirectActionEvaluationRoute<
+    𝒞: Cat,
+    V: Tensor,
+    N: JetPresentation<𝒞, V, K>,
+    const K: usize,
+> where
+    Jet<𝒞, V::F, K>: Field,
+= ManifoldEvaluationRoute<
+    JetVectorIn<𝒞, V, K>,
+    ContractedManifoldRoute<𝒞, PresentedJet<𝒞, N, V, K>, SemidirectActionRoute>,
+>;
+
+/// The mixed derivative of a semidirect action, when its canonical nominal
+/// jet presentations make that derivative evaluable.
+///
+/// This is a blanket-derived capability rather than additional semidirect
+/// structure: implementors supply [`SemidirectStructure`] and the participating
+/// point types supply [`JetPresentation`].
+#[doc(hidden)]
+pub trait DerivedSemidirectAction<U: Tensor, V: Tensor<F = U::F>, const K: usize> {
+    fn infinitesimal_alpha(x: JetVector<U, K>, v: JetVector<V, K>) -> JetVector<V, K>;
+}
+
 impl<
     U: Tensor,
     V: Tensor<F = U::F, Hand = U::Hand>,
     G: LieGroup<U>,
     N: LieGroup<V>,
-    F: SemidirectJetStructure<U, V, G, N>,
-> SemidirectProduct<U, V, G, N, F>
+    F: SemidirectStructure<U, V, G, N>,
+    const K: usize,
+> DerivedSemidirectAction<U, V, K> for SemidirectProduct<U, V, G, N, F>
+where
+    G: JetPresentation<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+    N: JetPresentation<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+    PresentedJet<SemidirectJetCategory<U, V, G, N, F>, G, U, K>:
+        LieGroup<JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>>,
+    PresentedJet<SemidirectJetCategory<U, V, G, N, F>, N, V, K>:
+        LieGroup<JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>>,
+    F: SemidirectStructure<
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+            PresentedJet<SemidirectJetCategory<U, V, G, N, F>, G, U, K>,
+            PresentedJet<SemidirectJetCategory<U, V, G, N, F>, N, V, K>,
+            JetCategory = SemidirectJetCategory<U, V, G, N, F>,
+        >,
+    Jet<SemidirectJetCategory<U, V, G, N, F>, U::F, K>:
+        Field + ι<C: JetRegion<SemidirectJetCategory<U, V, G, N, F>>>,
+    SemidirectActionProgram<SemidirectJetCategory<U, V, G, N, F>, U, V, F, K>: EvaluableAt<
+            SemidirectJetCategory<U, V, G, N, F>,
+            SemidirectJetPoint<SemidirectJetCategory<U, V, G, N, F>, U, V, G, N, F, K>,
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+            SemidirectActionEvaluationRoute<SemidirectJetCategory<U, V, G, N, F>, V, N, K>,
+        >,
+    SemidirectJetPoint<SemidirectJetCategory<U, V, G, N, F>, U, V, G, N, F, K>: DifferentialRegion<
+            SemidirectJetCategory<U, V, G, N, F>,
+            SemidirectActionProgram<SemidirectJetCategory<U, V, G, N, F>, U, V, F, K>,
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+            SemidirectActionEvaluationRoute<SemidirectJetCategory<U, V, G, N, F>, V, N, K>,
+        >,
 {
-    pub fn infinitesimal_alpha<const K: usize>(
-        x: JetVector<U, K>,
-        v: JetVector<V, K>,
-    ) -> JetVector<V, K>
-    where
-        F: SemidirectJetStructure<U, V, G, N>,
-        Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
-        Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
-        Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
-    {
-        fn action<
-            U: Tensor,
-            V: Tensor<F = U::F, Hand = U::Hand>,
-            G: LieGroup<U>,
-            N: LieGroup<V>,
-            F: SemidirectStructure<U, V, G, N>,
-        >(
-            point: SemidirectProduct<U, V, G, N, F>,
-        ) -> N {
-            SemidirectProduct::<U, V, G, N, F>::alpha_point(point.0, point.1)
-        }
+    fn infinitesimal_alpha(x: JetVector<U, K>, v: JetVector<V, K>) -> JetVector<V, K> {
+        let x: DirectSum<
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+        > = DirectSum::join(
+            x.retag::<SemidirectJetCategory<U, V, G, N, F>>(),
+            JetVectorIn::<SemidirectJetCategory<U, V, G, N, F>, V, K>::zero(),
+        );
 
-        let x: DirectSum<JetVectorIn<F::JetCategory, U, K>, JetVectorIn<F::JetCategory, V, K>> =
-            DirectSum::join(
-                x.retag::<F::JetCategory>(),
-                JetVectorIn::<F::JetCategory, V, K>::zero(),
-            );
+        let v: DirectSum<
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+        > = DirectSum::join(
+            JetVectorIn::<SemidirectJetCategory<U, V, G, N, F>, U, K>::zero(),
+            v.retag::<SemidirectJetCategory<U, V, G, N, F>>(),
+        );
 
-        let v: DirectSum<JetVectorIn<F::JetCategory, U, K>, JetVectorIn<F::JetCategory, V, K>> =
-            DirectSum::join(
-                JetVectorIn::<F::JetCategory, U, K>::zero(),
-                v.retag::<F::JetCategory>(),
-            );
+        let identity: SemidirectJetPoint<SemidirectJetCategory<U, V, G, N, F>, U, V, G, N, F, K> =
+            SemidirectProduct::identity();
 
-        let identity: SemidirectProduct<
-            JetVectorIn<F::JetCategory, U, K>,
-            JetVectorIn<F::JetCategory, V, K>,
-            F::JetG<K>,
-            F::JetN<K>,
-            F::JetStructure<K>,
-        > = SemidirectProduct::identity();
+        let result: JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K> =
+            d(d(SemidirectAction::<F>(PhantomData)).along(v))
+                .along(x)
+                .at(identity);
 
-        d(d(action).along(v))
-            .along(x)
-            .at(identity)
-            .retag::<𝐅𝐥𝐝::𝒞>()
+        result.retag::<𝐅𝐥𝐝::𝒞>()
     }
 }
 
@@ -1570,6 +1674,16 @@ impl<
         F::alpha::<0>(Tangent::new(g, Zero::zero()), Tangent::new(n, Zero::zero())).0
     }
 
+    pub fn infinitesimal_alpha<const K: usize>(
+        x: JetVector<U, K>,
+        v: JetVector<V, K>,
+    ) -> JetVector<V, K>
+    where
+        Self: DerivedSemidirectAction<U, V, K>,
+    {
+        <Self as DerivedSemidirectAction<U, V, K>>::infinitesimal_alpha(x, v)
+    }
+
     /// Applies
     ///
     /// φ₁(ρ(x))v = Σₙ₌₀∞ ρ(x)ⁿv / (n + 1)!
@@ -1582,10 +1696,7 @@ impl<
     where
         U::F: Field<Characteristic = NatZero>,
         V: Vector,
-        F: SemidirectJetStructure<U, V, G, N>,
-        Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
-        Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
-        Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
+        Self: DerivedSemidirectAction<U, V, K>,
     {
         const {
             assert!(TERMS != 0);
@@ -1626,10 +1737,7 @@ impl<
     where
         U::F: Field<Characteristic = NatZero>,
         V: Vector,
-        F: SemidirectJetStructure<U, V, G, N>,
-        Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
-        Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
-        Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
+        Self: DerivedSemidirectAction<U, V, K>,
     {
         const {
             assert!(PHI_TERMS != 0);
@@ -1681,10 +1789,7 @@ impl<
     where
         U::F: Field<Characteristic = NatZero>,
         V: Vector,
-        F: SemidirectJetStructure<U, V, G, V>,
-        Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
-        Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
-        Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
+        Self: DerivedSemidirectAction<U, V, K>,
     {
         let (x, v) = coordinate.split();
 
@@ -1703,10 +1808,7 @@ impl<
     where
         U::F: Field<Characteristic = NatZero>,
         V: Vector,
-        F: SemidirectJetStructure<U, V, G, V>,
-        Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
-        Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
-        Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
+        Self: DerivedSemidirectAction<U, V, K>,
     {
         let (g, translation) = Self::split_tangent(point);
 
@@ -1725,27 +1827,46 @@ impl<
 impl<U, V, G, N, F, const K: usize>
     CommutesJet<SemidirectProduct<U, V, G, N, F>, DirectSum<U, V>, K>
     for SemidirectProduct<
-        JetVectorIn<F::JetCategory, U, K>,
-        JetVectorIn<F::JetCategory, V, K>,
-        F::JetG<K>,
-        F::JetN<K>,
-        F::JetStructure<K>,
+        JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+        JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+        PresentedJet<SemidirectJetCategory<U, V, G, N, F>, G, U, K>,
+        PresentedJet<SemidirectJetCategory<U, V, G, N, F>, N, V, K>,
+        F,
     >
 where
     U: Tensor,
     V: Tensor<F = U::F, Hand = U::Hand>,
-    G: LieGroup<U>,
-    N: LieGroup<V>,
-    F: SemidirectJetStructure<U, V, G, N>,
-    Jet<F::JetCategory, U::F, K>: Field,
+    G: LieGroup<U> + JetPresentation<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+    N: LieGroup<V> + JetPresentation<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+    PresentedJet<SemidirectJetCategory<U, V, G, N, F>, G, U, K>:
+        LieGroup<JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>>,
+    PresentedJet<SemidirectJetCategory<U, V, G, N, F>, N, V, K>:
+        LieGroup<JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>>,
+    F: SemidirectStructure<U, V, G, N>
+        + SemidirectStructure<
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+            PresentedJet<SemidirectJetCategory<U, V, G, N, F>, G, U, K>,
+            PresentedJet<SemidirectJetCategory<U, V, G, N, F>, N, V, K>,
+            JetCategory = SemidirectJetCategory<U, V, G, N, F>,
+        >,
+    Jet<SemidirectJetCategory<U, V, G, N, F>, U::F, K>: Field,
 {
     fn commute_jet(value: Tangent<SemidirectProduct<U, V, G, N, F>, DirectSum<U, V>, K>) -> Self {
         let SemidirectProduct(g, n, _) = value.0;
         let (u, v) = value.1.split();
 
-        let g = <F::JetG<K> as CommutesJet<G, U, K>>::commute_jet(Tangent::new(g, u));
+        let g = <PresentedJet<SemidirectJetCategory<U, V, G, N, F>, G, U, K> as CommutesJet<
+            G,
+            U,
+            K,
+        >>::commute_jet(Tangent::new(g, u));
 
-        let n = <F::JetN<K> as CommutesJet<N, V, K>>::commute_jet(Tangent::new(n, v));
+        let n = <PresentedJet<SemidirectJetCategory<U, V, G, N, F>, N, V, K> as CommutesJet<
+            N,
+            V,
+            K,
+        >>::commute_jet(Tangent::new(n, v));
 
         SemidirectProduct(g, n, PhantomData)
     }
@@ -1753,12 +1874,56 @@ where
     fn uncommute_jet(value: Self) -> Tangent<SemidirectProduct<U, V, G, N, F>, DirectSum<U, V>, K> {
         let SemidirectProduct(g, n, _) = value;
 
-        let g = <F::JetG<K> as CommutesJet<G, U, K>>::uncommute_jet(g);
+        let g = <PresentedJet<SemidirectJetCategory<U, V, G, N, F>, G, U, K> as CommutesJet<
+            G,
+            U,
+            K,
+        >>::uncommute_jet(g);
 
-        let n = <F::JetN<K> as CommutesJet<N, V, K>>::uncommute_jet(n);
+        let n = <PresentedJet<SemidirectJetCategory<U, V, G, N, F>, N, V, K> as CommutesJet<
+            N,
+            V,
+            K,
+        >>::uncommute_jet(n);
 
         Tangent::join(SemidirectProduct(g.0, n.0, PhantomData), g.1, n.1)
     }
+}
+
+impl<U, V, G, N, F, const K: usize>
+    JetPresentation<SemidirectJetCategory<U, V, G, N, F>, DirectSum<U, V>, K>
+    for SemidirectProduct<U, V, G, N, F>
+where
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    G: LieGroup<U> + JetPresentation<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+    N: LieGroup<V> + JetPresentation<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+    PresentedJet<SemidirectJetCategory<U, V, G, N, F>, G, U, K>:
+        LieGroup<JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>>,
+    PresentedJet<SemidirectJetCategory<U, V, G, N, F>, N, V, K>:
+        LieGroup<JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>>,
+    F: SemidirectStructure<U, V, G, N>
+        + SemidirectStructure<
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+            JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+            PresentedJet<SemidirectJetCategory<U, V, G, N, F>, G, U, K>,
+            PresentedJet<SemidirectJetCategory<U, V, G, N, F>, N, V, K>,
+            JetCategory = SemidirectJetCategory<U, V, G, N, F>,
+        >,
+    Jet<SemidirectJetCategory<U, V, G, N, F>, U::F, K>: Field,
+{
+    type Model = DirectSum<
+        JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+        JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+    >;
+
+    type Commuted = SemidirectProduct<
+        JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, U, K>,
+        JetVectorIn<SemidirectJetCategory<U, V, G, N, F>, V, K>,
+        PresentedJet<SemidirectJetCategory<U, V, G, N, F>, G, U, K>,
+        PresentedJet<SemidirectJetCategory<U, V, G, N, F>, N, V, K>,
+        F,
+    >;
 }
 
 impl<

@@ -1359,7 +1359,7 @@ where
 impl<𝒞, V, const K: usize> CommutesJet<V, V, K> for JetVectorIn<𝒞, V, K>
 where
     𝒞: Cat,
-    V: Vector,
+    V: Tensor,
     Jet<𝒞, V::F, K>: Field,
 {
     fn commute_jet(value: Tangent<V, V, K>) -> Self {
@@ -1370,6 +1370,41 @@ where
         value.retag::<𝐅𝐥𝐝::𝒞>().into_tangent(|point| point)
     }
 }
+
+/// Jettification preserves a direct sum by distributing over its summands.
+/// This is the model-space counterpart of commuting a nominal manifold
+/// constructor through a jet.
+impl<𝒞, U, V, const K: usize> CommutesJet<DirectSum<U, V>, DirectSum<U, V>, K>
+    for DirectSum<JetVectorIn<𝒞, U, K>, JetVectorIn<𝒞, V, K>>
+where
+    𝒞: Cat,
+    U: Tensor,
+    V: Tensor<F = U::F, Hand = U::Hand>,
+    Jet<𝒞, U::F, K>: Field,
+{
+    fn commute_jet(value: Tangent<DirectSum<U, V>, DirectSum<U, V>, K>) -> Self {
+        let (u, v) = value.into_jet(|point| point).retag::<𝒞>().split();
+
+        DirectSum::join(u, v)
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<DirectSum<U, V>, DirectSum<U, V>, K> {
+        let (u, v) = value.split();
+
+        JetVectorIn::<𝒞, DirectSum<U, V>, K>::join(u, v)
+            .retag::<𝐅𝐥𝐝::𝒞>()
+            .into_tangent(|point| point)
+    }
+}
+
+crate::impl_jet_presentation!(
+    𝒞,
+    V,
+    V,
+    JetVectorIn<𝒞, V, K>,
+    [𝒞: Cat, V: Tensor],
+    const K: usize
+);
 
 // Algebraic jets are canonically included at `Field`. Real jets are a
 // distinct presentation, `Jet<𝐑𝐞𝐚𝐥::𝒞, _, _>`, and obtain their richer

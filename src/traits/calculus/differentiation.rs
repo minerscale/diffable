@@ -5,7 +5,8 @@ use crate::traits::{
     Vector,
     calculus::{
         Connection, ConstantRoute, HomOf, Jet, JetLayer, JetRegion, JetVector, JetVectorIn,
-        Tangent, TangentMap, TensorOver, TensorProduct, TensorProductArray,
+        LiftedTM, Tangent, TangentElement, TangentMap, TensorOver, TensorProduct,
+        TensorProductArray,
     },
     Ø, ː, ι, Ⱶ, 𝐅𝐥𝐝, 𝐓𝐞𝐧𝐬,
 };
@@ -282,15 +283,15 @@ where
 #[doc(hidden)]
 pub struct EvaluateManifold<Q>(PhantomData<fn() -> Q>);
 
-/// Evaluates a manifold map by commuting through the Rust-level jet
-/// presentations `JP` and `JQ`.
+/// Evaluates an ordinary manifold map through the presentations selected by
+/// its Rust function signature.
 #[doc(hidden)]
 pub struct CommuteManifold<Q, JP, JQ>(PhantomData<fn(JP) -> (Q, JQ)>);
 
-/// Differentiates a manifold jet map by commuting an outer jet through
-/// `JP` and `JQ`, whose model tensors are `JV` and `JW`.
+/// Differentiates a manifold jet map through its recursively selected
+/// canonical presentations.
 #[doc(hidden)]
-pub struct DifferentiateManifold<𝒞, JP, JV, JQ, JW>(PhantomData<fn(𝒞, JP, JV) -> (JQ, JW)>);
+pub struct DifferentiateManifold<𝒞, Q>(PhantomData<fn() -> (𝒞, Q)>);
 
 /// The evaluation boundary for a manifold differential program.
 #[doc(hidden)]
@@ -303,38 +304,41 @@ pub type ManifoldRoute<Q, JP, JQ> = ː<CommuteManifold<Q, JP, JQ>, Ø>;
 /// The route obtained by applying the differential functor to an existing
 /// manifold route.
 #[doc(hidden)]
-pub type DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute> =
-    ː<DifferentiateManifold<𝒞, JP, JV, JQ, JW>, InnerRoute>;
+pub type DifferentiatedManifoldRoute<𝒞, Q, InnerRoute> =
+    ː<DifferentiateManifold<𝒞, Q>, InnerRoute>;
 
 /// Contracts the differential of a manifold map with a captured source
 /// direction while preserving an outer jet.
 #[doc(hidden)]
-pub struct ContractManifold<𝒞, Q, JP, JV, JQ, JW>(PhantomData<fn(𝒞, JP, JV) -> (Q, JQ, JW)>);
+pub struct ContractManifold<𝒞, Q>(PhantomData<fn() -> (𝒞, Q)>);
 
+/// The route obtained by contracting an existing manifold route.
 #[doc(hidden)]
-pub type ContractedManifoldRoute<𝒞, Q, JP, JV, JQ, JW, InnerRoute> =
-    ː<ContractManifold<𝒞, Q, JP, JV, JQ, JW>, InnerRoute>;
+pub type ContractedManifoldRoute<𝒞, Q, InnerRoute> = ː<ContractManifold<𝒞, Q>, InnerRoute>;
 
-impl<𝒞, F, P, V, Q, W, JP, JV, JQ, JW, InnerRoute, const N: usize>
+impl<𝒞, F, P, V, Q, W, InnerRoute, const N: usize>
     ManifoldJetMap<
         P,
         V,
         TangentMap<V, Q, W>,
         TangentMap<V, Q, W>,
         N,
-        DifferentiatedManifoldRoute<𝒞, JP, JV, JQ, JW, InnerRoute>,
+        DifferentiatedManifoldRoute<𝒞, Q, InnerRoute>,
     > for d<F>
 where
     𝒞: Cat,
-    P: Connection<P, V>,
+    P: JetPresentation<𝒞, V, N>,
     V: Tensor<Hand = Right, Action: ActionExists>,
-    Q: Connection<Q, W>,
+    Q: JetPresentation<𝒞, W, N>,
     W: Tensor<F = V::F, Hand = Right, Action: TensorProductAction<V::Action>>,
-    JP: Point + Connection<JP, JV> + CommutesJet<P, V, N>,
-    JV: Tensor<F = Jet<𝒞, V::F, N>, Hand = Right, Action: ActionExists>,
-    JQ: Point + Connection<JQ, JW> + CommutesJet<Q, W, N>,
-    JW: Tensor<F = Jet<𝒞, V::F, N>, Hand = Right, Action: TensorProductAction<JV::Action>>,
-    F: ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>,
+    F: ManifoldJetMap<
+            <P as JetPresentation<𝒞, V, N>>::Commuted,
+            <P as JetPresentation<𝒞, V, N>>::Model,
+            <Q as JetPresentation<𝒞, W, N>>::Commuted,
+            <Q as JetPresentation<𝒞, W, N>>::Model,
+            1,
+            InnerRoute,
+        >,
     Jet<𝒞, V::F, N>: Field,
     Jet<𝐅𝐥𝐝::𝒞, V::F, N>: Field,
     TangentMap<V, Q, W>: Tensor<F = V::F, Hand = Right>,
@@ -344,33 +348,54 @@ where
         input: Tangent<P, V, N>,
     ) -> Tangent<TangentMap<V, Q, W>, TangentMap<V, Q, W>, N> {
         const {
-            assert!(JV::N == V::N);
-            assert!(JW::N == W::N);
+            assert!(<<P as JetPresentation<𝒞, V, N>>::Model as Tensor>::N == V::N);
+            assert!(<<Q as JetPresentation<𝒞, W, N>>::Model as Tensor>::N == W::N);
         }
 
-        let outer_point = <JP as CommutesJet<P, V, N>>::commute_jet(input);
+        let outer_point =
+            <<P as JetPresentation<𝒞, V, N>>::Commuted as CommutesJet<P, V, N>>::commute_jet(
+                input,
+            );
 
         let columns: V::Array<JetVectorIn<𝒞, W, N>> = V::Array::from_fn(|input_coordinate| {
-            let inner_tangent: JetVector<JV, 1> = TensorOver::from_fn(|coordinate| {
-                Jet::<𝐅𝐥𝐝::𝒞, Jet<𝒞, V::F, N>, 1>::from_parts(
-                    Jet::<𝒞, V::F, N>::zero(),
-                    [if coordinate == input_coordinate {
-                        Jet::<𝒞, V::F, N>::one()
-                    } else {
-                        Jet::<𝒞, V::F, N>::zero()
-                    }],
-                )
+            let canonical_direction = JetVectorIn::<𝒞, V, N>::from_fn(|coordinate| {
+                if coordinate == input_coordinate {
+                    Jet::<𝒞, V::F, N>::one()
+                } else {
+                    Jet::<𝒞, V::F, N>::zero()
+                }
             });
 
-            let inner_input: Tangent<JP, JV, 1> =
-                Tangent::<JP, JV, 1>::new(outer_point.clone(), inner_tangent);
+            let presented_direction = present_model::<𝒞, P, V, N>(canonical_direction);
 
-            let output =
-                <F as ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>>::jet_at(&self.0, inner_input);
+            let inner_tangent =
+                JetVector::<<P as JetPresentation<𝒞, V, N>>::Model, 1>::from_fn(|coordinate| {
+                    Jet::from_parts(
+                        Jet::<𝒞, V::F, N>::zero(),
+                        [presented_direction[coordinate].clone()],
+                    )
+                });
 
-            JetVectorIn::<𝒞, W, N>::from_fn(|output_coordinate| {
-                output.1[output_coordinate][1].clone()
-            })
+            let inner_input = Tangent::<
+                <P as JetPresentation<𝒞, V, N>>::Commuted,
+                <P as JetPresentation<𝒞, V, N>>::Model,
+                1,
+            >::new(outer_point.clone(), inner_tangent);
+
+            let output = <F as ManifoldJetMap<
+                <P as JetPresentation<𝒞, V, N>>::Commuted,
+                <P as JetPresentation<𝒞, V, N>>::Model,
+                <Q as JetPresentation<𝒞, W, N>>::Commuted,
+                <Q as JetPresentation<𝒞, W, N>>::Model,
+                1,
+                InnerRoute,
+            >>::jet_at(&self.0, inner_input);
+
+            let presented_output = <<Q as JetPresentation<𝒞, W, N>>::Model as Tensor>::from_fn(
+                |output_coordinate| output.1[output_coordinate][1].clone(),
+            );
+
+            unpresent_model::<𝒞, Q, W, N>(presented_output)
         });
 
         let derivative = JetVectorIn::<𝒞, TangentMap<V, Q, W>, N>::from_fn(|index| {
@@ -384,51 +409,74 @@ where
     }
 }
 
-impl<𝒞, F, P, V, Q, W, JP, JV, JQ, JW, InnerRoute, const N: usize>
-    ManifoldJetMap<P, V, W, W, N, ContractedManifoldRoute<𝒞, Q, JP, JV, JQ, JW, InnerRoute>>
-    for Along<F, V>
+impl<𝒞, F, P, V, Q, W, InnerRoute, const N: usize>
+    ManifoldJetMap<P, V, W, W, N, ContractedManifoldRoute<𝒞, Q, InnerRoute>> for Along<F, V>
 where
     𝒞: Cat,
-    P: Connection<P, V>,
+    P: JetPresentation<𝒞, V, N>,
     V: Tensor,
-    Q: Connection<Q, W>,
+    Q: JetPresentation<𝒞, W, N>,
     W: Tensor<F = V::F> + Connection<W, W>,
-    JP: Point + Connection<JP, JV> + CommutesJet<P, V, N>,
-    JV: Tensor<F = Jet<𝒞, V::F, N>>,
-    JQ: Point + Connection<JQ, JW> + CommutesJet<Q, W, N>,
-    JW: Tensor<F = Jet<𝒞, V::F, N>>,
-    F: ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>,
+    F: ManifoldJetMap<
+            <P as JetPresentation<𝒞, V, N>>::Commuted,
+            <P as JetPresentation<𝒞, V, N>>::Model,
+            <Q as JetPresentation<𝒞, W, N>>::Commuted,
+            <Q as JetPresentation<𝒞, W, N>>::Model,
+            1,
+            InnerRoute,
+        >,
     Jet<𝒞, V::F, N>: Field,
-    Jet<𝐅𝐥𝐝::𝒞, JV::F>: Field,
+    Jet<𝐅𝐥𝐝::𝒞, Jet<𝒞, V::F, N>>: Field,
 {
     fn jet_at(&self, input: Tangent<P, V, N>) -> Tangent<W, W, N> {
         const {
-            assert!(JV::N == V::N);
-            assert!(JW::N == W::N);
+            assert!(<<P as JetPresentation<𝒞, V, N>>::Model as Tensor>::N == V::N);
+            assert!(<<Q as JetPresentation<𝒞, W, N>>::Model as Tensor>::N == W::N);
         }
 
-        let outer_point = <JP as CommutesJet<P, V, N>>::commute_jet(input);
-
-        let inner_tangent = JetVector::<JV, 1>::from_fn(|coordinate| {
-            let direction = Jet::<𝒞, V::F, N>::from_parts(
-                self.direction[coordinate].clone(),
-                [V::F::zero(); N],
+        let outer_point =
+            <<P as JetPresentation<𝒞, V, N>>::Commuted as CommutesJet<P, V, N>>::commute_jet(
+                input,
             );
 
-            Jet::from_parts(JV::F::zero(), [direction])
+        let canonical_direction = JetVectorIn::<𝒞, V, N>::from_fn(|coordinate| {
+            Jet::<𝒞, V::F, N>::from_parts(self.direction[coordinate].clone(), [V::F::zero(); N])
         });
 
-        let inner_input = Tangent::<JP, JV, 1>::new(outer_point, inner_tangent);
+        let presented_direction = present_model::<𝒞, P, V, N>(canonical_direction);
 
-        let output =
-            <F as ManifoldJetMap<JP, JV, JQ, JW, 1, InnerRoute>>::jet_at(&self.f, inner_input);
+        let inner_tangent =
+            JetVector::<<P as JetPresentation<𝒞, V, N>>::Model, 1>::from_fn(|coordinate| {
+                Jet::from_parts(
+                    Jet::<𝒞, V::F, N>::zero(),
+                    [presented_direction[coordinate].clone()],
+                )
+            });
 
-        JetVectorIn::<𝒞, W, N>::from_fn(|coordinate| output.1[coordinate][1].clone())
-            .retag::<𝐅𝐥𝐝::𝒞>()
-            .into_tangent(|value| value)
+        let inner_input = Tangent::<
+            <P as JetPresentation<𝒞, V, N>>::Commuted,
+            <P as JetPresentation<𝒞, V, N>>::Model,
+            1,
+        >::new(outer_point, inner_tangent);
+
+        let output = <F as ManifoldJetMap<
+            <P as JetPresentation<𝒞, V, N>>::Commuted,
+            <P as JetPresentation<𝒞, V, N>>::Model,
+            <Q as JetPresentation<𝒞, W, N>>::Commuted,
+            <Q as JetPresentation<𝒞, W, N>>::Model,
+            1,
+            InnerRoute,
+        >>::jet_at(&self.f, inner_input);
+
+        unpresent_model::<𝒞, Q, W, N>(
+            <<Q as JetPresentation<𝒞, W, N>>::Model as Tensor>::from_fn(|coordinate| {
+                output.1[coordinate][1].clone()
+            }),
+        )
+        .retag::<𝐅𝐥𝐝::𝒞>()
+        .into_tangent(|value| value)
     }
 }
-
 impl<𝒞, F, P, V, Q, W, Route>
     DifferentialRegion<𝒞, d<F>, TangentMap<V, Q, W, Q>, ManifoldEvaluationRoute<Q, Route>> for P
 where
@@ -471,7 +519,7 @@ where
     }
 }
 
-impl<P, V, Q, W, F, const N: usize, JP, JQ> ManifoldJetMap<P, V, Q, W, N, ManifoldRoute<Q, JP, JQ>>
+impl<P, V, Q, W, JP, JQ, F, const N: usize> ManifoldJetMap<P, V, Q, W, N, ManifoldRoute<Q, JP, JQ>>
     for F
 where
     P: Connection<P, V>,
@@ -483,7 +531,9 @@ where
     F: Fn(JP) -> JQ,
 {
     fn jet_at(&self, input: Tangent<P, V, N>) -> Tangent<Q, W, N> {
-        JQ::uncommute_jet(self(JP::commute_jet(input)))
+        let input = JP::commute_jet(input);
+
+        JQ::uncommute_jet(self(input))
     }
 }
 
@@ -499,6 +549,123 @@ where
     fn uncommute_jet(value: Self) -> Tangent<P, V, N>;
 }
 
+/// Selects the canonical nominal presentation of a connection's `N`-jet in
+/// the scalar category `𝒞`.
+///
+/// [`CommutesJet`] contains the actual isomorphisms. This trait adds no new
+/// conversion data: it only selects the point and model presentations so
+/// generic code can name them as associated types. Requiring the point
+/// presentation to remain a connection is the closure law which makes repeated
+/// differentiation recursive rather than depth-specialised.
+pub trait JetPresentation<𝒞: Cat, V: Tensor, const N: usize>: Connection<Self, V>
+where
+    Jet<𝒞, V::F, N>: Field,
+{
+    /// The model tensor naturally carried by the nominal presentation.
+    ///
+    /// This need not be definitionally equal to `JetVectorIn<𝒞, V, N>`:
+    /// for example, jettification distributes over a direct sum only up to
+    /// the canonical isomorphism `J(U ⊕ V) ≅ JU ⊕ JV`.
+    type Model: Tensor<F = Jet<𝒞, V::F, N>, Hand = V::Hand> + CommutesJet<V, V, N>;
+
+    type Commuted: CommutesJet<Self, V, N> + Connection<Self::Commuted, Self::Model>;
+}
+
+/// Transports the canonical flat jet model into the model selected by `P`.
+///
+/// Both endpoints are [`CommutesJet`] presentations of the same intrinsic
+/// `Tangent<V, V, N>`, so this conversion contains no independently supplied
+/// data.
+fn present_model<𝒞, P, V, const N: usize>(
+    value: JetVectorIn<𝒞, V, N>,
+) -> <P as JetPresentation<𝒞, V, N>>::Model
+where
+    𝒞: Cat,
+    V: Tensor,
+    P: JetPresentation<𝒞, V, N>,
+    Jet<𝒞, V::F, N>: Field,
+{
+    <<P as JetPresentation<𝒞, V, N>>::Model as CommutesJet<V, V, N>>::commute_jet(<JetVectorIn<
+        𝒞,
+        V,
+        N,
+    > as CommutesJet<
+        V,
+        V,
+        N,
+    >>::uncommute_jet(
+        value
+    ))
+}
+
+/// Transports `P`'s selected model back to the canonical flat jet model.
+fn unpresent_model<𝒞, P, V, const N: usize>(
+    value: <P as JetPresentation<𝒞, V, N>>::Model,
+) -> JetVectorIn<𝒞, V, N>
+where
+    𝒞: Cat,
+    V: Tensor,
+    P: JetPresentation<𝒞, V, N>,
+    Jet<𝒞, V::F, N>: Field,
+{
+    <JetVectorIn<𝒞, V, N> as CommutesJet<V, V, N>>::commute_jet(
+        <<P as JetPresentation<𝒞, V, N>>::Model as CommutesJet<V, V, N>>::uncommute_jet(value),
+    )
+}
+
+/// Selects an already-implemented [`CommutesJet`] relation as the canonical
+/// nominal jet presentation of its source.
+///
+/// The point conversion remains defined exactly once by the corresponding
+/// [`CommutesJet`] implementation. The model is the canonical flat
+/// `JetVectorIn` presentation, whose own [`CommutesJet`] implementation supplies
+/// its conversion.
+#[macro_export]
+macro_rules! impl_jet_presentation {
+    (
+        $category:ty,
+        $point:ty,
+        $model:ty,
+        $commuted:ty,
+        [$($generics:tt)*],
+        const $order:ident: usize $(,)?
+    ) => {
+        impl<$($generics)*, const $order: usize>
+            $crate::traits::calculus::JetPresentation<
+                $category,
+                $model,
+                $order,
+            > for $point
+        where
+            $crate::traits::calculus::Jet<
+                $category,
+                <$model as $crate::traits::Tensor>::F,
+                $order,
+            >: $crate::traits::Field,
+            $commuted: $crate::traits::calculus::CommutesJet<
+                    $point,
+                    $model,
+                    $order,
+                > + $crate::traits::calculus::Connection<
+                    $commuted,
+                    $crate::traits::calculus::JetVectorIn<
+                        $category,
+                        $model,
+                        $order,
+                    >,
+                >,
+        {
+            type Model = $crate::traits::calculus::JetVectorIn<
+                $category,
+                $model,
+                $order,
+            >;
+
+            type Commuted = $commuted;
+        }
+    };
+}
+
 impl<P, V, const N: usize> CommutesJet<P, V, N> for Tangent<P, V, N>
 where
     P: Connection<P, V>,
@@ -510,6 +677,23 @@ where
 
     fn uncommute_jet(value: Self) -> Tangent<P, V, N> {
         value
+    }
+}
+
+/// The canonical presentation used when a differentiated manifold itself has
+/// to remain differentiable.  The runtime data is identical to `Tangent`; the
+/// tower records the base and prolongation witnesses needed for the next lift.
+impl<P, V, const N: usize> CommutesJet<P, V, N> for LiftedTM<P, V, P, N>
+where
+    P: Connection<P, V>,
+    V: Tensor,
+{
+    fn commute_jet(value: Tangent<P, V, N>) -> Self {
+        TangentElement::new(value.0, value.1)
+    }
+
+    fn uncommute_jet(value: Self) -> Tangent<P, V, N> {
+        TangentElement::new(value.0, value.1)
     }
 }
 

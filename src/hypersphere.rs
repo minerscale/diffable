@@ -451,6 +451,42 @@ impl<V: Euclidean, const N: usize> CommutesJet<S3<V>, V, N> for S3<JetVectorIn<�
     }
 }
 
+crate::impl_jet_presentation!(
+    𝐑𝐞𝐚𝐥::𝒞,
+    Sphere<V>,
+    V,
+    Sphere<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>,
+    [V: Euclidean],
+    const N: usize
+);
+
+crate::impl_jet_presentation!(
+    𝐑𝐞𝐚𝐥::𝒞,
+    S0<V>,
+    V,
+    S0<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>,
+    [V: Euclidean],
+    const N: usize
+);
+
+crate::impl_jet_presentation!(
+    𝐑𝐞𝐚𝐥::𝒞,
+    UnitComplex<V>,
+    V,
+    UnitComplex<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>,
+    [V: Euclidean],
+    const N: usize
+);
+
+crate::impl_jet_presentation!(
+    𝐑𝐞𝐚𝐥::𝒞,
+    S3<V>,
+    V,
+    S3<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>,
+    [V: Euclidean],
+    const N: usize
+);
+
 fn sphere_exp_factors<R: Real, const N: usize>(
     norm_squared: Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>,
 ) -> (Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>, Jet<𝐑𝐞𝐚𝐥::𝒞, R, N>) {
@@ -897,6 +933,15 @@ impl_lie_group_via_quotient!(
         subgroup = RootOfUnity<Jet<𝐑𝐞𝐚𝐥::𝒞, V::F, N>, 2>,
         model = JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>,
     }
+);
+
+crate::impl_jet_presentation!(
+    𝐑𝐞𝐚𝐥::𝒞,
+    So3<V>,
+    V,
+    So3<JetVectorIn<𝐑𝐞𝐚𝐥::𝒞, V, N>>,
+    [V: Euclidean],
+    const N: usize
 );
 
 #[cfg(feature = "simplicial")]

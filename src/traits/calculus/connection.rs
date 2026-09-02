@@ -471,6 +471,14 @@ pub type TM<P, V, T, U, const N: usize = 1> = TangentElement<P, V, ː<T, ː<U, �
 /// [`Connection`].
 pub type LiftedTM<P, V, T, const N: usize = 1> = TM<P, V, T, Prolongation<P, V, T, N>, N>;
 
+crate::include_point!(
+    TangentElement<P, V, Tower, N>,
+    P: Point,
+    V: Tensor,
+    Tower: Clone + core::fmt::Debug,
+    const N: usize
+);
+
 impl<
     P: Point,
     V: Tensor,
@@ -553,6 +561,34 @@ impl<
     const N: usize,
 > TangentBundle<Self, JetVector<V, N>> for TM<P, V, T, U, N>
 {
+}
+
+/// The connection on an iterated tangent presentation is the connection
+/// witness already recorded in its tower.
+impl<
+    P: Point,
+    V: Tensor,
+    T: TangentBundle<P, V>,
+    U: Connection<TM<P, V, T, U, N>, JetVector<V, N>>,
+    const N: usize,
+> Connection<TM<P, V, T, U, N>, JetVector<V, N>> for TM<P, V, T, U, N>
+{
+    fn tangent_to_local<const M: usize>(
+        base: Tangent<TM<P, V, T, U, N>, JetVector<V, N>, M>,
+        local: Tangent<TM<P, V, T, U, N>, JetVector<V, N>, M>,
+    ) -> Option<JetVector<JetVector<V, N>, M>> {
+        U::tangent_to_local(base, local)
+    }
+
+    fn tangent_to_global<const M: usize>(
+        base: Tangent<TM<P, V, T, U, N>, JetVector<V, N>, M>,
+        coordinate: JetVector<JetVector<V, N>, M>,
+    ) -> <Self::Global as OptionallyOption<TM<P, V, T, U, N>>>::Mapped<(
+        TM<P, V, T, U, N>,
+        JetVector<JetVector<V, N>, M>,
+    )> {
+        U::tangent_to_global(base, coordinate)
+    }
 }
 
 impl<P: Point, V: Tensor, T: Connection<P, V>, U: TangentBundle<Self, JetVector<V>>>
