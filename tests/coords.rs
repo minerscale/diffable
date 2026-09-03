@@ -77,7 +77,7 @@ test_vector!(complex_v32, Coords<_, _, 2>, (arb_vec::<3>(), arb_vec::<3>()).prop
 }), arb_vec::<2>().prop_map(|x| Complex(x)));
 
 test_holonomy!(
-    holonomy_euclidean2,
+    holonomy_v2,
     Coords<R64, 2>,
     Coords<R64, 2>,
     arb_vec2(),

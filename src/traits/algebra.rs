@@ -1446,24 +1446,6 @@ pub trait SemidirectStructure<
     N: LieGroup<V>,
 >: core::fmt::Debug + Copy + Clone
 {
-    fn alpha<const K: usize>(g: Tangent<G, U, K>, n: Tangent<N, V, K>) -> Tangent<N, V, K>;
-
-    fn identity_exp<const K: usize>(
-        coordinate: JetVector<DirectSum<U, V>, K>,
-    ) -> Tangent<SemidirectProduct<U, V, G, N, Self>, DirectSum<U, V>, K>;
-
-    fn identity_log<const K: usize>(
-        point: Tangent<SemidirectProduct<U, V, G, N, Self>, DirectSum<U, V>, K>,
-    ) -> Option<JetVector<DirectSum<U, V>, K>>;
-}
-
-pub trait SemidirectJetStructure<
-    U: Tensor,
-    V: Tensor<F = U::F, Hand = U::Hand>,
-    G: LieGroup<U>,
-    N: LieGroup<V>,
->: SemidirectStructure<U, V, G, N>
-{
     type JetCategory: Cat;
 
     type JetG<const K: usize>: LieGroup<JetVectorIn<Self::JetCategory, U, K>> + CommutesJet<G, U, K>
@@ -1474,7 +1456,7 @@ pub trait SemidirectJetStructure<
     where
         Jet<Self::JetCategory, U::F, K>: Field;
 
-    type JetStructure<const K: usize>: SemidirectJetStructure<
+    type JetStructure<const K: usize>: SemidirectStructure<
             JetVectorIn<Self::JetCategory, U, K>,
             JetVectorIn<Self::JetCategory, V, K>,
             Self::JetG<K>,
@@ -1483,6 +1465,16 @@ pub trait SemidirectJetStructure<
         >
     where
         Jet<Self::JetCategory, U::F, K>: Field;
+
+    fn alpha<const K: usize>(g: Tangent<G, U, K>, n: Tangent<N, V, K>) -> Tangent<N, V, K>;
+
+    fn identity_exp<const K: usize>(
+        coordinate: JetVector<DirectSum<U, V>, K>,
+    ) -> Tangent<SemidirectProduct<U, V, G, N, Self>, DirectSum<U, V>, K>;
+
+    fn identity_log<const K: usize>(
+        point: Tangent<SemidirectProduct<U, V, G, N, Self>, DirectSum<U, V>, K>,
+    ) -> Option<JetVector<DirectSum<U, V>, K>>;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -1506,7 +1498,7 @@ impl<
     V: Tensor<F = U::F, Hand = U::Hand>,
     G: LieGroup<U>,
     N: LieGroup<V>,
-    F: SemidirectJetStructure<U, V, G, N>,
+    F: SemidirectStructure<U, V, G, N>,
 > SemidirectProduct<U, V, G, N, F>
 {
     pub fn infinitesimal_alpha<const K: usize>(
@@ -1514,7 +1506,6 @@ impl<
         v: JetVector<V, K>,
     ) -> JetVector<V, K>
     where
-        F: SemidirectJetStructure<U, V, G, N>,
         Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
         Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
         Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
@@ -1582,7 +1573,6 @@ impl<
     where
         U::F: Field<Characteristic = NatZero>,
         V: Vector,
-        F: SemidirectJetStructure<U, V, G, N>,
         Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
         Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
         Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
@@ -1626,7 +1616,6 @@ impl<
     where
         U::F: Field<Characteristic = NatZero>,
         V: Vector,
-        F: SemidirectJetStructure<U, V, G, N>,
         Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
         Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
         Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
@@ -1681,7 +1670,6 @@ impl<
     where
         U::F: Field<Characteristic = NatZero>,
         V: Vector,
-        F: SemidirectJetStructure<U, V, G, V>,
         Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
         Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
         Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
@@ -1703,7 +1691,6 @@ impl<
     where
         U::F: Field<Characteristic = NatZero>,
         V: Vector,
-        F: SemidirectJetStructure<U, V, G, V>,
         Jet<F::JetCategory, U::F, K>: Field + ι<C: JetRegion<F::JetCategory>>,
         Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>: Field,
         Jet<F::JetCategory, Jet<F::JetCategory, Jet<F::JetCategory, U::F, K>, 1>, 1>: Field,
@@ -1736,7 +1723,7 @@ where
     V: Tensor<F = U::F, Hand = U::Hand>,
     G: LieGroup<U>,
     N: LieGroup<V>,
-    F: SemidirectJetStructure<U, V, G, N>,
+    F: SemidirectStructure<U, V, G, N>,
     Jet<F::JetCategory, U::F, K>: Field,
 {
     fn commute_jet(value: Tangent<SemidirectProduct<U, V, G, N, F>, DirectSum<U, V>, K>) -> Self {
